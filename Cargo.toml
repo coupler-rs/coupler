@@ -2,4 +2,5 @@
 
 members = [
     "vst2",
+    "vst2-test",
 ]
