@@ -28,7 +28,7 @@ pub struct AEffect {
     pub _future: [u8; 56],
 }
 
-pub type HostCallbackProc = extern "C" fn(
+pub type HostCallbackProc = unsafe extern "C" fn(
     effect: *mut AEffect,
     opcode: i32,
     index: i32,
