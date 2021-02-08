@@ -3,4 +3,6 @@
 members = [
     "vst2",
     "vst2-test",
+    "vst3",
+    "vst3-test",
 ]
