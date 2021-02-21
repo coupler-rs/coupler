@@ -1,35 +1,35 @@
 use vst2::*;
 
 extern "C" fn dispatcher(
-    effect: *mut AEffect,
-    opcode: i32,
-    index: i32,
-    value: isize,
-    ptr: *mut std::ffi::c_void,
-    opt: f32,
+    _effect: *mut AEffect,
+    _opcode: i32,
+    _index: i32,
+    _value: isize,
+    _ptr: *mut std::ffi::c_void,
+    _opt: f32,
 ) -> isize {
     0
 }
 
 pub extern "C" fn process(
-    effect: *mut AEffect,
-    inputs: *const *const f32,
-    outputs: *mut *mut f32,
-    sample_frames: i32,
+    _effect: *mut AEffect,
+    _inputs: *const *const f32,
+    _outputs: *mut *mut f32,
+    _sample_frames: i32,
 ) {
 }
 
 pub extern "C" fn process_f64(
-    effect: *mut AEffect,
-    inputs: *const *const f64,
-    outputs: *mut *mut f64,
-    sample_frames: i32,
+    _effect: *mut AEffect,
+    _inputs: *const *const f64,
+    _outputs: *mut *mut f64,
+    _sample_frames: i32,
 ) {
 }
 
-pub extern "C" fn set_parameter(effect: *mut AEffect, index: i32, parameter: f32) {}
+pub extern "C" fn set_parameter(_effect: *mut AEffect, _index: i32, _parameter: f32) {}
 
-pub extern "C" fn get_parameter(effect: *mut AEffect, index: i32) -> f32 {
+pub extern "C" fn get_parameter(_effect: *mut AEffect, _index: i32) -> f32 {
     0.0
 }
 
@@ -39,7 +39,7 @@ pub extern "C" fn main(host_callback: HostCallbackProc) -> *mut AEffect {
 }
 
 #[no_mangle]
-pub extern "C" fn VSTPluginMain(host_callback: HostCallbackProc) -> *mut AEffect {
+pub extern "C" fn VSTPluginMain(_host_callback: HostCallbackProc) -> *mut AEffect {
     Box::into_raw(Box::new(AEffect {
         magic: AEffect::MAGIC,
         dispatcher,
