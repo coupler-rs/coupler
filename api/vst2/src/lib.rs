@@ -161,8 +161,8 @@ pub mod effect_opcodes {
     pub const EDIT_OPEN: i32 = 14;
     pub const EDIT_CLOSE: i32 = 15;
     pub const EDIT_DRAW: i32 = 16;
-    pub const EDIT_MOUSE: i32 = 16;
-    pub const EDIT_KEY: i32 = 17;
+    pub const EDIT_MOUSE: i32 = 17;
+    pub const EDIT_KEY: i32 = 18;
     pub const EDIT_IDLE: i32 = 19;
     pub const EDIT_TOP: i32 = 20;
     pub const EDIT_SLEEP: i32 = 21;
