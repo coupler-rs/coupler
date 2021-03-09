@@ -1,0 +1,12 @@
+[package]
+name = "window"
+version = "0.1.0"
+authors = ["Micah Johnston <micah@glowcoil.com>"]
+edition = "2018"
+
+[dependencies]
+keyboard-types = { version = "0.5.0", default-features = false }
+raw-window-handle = "0.3.3"
+
+[target.'cfg(target_os="windows")'.dependencies]
+winapi = { version = "0.3.8", features = ["libloaderapi", "winuser", "windef", "minwindef", "errhandlingapi"] }
