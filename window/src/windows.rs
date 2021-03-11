@@ -4,6 +4,7 @@ use std::error::Error;
 use std::ffi::OsStr;
 use std::fmt;
 use std::os::windows::ffi::OsStrExt;
+use std::mem;
 use std::ptr;
 
 use winapi::{
@@ -14,6 +15,42 @@ fn to_wstring(str: &str) -> Vec<u16> {
     let mut wstr: Vec<u16> = OsStr::new(str).encode_wide().collect();
     wstr.push(0);
     wstr
+}
+
+#[derive(Debug)]
+pub enum ApplicationError {}
+
+impl fmt::Display for ApplicationError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl Error for ApplicationError {}
+
+#[derive(Clone)]
+pub struct Application;
+
+impl Application {
+    pub fn new() -> Result<Application, ApplicationError> {
+        Ok(Application)
+    }
+
+    pub fn run(&self) {
+        unsafe {
+            loop {
+                let mut msg: winuser::MSG = mem::zeroed();
+
+                let result = winuser::GetMessageW(&mut msg, ptr::null_mut(), 0, 0);
+                if result <= 0 {
+                    break;
+                }
+
+                winuser::TranslateMessage(&msg);
+                winuser::DispatchMessageW(&msg);
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
