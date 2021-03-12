@@ -8,6 +8,7 @@ fn main() {
         width: 500.0,
         height: 500.0,
         application: Some(&app),
+        ..WindowOptions::default()
     })
     .unwrap();
 

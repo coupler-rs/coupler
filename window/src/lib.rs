@@ -7,6 +7,8 @@ use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
 
+use raw_window_handle::HasRawWindowHandle;
+
 #[derive(Debug)]
 pub struct ApplicationError(platform::ApplicationError);
 
@@ -33,20 +35,28 @@ impl Application {
     }
 }
 
-pub struct WindowOptions<'a> {
+pub enum Parent<'p> {
+    None,
+    Parent(&'p dyn HasRawWindowHandle),
+    Detached,
+}
+
+pub struct WindowOptions<'a, 'p> {
     pub title: String,
     pub width: f32,
     pub height: f32,
     pub application: Option<&'a Application>,
+    pub parent: Parent<'p>,
 }
 
-impl<'a> Default for WindowOptions<'a> {
+impl<'a, 'p> Default for WindowOptions<'a, 'p> {
     fn default() -> Self {
         WindowOptions {
             title: "".to_string(),
             width: 0.0,
             height: 0.0,
             application: None,
+            parent: Parent::None,
         }
     }
 }

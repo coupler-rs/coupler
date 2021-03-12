@@ -1,12 +1,13 @@
-use crate::WindowOptions;
+use crate::{Parent, WindowOptions};
 
 use std::error::Error;
 use std::ffi::OsStr;
 use std::fmt;
-use std::os::windows::ffi::OsStrExt;
 use std::mem;
+use std::os::windows::ffi::OsStrExt;
 use std::ptr;
 
+use raw_window_handle::RawWindowHandle;
 use winapi::{
     shared::minwindef, shared::windef, um::errhandlingapi, um::libloaderapi, um::winuser,
 };
@@ -57,6 +58,7 @@ impl Application {
 pub enum WindowError {
     ClassCreation(u32),
     WindowCreation(u32),
+    InvalidWindowHandle,
 }
 
 impl fmt::Display for WindowError {
@@ -96,13 +98,17 @@ impl Window {
                 }
             }
 
-            let flags = winuser::WS_POPUPWINDOW
-                | winuser::WS_CAPTION
-                | winuser::WS_VISIBLE
-                | winuser::WS_SIZEBOX
-                | winuser::WS_MINIMIZEBOX
-                | winuser::WS_MAXIMIZEBOX
-                | winuser::WS_CLIPSIBLINGS;
+            let mut flags = winuser::WS_CLIPCHILDREN | winuser::WS_CLIPSIBLINGS;
+
+            if let Parent::Parent(_) = options.parent {
+                flags |= winuser::WS_CHILD;
+            } else {
+                flags |= winuser::WS_CAPTION
+                    | winuser::WS_SIZEBOX
+                    | winuser::WS_SYSMENU
+                    | winuser::WS_MINIMIZEBOX
+                    | winuser::WS_MAXIMIZEBOX;
+            }
 
             let mut rect = windef::RECT {
                 left: 0,
@@ -112,6 +118,17 @@ impl Window {
             };
 
             winuser::AdjustWindowRectEx(&mut rect, flags, minwindef::FALSE, 0);
+
+            let parent = if let Parent::Parent(parent) = options.parent {
+                match parent.raw_window_handle() {
+                    RawWindowHandle::Windows(handle) => handle.hwnd as windef::HWND,
+                    _ => {
+                        return Err(WindowError::InvalidWindowHandle);
+                    }
+                }
+            } else {
+                ptr::null_mut()
+            };
 
             let window_name = to_wstring(&options.title);
             let hwnd = winuser::CreateWindowExW(
@@ -123,7 +140,7 @@ impl Window {
                 winuser::CW_USEDEFAULT,
                 rect.right - rect.left,
                 rect.bottom - rect.top,
-                ptr::null_mut(),
+                parent,
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
@@ -132,7 +149,7 @@ impl Window {
                 return Err(WindowError::WindowCreation(errhandlingapi::GetLastError()));
             }
 
-            winuser::ShowWindow(hwnd, winuser::SW_NORMAL);
+            winuser::ShowWindow(hwnd, winuser::SW_SHOWNORMAL);
 
             Ok(Window { hwnd })
         }
