@@ -7,7 +7,7 @@ use std::mem;
 use std::os::windows::ffi::OsStrExt;
 use std::ptr;
 
-use raw_window_handle::RawWindowHandle;
+use raw_window_handle::{HasRawWindowHandle, RawWindowHandle, windows::WindowsHandle};
 use winapi::{
     shared::minwindef, shared::windef, um::errhandlingapi, um::libloaderapi, um::winuser,
 };
@@ -153,6 +153,15 @@ impl Window {
 
             Ok(Window { hwnd })
         }
+    }
+}
+
+unsafe impl HasRawWindowHandle for Window {
+    fn raw_window_handle(&self) -> RawWindowHandle {
+        RawWindowHandle::Windows(WindowsHandle {
+            hwnd: self.hwnd as *mut std::ffi::c_void,
+            ..WindowsHandle::empty()
+        })
     }
 }
 

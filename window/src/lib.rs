@@ -7,7 +7,7 @@ use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
 
-use raw_window_handle::HasRawWindowHandle;
+use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
 #[derive(Debug)]
 pub struct ApplicationError(platform::ApplicationError);
@@ -88,5 +88,11 @@ impl Window {
             }),
             Err(error) => Err(WindowError(error)),
         }
+    }
+}
+
+unsafe impl HasRawWindowHandle for Window {
+    fn raw_window_handle(&self) -> RawWindowHandle {
+        self.window.raw_window_handle()
     }
 }
