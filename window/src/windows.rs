@@ -9,7 +9,7 @@ use std::ptr;
 
 use raw_window_handle::{windows::WindowsHandle, HasRawWindowHandle, RawWindowHandle};
 use winapi::{
-    shared::minwindef, shared::windef, um::errhandlingapi, um::libloaderapi, um::winuser,
+    shared::minwindef, shared::windef, shared::winerror, um::errhandlingapi, um::libloaderapi, um::winuser,
 };
 
 fn to_wstring(str: &str) -> Vec<u16> {
@@ -96,8 +96,7 @@ impl Window {
             };
 
             if winuser::RegisterClassW(&class) == 0 {
-                // ignore the "class already exists" error
-                if errhandlingapi::GetLastError() as u32 != 1410 {
+                if errhandlingapi::GetLastError() as u32 != winerror::ERROR_CLASS_ALREADY_EXISTS {
                     return Err(WindowError::ClassCreation(errhandlingapi::GetLastError()));
                 }
             }
