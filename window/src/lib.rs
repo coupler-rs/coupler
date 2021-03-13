@@ -41,12 +41,19 @@ pub enum Parent<'p> {
     Detached,
 }
 
+pub trait WindowHandler {}
+
+struct DefaultWindowHandler;
+
+impl WindowHandler for DefaultWindowHandler {}
+
 pub struct WindowOptions<'a, 'p> {
     pub title: String,
     pub width: f32,
     pub height: f32,
     pub application: Option<&'a Application>,
     pub parent: Parent<'p>,
+    pub handler: Option<Box<dyn WindowHandler>>,
 }
 
 impl<'a, 'p> Default for WindowOptions<'a, 'p> {
@@ -57,6 +64,7 @@ impl<'a, 'p> Default for WindowOptions<'a, 'p> {
             height: 0.0,
             application: None,
             parent: Parent::None,
+            handler: None,
         }
     }
 }

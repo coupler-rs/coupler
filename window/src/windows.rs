@@ -1,4 +1,4 @@
-use crate::{Parent, WindowOptions};
+use crate::{DefaultWindowHandler, Parent, WindowHandler, WindowOptions};
 
 use std::error::Error;
 use std::ffi::OsStr;
@@ -7,7 +7,7 @@ use std::mem;
 use std::os::windows::ffi::OsStrExt;
 use std::ptr;
 
-use raw_window_handle::{HasRawWindowHandle, RawWindowHandle, windows::WindowsHandle};
+use raw_window_handle::{windows::WindowsHandle, HasRawWindowHandle, RawWindowHandle};
 use winapi::{
     shared::minwindef, shared::windef, um::errhandlingapi, um::libloaderapi, um::winuser,
 };
@@ -68,6 +68,10 @@ impl fmt::Display for WindowError {
 }
 
 impl Error for WindowError {}
+
+struct WindowState {
+    handler: Box<dyn WindowHandler>,
+}
 
 #[derive(Clone)]
 pub struct Window {
@@ -149,6 +153,12 @@ impl Window {
                 return Err(WindowError::WindowCreation(errhandlingapi::GetLastError()));
             }
 
+            let handler = options
+                .handler
+                .unwrap_or_else(|| Box::new(DefaultWindowHandler));
+            let state = Box::new(WindowState { handler });
+            winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, Box::into_raw(state) as isize);
+
             winuser::ShowWindow(hwnd, winuser::SW_SHOWNORMAL);
 
             Ok(Window { hwnd })
@@ -172,10 +182,22 @@ unsafe impl HasRawWindowHandle for Window {
 }
 
 unsafe extern "system" fn wnd_proc(
-    window: windef::HWND,
+    hwnd: windef::HWND,
     msg: minwindef::UINT,
     wparam: minwindef::WPARAM,
     lparam: minwindef::LPARAM,
 ) -> minwindef::LRESULT {
-    winuser::DefWindowProcW(window, msg, wparam, lparam)
+    let state = winuser::GetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA) as *mut WindowState;
+
+    if !state.is_null() {
+        match msg {
+            winuser::WM_NCDESTROY => {
+                drop(Box::from_raw(state));
+                winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, 0);
+            }
+            _ => {}
+        }
+    }
+
+    winuser::DefWindowProcW(hwnd, msg, wparam, lparam)
 }
