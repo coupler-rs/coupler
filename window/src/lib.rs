@@ -89,6 +89,10 @@ impl Window {
             Err(error) => Err(WindowError(error)),
         }
     }
+
+    pub fn close(&self) {
+        self.window.close();
+    }
 }
 
 unsafe impl HasRawWindowHandle for Window {

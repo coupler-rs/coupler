@@ -154,6 +154,12 @@ impl Window {
             Ok(Window { hwnd })
         }
     }
+
+    pub fn close(&self) {
+        unsafe {
+            winuser::DestroyWindow(self.hwnd);
+        }
+    }
 }
 
 unsafe impl HasRawWindowHandle for Window {
