@@ -41,7 +41,7 @@ extern "C" {
 impl Application {
     pub fn open() -> Result<Application, ApplicationError> {
         unsafe {
-            let class_name = to_wstring("plugin-window");
+            let class_name = to_wstring(&format!("window-{}", uuid::Uuid::new_v4().to_simple()));
             let wnd_class = winuser::WNDCLASSW {
                 style: winuser::CS_HREDRAW | winuser::CS_VREDRAW | winuser::CS_OWNDC,
                 lpfnWndProc: Some(wnd_proc),

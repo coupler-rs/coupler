@@ -10,3 +10,4 @@ raw-window-handle = "0.3.3"
 
 [target.'cfg(target_os="windows")'.dependencies]
 winapi = { version = "0.3.8", features = ["winuser", "windef", "minwindef", "errhandlingapi", "winnt"] }
+uuid = { version = "0.8", features = ["v4"] }
