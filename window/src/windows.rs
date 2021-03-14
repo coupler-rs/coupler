@@ -9,7 +9,7 @@ use std::ptr;
 
 use raw_window_handle::{windows::WindowsHandle, HasRawWindowHandle, RawWindowHandle};
 use winapi::{
-    shared::minwindef, shared::windef, shared::winerror, um::errhandlingapi, um::libloaderapi, um::winuser,
+    shared::minwindef, shared::windef, um::errhandlingapi, um::libloaderapi, um::winuser,
 };
 
 fn to_wstring(str: &str) -> Vec<u16> {
@@ -19,7 +19,9 @@ fn to_wstring(str: &str) -> Vec<u16> {
 }
 
 #[derive(Debug)]
-pub enum ApplicationError {}
+pub enum ApplicationError {
+    WindowClassCreation(u32),
+}
 
 impl fmt::Display for ApplicationError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -30,11 +32,36 @@ impl fmt::Display for ApplicationError {
 impl Error for ApplicationError {}
 
 #[derive(Clone)]
-pub struct Application;
+pub struct Application {
+    class: minwindef::ATOM,
+}
 
 impl Application {
     pub fn open() -> Result<Application, ApplicationError> {
-        Ok(Application)
+        unsafe {
+            let class_name = to_wstring("plugin-window");
+            let wnd_class = winuser::WNDCLASSW {
+                style: winuser::CS_HREDRAW | winuser::CS_VREDRAW | winuser::CS_OWNDC,
+                lpfnWndProc: Some(wnd_proc),
+                cbClsExtra: 0,
+                cbWndExtra: 0,
+                hInstance: libloaderapi::GetModuleHandleA(ptr::null()),
+                hIcon: ptr::null_mut(),
+                hCursor: winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_ARROW),
+                hbrBackground: ptr::null_mut(),
+                lpszMenuName: ptr::null(),
+                lpszClassName: class_name.as_ptr(),
+            };
+
+            let class = winuser::RegisterClassW(&wnd_class);
+            if class == 0 {
+                return Err(ApplicationError::WindowClassCreation(
+                    errhandlingapi::GetLastError(),
+                ));
+            }
+
+            Ok(Application { class })
+        }
     }
 
     pub fn run(&self) {
@@ -56,7 +83,6 @@ impl Application {
 
 #[derive(Debug)]
 pub enum WindowError {
-    ClassCreation(u32),
     WindowCreation(u32),
     InvalidWindowHandle,
 }
@@ -81,26 +107,6 @@ pub struct Window {
 impl Window {
     pub fn open(application: &Application, options: WindowOptions) -> Result<Window, WindowError> {
         unsafe {
-            let class_name = to_wstring("plugin-window");
-            let class = winuser::WNDCLASSW {
-                style: winuser::CS_HREDRAW | winuser::CS_VREDRAW | winuser::CS_OWNDC,
-                lpfnWndProc: Some(wnd_proc),
-                cbClsExtra: 0,
-                cbWndExtra: 0,
-                hInstance: libloaderapi::GetModuleHandleA(ptr::null()),
-                hIcon: ptr::null_mut(),
-                hCursor: winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_ARROW),
-                hbrBackground: ptr::null_mut(),
-                lpszMenuName: ptr::null(),
-                lpszClassName: class_name.as_ptr(),
-            };
-
-            if winuser::RegisterClassW(&class) == 0 {
-                if errhandlingapi::GetLastError() as u32 != winerror::ERROR_CLASS_ALREADY_EXISTS {
-                    return Err(WindowError::ClassCreation(errhandlingapi::GetLastError()));
-                }
-            }
-
             let mut flags = winuser::WS_CLIPCHILDREN | winuser::WS_CLIPSIBLINGS;
 
             if let Parent::Parent(_) = options.parent {
@@ -136,7 +142,7 @@ impl Window {
             let window_name = to_wstring(&options.title);
             let hwnd = winuser::CreateWindowExW(
                 0,
-                class_name.as_ptr(),
+                application.class as *const u16,
                 window_name.as_ptr(),
                 flags,
                 winuser::CW_USEDEFAULT,
