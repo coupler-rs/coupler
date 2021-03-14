@@ -1,17 +1,16 @@
 use crate::{DefaultWindowHandler, Parent, WindowHandler, WindowOptions};
 
+use std::cell::Cell;
 use std::error::Error;
-use std::ffi::OsStr;
-use std::fmt;
-use std::mem;
 use std::os::windows::ffi::OsStrExt;
-use std::ptr;
+use std::rc::Rc;
+use std::{ffi, fmt, mem, ptr};
 
 use raw_window_handle::{windows::WindowsHandle, HasRawWindowHandle, RawWindowHandle};
 use winapi::{shared::minwindef, shared::windef, um::errhandlingapi, um::winnt, um::winuser};
 
 fn to_wstring(str: &str) -> Vec<u16> {
-    let mut wstr: Vec<u16> = OsStr::new(str).encode_wide().collect();
+    let mut wstr: Vec<u16> = ffi::OsStr::new(str).encode_wide().collect();
     wstr.push(0);
     wstr
 }
@@ -31,6 +30,11 @@ impl Error for ApplicationError {}
 
 #[derive(Clone)]
 pub struct Application {
+    inner: Rc<ApplicationInner>,
+}
+
+struct ApplicationInner {
+    open: Cell<bool>,
     class: minwindef::ATOM,
 }
 
@@ -62,13 +66,18 @@ impl Application {
                 ));
             }
 
-            Ok(Application { class })
+            Ok(Application {
+                inner: Rc::new(ApplicationInner {
+                    open: Cell::new(true),
+                    class,
+                }),
+            })
         }
     }
 
     pub fn run(&self) {
         unsafe {
-            loop {
+            while self.inner.open.get() {
                 let mut msg: winuser::MSG = mem::zeroed();
 
                 let result = winuser::GetMessageW(&mut msg, ptr::null_mut(), 0, 0);
@@ -85,6 +94,7 @@ impl Application {
 
 #[derive(Debug)]
 pub enum WindowError {
+    ApplicationClosed,
     WindowCreation(u32),
     InvalidWindowHandle,
 }
@@ -103,12 +113,21 @@ struct WindowState {
 
 #[derive(Clone)]
 pub struct Window {
+    inner: Rc<WindowInner>,
+}
+
+struct WindowInner {
+    open: Cell<bool>,
     hwnd: windef::HWND,
 }
 
 impl Window {
     pub fn open(application: &Application, options: WindowOptions) -> Result<Window, WindowError> {
         unsafe {
+            if !application.inner.open.get() {
+                return Err(WindowError::ApplicationClosed);
+            }
+
             let mut flags = winuser::WS_CLIPCHILDREN | winuser::WS_CLIPSIBLINGS;
 
             if let Parent::Parent(_) = options.parent {
@@ -144,7 +163,7 @@ impl Window {
             let window_name = to_wstring(&options.title);
             let hwnd = winuser::CreateWindowExW(
                 0,
-                application.class as *const u16,
+                application.inner.class as *const u16,
                 window_name.as_ptr(),
                 flags,
                 winuser::CW_USEDEFAULT,
@@ -168,21 +187,35 @@ impl Window {
 
             winuser::ShowWindow(hwnd, winuser::SW_SHOWNORMAL);
 
-            Ok(Window { hwnd })
+            Ok(Window {
+                inner: Rc::new(WindowInner {
+                    open: Cell::new(true),
+                    hwnd,
+                }),
+            })
         }
     }
 
     pub fn close(&self) {
         unsafe {
-            winuser::DestroyWindow(self.hwnd);
+            if self.inner.open.get() {
+                winuser::DestroyWindow(self.inner.hwnd);
+                self.inner.open.set(false);
+            }
         }
     }
 }
 
 unsafe impl HasRawWindowHandle for Window {
     fn raw_window_handle(&self) -> RawWindowHandle {
+        let hwnd = if self.inner.open.get() {
+            self.inner.hwnd as *mut std::ffi::c_void
+        } else {
+            ptr::null_mut()
+        };
+
         RawWindowHandle::Windows(WindowsHandle {
-            hwnd: self.hwnd as *mut std::ffi::c_void,
+            hwnd,
             ..WindowsHandle::empty()
         })
     }
