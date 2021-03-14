@@ -20,8 +20,8 @@ pub struct Application {
 }
 
 impl Application {
-    pub fn new() -> Result<Application, ApplicationError> {
-        match platform::Application::new() {
+    pub fn open() -> Result<Application, ApplicationError> {
+        match platform::Application::open() {
             Ok(application) => Ok(Application {
                 application,
                 phantom: PhantomData,
@@ -47,22 +47,20 @@ struct DefaultWindowHandler;
 
 impl WindowHandler for DefaultWindowHandler {}
 
-pub struct WindowOptions<'a, 'p> {
+pub struct WindowOptions<'p> {
     pub title: String,
     pub width: f32,
     pub height: f32,
-    pub application: Option<&'a Application>,
     pub parent: Parent<'p>,
     pub handler: Option<Box<dyn WindowHandler>>,
 }
 
-impl<'a, 'p> Default for WindowOptions<'a, 'p> {
+impl<'p> Default for WindowOptions<'p> {
     fn default() -> Self {
         WindowOptions {
             title: "".to_string(),
             width: 0.0,
             height: 0.0,
-            application: None,
             parent: Parent::None,
             handler: None,
         }
@@ -88,8 +86,8 @@ pub struct Window {
 }
 
 impl Window {
-    pub fn open(options: WindowOptions) -> Result<Window, WindowError> {
-        match platform::Window::open(options) {
+    pub fn open(application: &Application, options: WindowOptions) -> Result<Window, WindowError> {
+        match platform::Window::open(&application.application, options) {
             Ok(window) => Ok(Window {
                 window,
                 phantom: PhantomData,

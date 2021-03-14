@@ -33,7 +33,7 @@ impl Error for ApplicationError {}
 pub struct Application;
 
 impl Application {
-    pub fn new() -> Result<Application, ApplicationError> {
+    pub fn open() -> Result<Application, ApplicationError> {
         Ok(Application)
     }
 
@@ -79,7 +79,7 @@ pub struct Window {
 }
 
 impl Window {
-    pub fn open(options: WindowOptions) -> Result<Window, WindowError> {
+    pub fn open(application: &Application, options: WindowOptions) -> Result<Window, WindowError> {
         unsafe {
             let class_name = to_wstring("plugin-window");
             let class = winuser::WNDCLASSW {
