@@ -8,9 +8,7 @@ use std::os::windows::ffi::OsStrExt;
 use std::ptr;
 
 use raw_window_handle::{windows::WindowsHandle, HasRawWindowHandle, RawWindowHandle};
-use winapi::{
-    shared::minwindef, shared::windef, um::errhandlingapi, um::libloaderapi, um::winuser,
-};
+use winapi::{shared::minwindef, shared::windef, um::errhandlingapi, um::winnt, um::winuser};
 
 fn to_wstring(str: &str) -> Vec<u16> {
     let mut wstr: Vec<u16> = OsStr::new(str).encode_wide().collect();
@@ -36,6 +34,10 @@ pub struct Application {
     class: minwindef::ATOM,
 }
 
+extern "C" {
+    static __ImageBase: winnt::IMAGE_DOS_HEADER;
+}
+
 impl Application {
     pub fn open() -> Result<Application, ApplicationError> {
         unsafe {
@@ -45,7 +47,7 @@ impl Application {
                 lpfnWndProc: Some(wnd_proc),
                 cbClsExtra: 0,
                 cbWndExtra: 0,
-                hInstance: libloaderapi::GetModuleHandleA(ptr::null()),
+                hInstance: &__ImageBase as *const winnt::IMAGE_DOS_HEADER as minwindef::HINSTANCE,
                 hIcon: ptr::null_mut(),
                 hCursor: winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_ARROW),
                 hbrBackground: ptr::null_mut(),
