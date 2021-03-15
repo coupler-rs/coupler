@@ -129,11 +129,12 @@ impl Application {
                     let mut msg: winuser::MSG = mem::zeroed();
 
                     let result = winuser::GetMessageW(&mut msg, ptr::null_mut(), 0, 0);
-                    if result == 0 {
-                        return self.close();
-                    } else if result < 0 {
+                    if result < 0 {
                         self.inner.running.set(false);
                         return Err(ApplicationError::GetMessage(errhandlingapi::GetLastError()));
+                    } else if result == 0 {
+                        // ignore WM_QUIT messages
+                        continue;
                     }
 
                     winuser::TranslateMessage(&msg);
