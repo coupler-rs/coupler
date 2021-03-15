@@ -9,10 +9,12 @@ use std::rc::Rc;
 use std::{ffi, fmt, mem, ptr};
 
 use raw_window_handle::{windows::WindowsHandle, HasRawWindowHandle, RawWindowHandle};
-use winapi::{shared::minwindef, shared::windef, um::errhandlingapi, um::winnt, um::winuser};
+use winapi::{
+    shared::minwindef, shared::ntdef, shared::windef, um::errhandlingapi, um::winnt, um::winuser,
+};
 
-fn to_wstring(str: &str) -> Vec<u16> {
-    let mut wstr: Vec<u16> = ffi::OsStr::new(str).encode_wide().collect();
+fn to_wstring(str: &str) -> Vec<ntdef::WCHAR> {
+    let mut wstr: Vec<ntdef::WCHAR> = ffi::OsStr::new(str).encode_wide().collect();
     wstr.push(0);
     wstr
 }
@@ -105,7 +107,7 @@ impl Application {
                 }
 
                 let result = winuser::UnregisterClassW(
-                    self.inner.class as *const u16,
+                    self.inner.class as *const ntdef::WCHAR,
                     &__ImageBase as *const winnt::IMAGE_DOS_HEADER as minwindef::HINSTANCE,
                 );
 
@@ -232,7 +234,7 @@ impl Window {
             let window_name = to_wstring(&options.title);
             let hwnd = winuser::CreateWindowExW(
                 0,
-                application.application.inner.class as *const u16,
+                application.application.inner.class as *const ntdef::WCHAR,
                 window_name.as_ptr(),
                 flags,
                 winuser::CW_USEDEFAULT,
