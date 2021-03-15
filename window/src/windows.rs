@@ -20,6 +20,7 @@ pub enum ApplicationError {
     WindowClassRegistration(u32),
     WindowClassUnregistration(u32),
     Close(Vec<WindowError>),
+    GetMessage(u32),
 }
 
 impl fmt::Display for ApplicationError {
@@ -111,19 +112,23 @@ impl Application {
         }
     }
 
-    pub fn run(&self) {
+    pub fn run(&self) -> Result<(), ApplicationError> {
         unsafe {
             while self.inner.open.get() {
                 let mut msg: winuser::MSG = mem::zeroed();
 
                 let result = winuser::GetMessageW(&mut msg, ptr::null_mut(), 0, 0);
-                if result <= 0 {
-                    break;
+                if result == 0 {
+                    return self.close();
+                } else if result < 0 {
+                    return Err(ApplicationError::GetMessage(errhandlingapi::GetLastError()));
                 }
 
                 winuser::TranslateMessage(&msg);
                 winuser::DispatchMessageW(&msg);
             }
+
+            Ok(())
         }
     }
 }

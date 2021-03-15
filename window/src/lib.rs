@@ -37,8 +37,11 @@ impl Application {
         }
     }
 
-    pub fn run(&self) {
-        self.application.run();
+    pub fn run(&self) -> Result<(), ApplicationError> {
+        match self.application.run() {
+            Ok(()) => Ok(()),
+            Err(error) => Err(ApplicationError(error)),
+        }
     }
 }
 
