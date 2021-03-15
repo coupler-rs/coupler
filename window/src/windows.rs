@@ -95,7 +95,8 @@ impl Application {
 #[derive(Debug)]
 pub enum WindowError {
     ApplicationClosed,
-    WindowCreation(u32),
+    WindowOpen(u32),
+    WindowClose(u32),
     InvalidWindowHandle,
 }
 
@@ -176,7 +177,7 @@ impl Window {
                 ptr::null_mut(),
             );
             if hwnd.is_null() {
-                return Err(WindowError::WindowCreation(errhandlingapi::GetLastError()));
+                return Err(WindowError::WindowOpen(errhandlingapi::GetLastError()));
             }
 
             let handler = options
@@ -196,12 +197,18 @@ impl Window {
         }
     }
 
-    pub fn close(&self) {
+    pub fn close(&self) -> Result<(), WindowError> {
         unsafe {
             if self.inner.open.get() {
-                winuser::DestroyWindow(self.inner.hwnd);
                 self.inner.open.set(false);
+
+                let result = winuser::DestroyWindow(self.inner.hwnd);
+                if result == 0 {
+                    return Err(WindowError::WindowClose(errhandlingapi::GetLastError()));
+                }
             }
+
+            Ok(())
         }
     }
 }

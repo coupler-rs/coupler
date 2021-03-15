@@ -96,8 +96,11 @@ impl Window {
         }
     }
 
-    pub fn close(&self) {
-        self.window.close();
+    pub fn close(&self) -> Result<(), WindowError> {
+        match self.window.close() {
+            Ok(()) => Ok(()),
+            Err(error) => Err(WindowError(error)),
+        }
     }
 }
 
