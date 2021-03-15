@@ -2,7 +2,21 @@ use window::{Application, Window, WindowHandler, WindowOptions};
 
 struct Handler;
 
-impl WindowHandler for Handler {}
+impl WindowHandler for Handler {
+    fn open(&self, window: &Window) {
+        println!("open");
+    }
+
+    fn close(&self, window: &Window) {
+        println!("close");
+    }
+}
+
+impl Drop for Handler {
+    fn drop(&mut self) {
+        println!("drop");
+    }
+}
 
 fn main() {
     let app = Application::open().unwrap();

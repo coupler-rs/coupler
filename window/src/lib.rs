@@ -55,7 +55,11 @@ pub enum Parent<'p> {
     Detached,
 }
 
-pub trait WindowHandler {}
+#[allow(unused_variables)]
+pub trait WindowHandler {
+    fn open(&self, window: &Window) {}
+    fn close(&self, window: &Window) {}
+}
 
 struct DefaultWindowHandler;
 
