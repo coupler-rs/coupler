@@ -22,10 +22,7 @@ pub struct Application {
 impl Application {
     pub fn open() -> Result<Application, ApplicationError> {
         match platform::Application::open() {
-            Ok(application) => Ok(Application {
-                application,
-                phantom: PhantomData,
-            }),
+            Ok(application) => Ok(Application { application, phantom: PhantomData }),
             Err(error) => Err(ApplicationError(error)),
         }
     }

@@ -39,29 +39,15 @@ static FACTORY_VTABLE: IPluginFactory = {
 
         let vendor = b"vendor\0";
         unsafe {
-            std::ptr::copy(
-                vendor.as_ptr() as *const c_char,
-                info.vendor.as_mut_ptr(),
-                vendor.len(),
-            )
+            std::ptr::copy(vendor.as_ptr() as *const c_char, info.vendor.as_mut_ptr(), vendor.len())
         };
 
         let url = b"https://example.com/\0";
-        unsafe {
-            std::ptr::copy(
-                url.as_ptr() as *const c_char,
-                info.url.as_mut_ptr(),
-                url.len(),
-            )
-        };
+        unsafe { std::ptr::copy(url.as_ptr() as *const c_char, info.url.as_mut_ptr(), url.len()) };
 
         let email = b"webmaster@example.com\0";
         unsafe {
-            std::ptr::copy(
-                email.as_ptr() as *const c_char,
-                info.email.as_mut_ptr(),
-                email.len(),
-            )
+            std::ptr::copy(email.as_ptr() as *const c_char, info.email.as_mut_ptr(), email.len())
         };
 
         info.flags = PFactoryInfo::NO_FLAGS;
@@ -99,11 +85,7 @@ static FACTORY_VTABLE: IPluginFactory = {
 
         let name = b"vst3 test\0";
         unsafe {
-            std::ptr::copy(
-                name.as_ptr() as *const c_char,
-                info.name.as_mut_ptr(),
-                name.len(),
-            )
+            std::ptr::copy(name.as_ptr() as *const c_char, info.name.as_mut_ptr(), name.len())
         };
 
         result::OK
@@ -119,11 +101,7 @@ static FACTORY_VTABLE: IPluginFactory = {
     }
 
     IPluginFactory {
-        parent: FUnknown {
-            query_interface,
-            add_ref,
-            release,
-        },
+        parent: FUnknown { query_interface, add_ref, release },
         get_factory_info,
         count_classes,
         get_class_info,
@@ -131,9 +109,7 @@ static FACTORY_VTABLE: IPluginFactory = {
     }
 };
 
-static FACTORY: Factory = Factory {
-    vtable: &FACTORY_VTABLE,
-};
+static FACTORY: Factory = Factory { vtable: &FACTORY_VTABLE };
 
 #[no_mangle]
 pub extern "system" fn InitDll() -> bool {

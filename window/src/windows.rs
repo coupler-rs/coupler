@@ -243,9 +243,7 @@ impl Window {
                 phantom: PhantomData,
             };
 
-            let handler = options
-                .handler
-                .unwrap_or_else(|| Box::new(DefaultWindowHandler));
+            let handler = options.handler.unwrap_or_else(|| Box::new(DefaultWindowHandler));
 
             let state_ptr = Box::into_raw(Box::new(WindowState {
                 count: Cell::new(1),
@@ -307,10 +305,7 @@ unsafe impl HasRawWindowHandle for Window {
             ptr::null_mut()
         };
 
-        RawWindowHandle::Windows(WindowsHandle {
-            hwnd,
-            ..WindowsHandle::empty()
-        })
+        RawWindowHandle::Windows(WindowsHandle { hwnd, ..WindowsHandle::empty() })
     }
 }
 
@@ -332,13 +327,7 @@ unsafe extern "system" fn wnd_proc(
 
         let mut application_windows = state.window.application().application.inner.windows.take();
         application_windows.insert(hwnd.clone());
-        state
-            .window
-            .application()
-            .application
-            .inner
-            .windows
-            .set(application_windows);
+        state.window.application().application.inner.windows.set(application_windows);
 
         return 1;
     }
@@ -359,13 +348,7 @@ unsafe extern "system" fn wnd_proc(
                 let mut application_windows =
                     state.window.application().application.inner.windows.take();
                 application_windows.remove(&hwnd);
-                state
-                    .window
-                    .application()
-                    .application
-                    .inner
-                    .windows
-                    .set(application_windows);
+                state.window.application().application.inner.windows.set(application_windows);
                 state.handler.close(&state.window);
                 return 0;
             }
