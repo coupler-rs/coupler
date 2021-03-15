@@ -19,5 +19,5 @@ fn main() {
     )
     .unwrap();
 
-    app.run().unwrap();
+    app.start().unwrap();
 }

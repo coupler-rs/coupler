@@ -21,6 +21,7 @@ pub enum ApplicationError {
     WindowClassUnregistration(u32),
     Close(Vec<WindowError>),
     GetMessage(u32),
+    AlreadyRunning,
 }
 
 impl fmt::Display for ApplicationError {
@@ -38,6 +39,7 @@ pub struct Application {
 
 struct ApplicationInner {
     open: Cell<bool>,
+    running: Cell<bool>,
     class: minwindef::ATOM,
     windows: Cell<Vec<Window>>,
 }
@@ -73,6 +75,7 @@ impl Application {
             Ok(Application {
                 inner: Rc::new(ApplicationInner {
                     open: Cell::new(true),
+                    running: Cell::new(false),
                     class,
                     windows: Cell::new(Vec::new()),
                 }),
@@ -83,6 +86,7 @@ impl Application {
     pub fn close(&self) -> Result<(), ApplicationError> {
         unsafe {
             if self.inner.open.get() {
+                self.stop();
                 self.inner.open.set(false);
 
                 let windows = self.inner.windows.take();
@@ -112,24 +116,37 @@ impl Application {
         }
     }
 
-    pub fn run(&self) -> Result<(), ApplicationError> {
+    pub fn start(&self) -> Result<(), ApplicationError> {
         unsafe {
-            while self.inner.open.get() {
-                let mut msg: winuser::MSG = mem::zeroed();
-
-                let result = winuser::GetMessageW(&mut msg, ptr::null_mut(), 0, 0);
-                if result == 0 {
-                    return self.close();
-                } else if result < 0 {
-                    return Err(ApplicationError::GetMessage(errhandlingapi::GetLastError()));
+            if self.inner.open.get() {
+                if self.inner.running.get() {
+                    return Err(ApplicationError::AlreadyRunning);
                 }
 
-                winuser::TranslateMessage(&msg);
-                winuser::DispatchMessageW(&msg);
+                self.inner.running.set(true);
+
+                while self.inner.open.get() && self.inner.running.get() {
+                    let mut msg: winuser::MSG = mem::zeroed();
+
+                    let result = winuser::GetMessageW(&mut msg, ptr::null_mut(), 0, 0);
+                    if result == 0 {
+                        return self.close();
+                    } else if result < 0 {
+                        self.inner.running.set(false);
+                        return Err(ApplicationError::GetMessage(errhandlingapi::GetLastError()));
+                    }
+
+                    winuser::TranslateMessage(&msg);
+                    winuser::DispatchMessageW(&msg);
+                }
             }
 
             Ok(())
         }
+    }
+
+    pub fn stop(&self) {
+        self.inner.open.set(false);
     }
 }
 
