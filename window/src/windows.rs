@@ -1,6 +1,7 @@
 use crate::{DefaultWindowHandler, Parent, WindowHandler, WindowOptions};
 
 use std::cell::Cell;
+use std::collections::HashSet;
 use std::error::Error;
 use std::marker::PhantomData;
 use std::os::windows::ffi::OsStrExt;
@@ -42,7 +43,7 @@ struct ApplicationInner {
     open: Cell<bool>,
     running: Cell<bool>,
     class: minwindef::ATOM,
-    windows: Cell<Vec<Window>>,
+    windows: Cell<HashSet<windef::HWND>>,
 }
 
 extern "C" {
@@ -78,7 +79,7 @@ impl Application {
                     open: Cell::new(true),
                     running: Cell::new(false),
                     class,
-                    windows: Cell::new(Vec::new()),
+                    windows: Cell::new(HashSet::new()),
                 }),
             })
         }
@@ -93,8 +94,10 @@ impl Application {
                 let windows = self.inner.windows.take();
                 let mut window_errors = Vec::new();
                 for window in windows {
-                    if let Err(error) = window.close() {
-                        window_errors.push(error);
+                    let result = winuser::DestroyWindow(window);
+                    if result == 0 {
+                        window_errors
+                            .push(WindowError::WindowClose(errhandlingapi::GetLastError()));
                     }
                 }
                 if !window_errors.is_empty() {
@@ -176,6 +179,7 @@ pub struct Window {
 struct WindowInner {
     open: Cell<bool>,
     hwnd: windef::HWND,
+    application: crate::Application,
 }
 
 struct WindowState {
@@ -184,9 +188,12 @@ struct WindowState {
 }
 
 impl Window {
-    pub fn open(application: &Application, options: WindowOptions) -> Result<Window, WindowError> {
+    pub fn open(
+        application: &crate::Application,
+        options: WindowOptions,
+    ) -> Result<crate::Window, WindowError> {
         unsafe {
-            if !application.inner.open.get() {
+            if !application.application.inner.open.get() {
                 return Err(WindowError::ApplicationClosed);
             }
 
@@ -225,7 +232,7 @@ impl Window {
             let window_name = to_wstring(&options.title);
             let hwnd = winuser::CreateWindowExW(
                 0,
-                application.inner.class as *const u16,
+                application.application.inner.class as *const u16,
                 window_name.as_ptr(),
                 flags,
                 winuser::CW_USEDEFAULT,
@@ -241,19 +248,22 @@ impl Window {
                 return Err(WindowError::WindowOpen(errhandlingapi::GetLastError()));
             }
 
-            let platform_window = Window {
-                inner: Rc::new(WindowInner {
-                    open: Cell::new(true),
-                    hwnd,
-                }),
-            };
-
-            let mut application_windows = application.inner.windows.take();
-            application_windows.push(platform_window.clone());
-            application.inner.windows.set(application_windows);
+            let mut application_windows = application.application.inner.windows.take();
+            application_windows.insert(hwnd.clone());
+            application
+                .application
+                .inner
+                .windows
+                .set(application_windows);
 
             let window = crate::Window {
-                window: platform_window.clone(),
+                window: Window {
+                    inner: Rc::new(WindowInner {
+                        open: Cell::new(true),
+                        hwnd,
+                        application: application.clone(),
+                    }),
+                },
                 phantom: PhantomData,
             };
 
@@ -264,21 +274,26 @@ impl Window {
             handler.open(&window);
 
             if window.window.inner.open.get() {
-                let state = Box::new(WindowState { window, handler });
-                winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, Box::into_raw(state) as isize);
+                let state = Box::new(WindowState {
+                    window: window.clone(),
+                    handler,
+                });
+                winuser::SetWindowLongPtrW(
+                    hwnd,
+                    winuser::GWLP_USERDATA,
+                    Box::into_raw(state) as isize,
+                );
 
                 winuser::ShowWindow(hwnd, winuser::SW_SHOWNORMAL);
             }
 
-            Ok(platform_window)
+            Ok(window)
         }
     }
 
     pub fn close(&self) -> Result<(), WindowError> {
         unsafe {
             if self.inner.open.get() {
-                self.inner.open.set(false);
-
                 let result = winuser::DestroyWindow(self.inner.hwnd);
                 if result == 0 {
                     return Err(WindowError::WindowClose(errhandlingapi::GetLastError()));
@@ -287,6 +302,10 @@ impl Window {
 
             Ok(())
         }
+    }
+
+    pub fn application(&self) -> &crate::Application {
+        &self.inner.application
     }
 }
 
@@ -317,6 +336,17 @@ unsafe extern "system" fn wnd_proc(
         match msg {
             winuser::WM_DESTROY => {
                 let state = &*state;
+                state.window.window.inner.open.set(false);
+                let mut application_windows =
+                    state.window.application().application.inner.windows.take();
+                application_windows.remove(&hwnd);
+                state
+                    .window
+                    .application()
+                    .application
+                    .inner
+                    .windows
+                    .set(application_windows);
                 state.handler.close(&state.window);
                 return 0;
             }

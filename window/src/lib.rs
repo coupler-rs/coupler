@@ -105,11 +105,8 @@ pub struct Window {
 
 impl Window {
     pub fn open(application: &Application, options: WindowOptions) -> Result<Window, WindowError> {
-        match platform::Window::open(&application.application, options) {
-            Ok(window) => Ok(Window {
-                window,
-                phantom: PhantomData,
-            }),
+        match platform::Window::open(&application, options) {
+            Ok(window) => Ok(window),
             Err(error) => Err(WindowError(error)),
         }
     }
@@ -119,6 +116,10 @@ impl Window {
             Ok(()) => Ok(()),
             Err(error) => Err(WindowError(error)),
         }
+    }
+
+    pub fn application(&self) -> &Application {
+        self.window.application()
     }
 }
 

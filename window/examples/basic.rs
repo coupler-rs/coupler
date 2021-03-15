@@ -9,6 +9,7 @@ impl WindowHandler for Handler {
 
     fn close(&self, window: &Window) {
         println!("close");
+        window.application().stop();
     }
 }
 
@@ -34,4 +35,5 @@ fn main() {
     .unwrap();
 
     app.start().unwrap();
+    app.close().unwrap();
 }
