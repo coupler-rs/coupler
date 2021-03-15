@@ -17,7 +17,9 @@ fn to_wstring(str: &str) -> Vec<u16> {
 
 #[derive(Debug)]
 pub enum ApplicationError {
-    WindowClassCreation(u32),
+    WindowClassRegistration(u32),
+    WindowClassUnregistration(u32),
+    Close(Vec<WindowError>),
 }
 
 impl fmt::Display for ApplicationError {
@@ -36,6 +38,7 @@ pub struct Application {
 struct ApplicationInner {
     open: Cell<bool>,
     class: minwindef::ATOM,
+    windows: Cell<Vec<Window>>,
 }
 
 extern "C" {
@@ -61,7 +64,7 @@ impl Application {
 
             let class = winuser::RegisterClassW(&wnd_class);
             if class == 0 {
-                return Err(ApplicationError::WindowClassCreation(
+                return Err(ApplicationError::WindowClassRegistration(
                     errhandlingapi::GetLastError(),
                 ));
             }
@@ -70,8 +73,41 @@ impl Application {
                 inner: Rc::new(ApplicationInner {
                     open: Cell::new(true),
                     class,
+                    windows: Cell::new(Vec::new()),
                 }),
             })
+        }
+    }
+
+    pub fn close(&self) -> Result<(), ApplicationError> {
+        unsafe {
+            if self.inner.open.get() {
+                self.inner.open.set(false);
+
+                let windows = self.inner.windows.take();
+                let mut window_errors = Vec::new();
+                for window in windows {
+                    if let Err(error) = window.close() {
+                        window_errors.push(error);
+                    }
+                }
+                if !window_errors.is_empty() {
+                    return Err(ApplicationError::Close(window_errors));
+                }
+
+                let result = winuser::UnregisterClassW(
+                    self.inner.class as *const u16,
+                    &__ImageBase as *const winnt::IMAGE_DOS_HEADER as minwindef::HINSTANCE,
+                );
+
+                if result == 0 {
+                    return Err(ApplicationError::WindowClassUnregistration(
+                        errhandlingapi::GetLastError(),
+                    ));
+                }
+            }
+
+            Ok(())
         }
     }
 
@@ -188,12 +224,18 @@ impl Window {
 
             winuser::ShowWindow(hwnd, winuser::SW_SHOWNORMAL);
 
-            Ok(Window {
+            let window = Window {
                 inner: Rc::new(WindowInner {
                     open: Cell::new(true),
                     hwnd,
                 }),
-            })
+            };
+
+            let mut application_windows = application.inner.windows.take();
+            application_windows.push(window.clone());
+            application.inner.windows.set(application_windows);
+
+            Ok(window)
         }
     }
 
