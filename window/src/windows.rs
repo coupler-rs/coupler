@@ -185,7 +185,6 @@ struct WindowInner {
 }
 
 struct WindowState {
-    count: Cell<usize>,
     window: crate::Window,
     handler: Box<dyn WindowHandler>,
 }
@@ -245,8 +244,7 @@ impl Window {
 
             let handler = options.handler.unwrap_or_else(|| Box::new(DefaultWindowHandler));
 
-            let state_ptr = Box::into_raw(Box::new(WindowState {
-                count: Cell::new(1),
+            let state_ptr = Rc::into_raw(Rc::new(WindowState {
                 window: window.clone(),
                 handler,
             }));
@@ -267,7 +265,7 @@ impl Window {
                 state_ptr as minwindef::LPVOID,
             );
             if hwnd.is_null() {
-                drop(Box::from_raw(state_ptr));
+                drop(Rc::from_raw(state_ptr));
                 return Err(WindowError::WindowOpen(errhandlingapi::GetLastError()));
             }
 
@@ -334,21 +332,19 @@ unsafe extern "system" fn wnd_proc(
 
     let state_ptr = winuser::GetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA) as *mut WindowState;
     if !state_ptr.is_null() {
-        (*state_ptr).count.set((*state_ptr).count.get() + 1);
+        let state = Rc::from_raw(state_ptr);
+        let _ = Rc::into_raw(state.clone());
 
         match msg {
             winuser::WM_CREATE => {
-                let state = &*state_ptr;
                 state.handler.open(&state.window);
                 return 0;
             }
             winuser::WM_CLOSE => {
-                let state = &*state_ptr;
                 state.handler.should_close(&state.window);
                 return 0;
             }
             winuser::WM_DESTROY => {
-                let state = &*state_ptr;
                 state.window.window.inner.open.set(false);
                 let mut application_windows =
                     state.window.application().application.inner.windows.take();
@@ -358,16 +354,11 @@ unsafe extern "system" fn wnd_proc(
                 return 0;
             }
             winuser::WM_NCDESTROY => {
-                (*state_ptr).count.set((*state_ptr).count.get() - 1);
+                drop(Rc::from_raw(state_ptr));
+                winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, 0);
                 return 0;
             }
             _ => {}
-        }
-
-        (*state_ptr).count.set((*state_ptr).count.get() - 1);
-        if (*state_ptr).count.get() == 0 {
-            drop(Box::from_raw(state_ptr));
-            winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, 0);
         }
     }
 
