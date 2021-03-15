@@ -55,6 +55,11 @@ pub enum Parent<'p> {
 #[allow(unused_variables)]
 pub trait WindowHandler {
     fn open(&self, window: &Window) {}
+
+    fn should_close(&self, window: &Window) {
+        window.close();
+    }
+
     fn close(&self, window: &Window) {}
 }
 

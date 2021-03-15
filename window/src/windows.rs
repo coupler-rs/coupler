@@ -342,6 +342,11 @@ unsafe extern "system" fn wnd_proc(
                 state.handler.open(&state.window);
                 return 0;
             }
+            winuser::WM_CLOSE => {
+                let state = &*state_ptr;
+                state.handler.should_close(&state.window);
+                return 0;
+            }
             winuser::WM_DESTROY => {
                 let state = &*state_ptr;
                 state.window.window.inner.open.set(false);
