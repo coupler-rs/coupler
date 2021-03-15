@@ -265,7 +265,6 @@ impl Window {
                 state_ptr as minwindef::LPVOID,
             );
             if hwnd.is_null() {
-                drop(Rc::from_raw(state_ptr));
                 return Err(WindowError::WindowOpen(errhandlingapi::GetLastError()));
             }
 
@@ -316,16 +315,16 @@ unsafe extern "system" fn wnd_proc(
     if msg == winuser::WM_NCCREATE {
         let create_struct = &*(lparam as *const winuser::CREATESTRUCTW);
         let state_ptr = create_struct.lpCreateParams as *mut WindowState;
+        let state = Rc::from_raw(state_ptr);
 
-        winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, state_ptr as isize);
-
-        let state = &*state_ptr;
         state.window.window.inner.open.set(true);
         state.window.window.inner.hwnd.set(hwnd);
 
         let mut application_windows = state.window.application().application.inner.windows.take();
         application_windows.insert(hwnd.clone());
         state.window.application().application.inner.windows.set(application_windows);
+
+        winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, Rc::into_raw(state) as isize);
 
         return 1;
     }
