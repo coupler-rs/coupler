@@ -208,7 +208,12 @@ impl Window {
 
             let parent = if let Parent::Parent(parent) = options.parent {
                 match parent.raw_window_handle() {
-                    RawWindowHandle::Windows(handle) => handle.hwnd as windef::HWND,
+                    RawWindowHandle::Windows(handle) => {
+                        if handle.hwnd.is_null() {
+                            return Err(WindowError::InvalidWindowHandle);
+                        }
+                        handle.hwnd as windef::HWND
+                    }
                     _ => {
                         return Err(WindowError::InvalidWindowHandle);
                     }
