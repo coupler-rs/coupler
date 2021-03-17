@@ -175,17 +175,13 @@ impl Error for WindowError {}
 
 #[derive(Clone)]
 pub struct Window {
-    inner: Rc<WindowInner>,
-}
-
-struct WindowInner {
-    open: Cell<bool>,
-    hwnd: Cell<windef::HWND>,
-    application: crate::Application,
+    state: Rc<WindowState>,
 }
 
 struct WindowState {
-    window: crate::Window,
+    open: Cell<bool>,
+    hwnd: Cell<windef::HWND>,
+    application: crate::Application,
     handler: Box<dyn WindowHandler>,
 }
 
@@ -231,23 +227,12 @@ impl Window {
                 ptr::null_mut()
             };
 
-            let window = crate::Window {
-                window: Window {
-                    inner: Rc::new(WindowInner {
-                        open: Cell::new(false),
-                        hwnd: Cell::new(ptr::null_mut()),
-                        application: application.clone(),
-                    }),
-                },
-                phantom: PhantomData,
-            };
-
-            let handler = options.handler.unwrap_or_else(|| Box::new(DefaultWindowHandler));
-
-            let state_ptr = Rc::into_raw(Rc::new(WindowState {
-                window: window.clone(),
-                handler,
-            }));
+            let state = Rc::new(WindowState {
+                open: Cell::new(false),
+                hwnd: Cell::new(ptr::null_mut()),
+                application: application.clone(),
+                handler: options.handler.unwrap_or_else(|| Box::new(DefaultWindowHandler)),
+            });
 
             let window_name = to_wstring(&options.title);
             let hwnd = winuser::CreateWindowExW(
@@ -262,24 +247,24 @@ impl Window {
                 parent,
                 ptr::null_mut(),
                 ptr::null_mut(),
-                state_ptr as minwindef::LPVOID,
+                Rc::into_raw(state.clone()) as minwindef::LPVOID,
             );
             if hwnd.is_null() {
                 return Err(WindowError::WindowOpen(errhandlingapi::GetLastError()));
             }
 
-            if window.window.inner.open.get() {
+            if state.open.get() {
                 winuser::ShowWindow(hwnd, winuser::SW_SHOWNORMAL);
             }
 
-            Ok(window)
+            Ok(crate::Window { window: Window { state }, phantom: PhantomData })
         }
     }
 
     pub fn close(&self) -> Result<(), WindowError> {
         unsafe {
-            if self.inner.open.get() {
-                let result = winuser::DestroyWindow(self.inner.hwnd.get());
+            if self.state.open.get() {
+                let result = winuser::DestroyWindow(self.state.hwnd.get());
                 if result == 0 {
                     return Err(WindowError::WindowClose(errhandlingapi::GetLastError()));
                 }
@@ -290,14 +275,14 @@ impl Window {
     }
 
     pub fn application(&self) -> &crate::Application {
-        &self.inner.application
+        &self.state.application
     }
 }
 
 unsafe impl HasRawWindowHandle for Window {
     fn raw_window_handle(&self) -> RawWindowHandle {
-        let hwnd = if self.inner.open.get() {
-            self.inner.hwnd.get() as *mut std::ffi::c_void
+        let hwnd = if self.state.open.get() {
+            self.state.hwnd.get() as *mut std::ffi::c_void
         } else {
             ptr::null_mut()
         };
@@ -317,12 +302,12 @@ unsafe extern "system" fn wnd_proc(
         let state_ptr = create_struct.lpCreateParams as *mut WindowState;
         let state = Rc::from_raw(state_ptr);
 
-        state.window.window.inner.open.set(true);
-        state.window.window.inner.hwnd.set(hwnd);
+        state.open.set(true);
+        state.hwnd.set(hwnd);
 
-        let mut application_windows = state.window.application().application.inner.windows.take();
+        let mut application_windows = state.application.application.inner.windows.take();
         application_windows.insert(hwnd.clone());
-        state.window.application().application.inner.windows.set(application_windows);
+        state.application.application.inner.windows.set(application_windows);
 
         winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, Rc::into_raw(state) as isize);
 
@@ -333,23 +318,24 @@ unsafe extern "system" fn wnd_proc(
     if !state_ptr.is_null() {
         let state = Rc::from_raw(state_ptr);
         let _ = Rc::into_raw(state.clone());
+        let window = crate::Window { window: Window { state }, phantom: PhantomData };
 
         match msg {
             winuser::WM_CREATE => {
-                state.handler.open(&state.window);
+                window.window.state.handler.open(&window);
                 return 0;
             }
             winuser::WM_CLOSE => {
-                state.handler.should_close(&state.window);
+                window.window.state.handler.should_close(&window);
                 return 0;
             }
             winuser::WM_DESTROY => {
-                state.window.window.inner.open.set(false);
+                window.window.state.open.set(false);
                 let mut application_windows =
-                    state.window.application().application.inner.windows.take();
+                    window.application().application.inner.windows.take();
                 application_windows.remove(&hwnd);
-                state.window.application().application.inner.windows.set(application_windows);
-                state.handler.close(&state.window);
+                window.application().application.inner.windows.set(application_windows);
+                window.window.state.handler.close(&window);
                 return 0;
             }
             winuser::WM_NCDESTROY => {
