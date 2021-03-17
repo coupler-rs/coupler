@@ -1,7 +1,7 @@
 use crate::{DefaultWindowHandler, Parent, WindowHandler, WindowOptions};
 
-use std::cell::Cell;
-use std::collections::HashSet;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::error::Error;
 use std::marker::PhantomData;
 use std::os::windows::ffi::OsStrExt;
@@ -23,7 +23,6 @@ fn to_wstring(str: &str) -> Vec<ntdef::WCHAR> {
 pub enum ApplicationError {
     WindowClassRegistration(u32),
     WindowClassUnregistration(u32),
-    Close(Vec<WindowError>),
     GetMessage(u32),
     AlreadyRunning,
 }
@@ -45,7 +44,7 @@ struct ApplicationInner {
     open: Cell<bool>,
     running: Cell<bool>,
     class: minwindef::ATOM,
-    windows: Cell<HashSet<windef::HWND>>,
+    windows: Cell<HashMap<windef::HWND, Window>>,
 }
 
 extern "C" {
@@ -81,7 +80,7 @@ impl Application {
                     open: Cell::new(true),
                     running: Cell::new(false),
                     class,
-                    windows: Cell::new(HashSet::new()),
+                    windows: Cell::new(HashMap::new()),
                 }),
             })
         }
@@ -93,17 +92,8 @@ impl Application {
                 self.stop();
                 self.inner.open.set(false);
 
-                let windows = self.inner.windows.take();
-                let mut window_errors = Vec::new();
-                for window in windows {
-                    let result = winuser::DestroyWindow(window);
-                    if result == 0 {
-                        window_errors
-                            .push(WindowError::WindowClose(errhandlingapi::GetLastError()));
-                    }
-                }
-                if !window_errors.is_empty() {
-                    return Err(ApplicationError::Close(window_errors));
+                for (_, window) in self.inner.windows.take() {
+                    window.close();
                 }
 
                 let result = winuser::UnregisterClassW(
@@ -161,7 +151,6 @@ impl Application {
 pub enum WindowError {
     ApplicationClosed,
     WindowOpen(u32),
-    WindowClose(u32),
     InvalidWindowHandle,
 }
 
@@ -181,8 +170,9 @@ pub struct Window {
 struct WindowState {
     open: Cell<bool>,
     hwnd: Cell<windef::HWND>,
+    deferred: Cell<Vec<Box<dyn FnOnce(&Window)>>>,
     application: crate::Application,
-    handler: Box<dyn WindowHandler>,
+    handler: RefCell<Box<dyn WindowHandler>>,
 }
 
 impl Window {
@@ -227,11 +217,14 @@ impl Window {
                 ptr::null_mut()
             };
 
+            let handler = options.handler.unwrap_or_else(|| Box::new(DefaultWindowHandler));
+
             let state = Rc::new(WindowState {
                 open: Cell::new(false),
                 hwnd: Cell::new(ptr::null_mut()),
+                deferred: Cell::new(Vec::new()),
                 application: application.clone(),
-                handler: options.handler.unwrap_or_else(|| Box::new(DefaultWindowHandler)),
+                handler: RefCell::new(handler),
             });
 
             let window_name = to_wstring(&options.title);
@@ -261,21 +254,32 @@ impl Window {
         }
     }
 
-    pub fn close(&self) -> Result<(), WindowError> {
-        unsafe {
-            if self.state.open.get() {
-                let result = winuser::DestroyWindow(self.state.hwnd.get());
-                if result == 0 {
-                    return Err(WindowError::WindowClose(errhandlingapi::GetLastError()));
-                }
+    pub fn close(&self) {
+        self.defer(|window| unsafe {
+            if window.state.open.get() {
+                winuser::DestroyWindow(window.state.hwnd.get());
             }
-
-            Ok(())
-        }
+        });
     }
 
     pub fn application(&self) -> &crate::Application {
         &self.state.application
+    }
+
+    fn defer(&self, action: impl FnOnce(&Window) + 'static) {
+        if self.state.handler.try_borrow().is_ok() {
+            action(self);
+        } else {
+            let mut deferred = self.state.deferred.take();
+            deferred.push(Box::new(action));
+            self.state.deferred.set(deferred);
+        }
+    }
+
+    fn process_deferred(&self) {
+        for action in self.state.deferred.take() {
+            action(self);
+        }
     }
 }
 
@@ -306,7 +310,7 @@ unsafe extern "system" fn wnd_proc(
         state.hwnd.set(hwnd);
 
         let mut application_windows = state.application.application.inner.windows.take();
-        application_windows.insert(hwnd.clone());
+        application_windows.insert(hwnd, Window { state: state.clone() });
         state.application.application.inner.windows.set(application_windows);
 
         winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, Rc::into_raw(state) as isize);
@@ -322,20 +326,30 @@ unsafe extern "system" fn wnd_proc(
 
         match msg {
             winuser::WM_CREATE => {
-                window.window.state.handler.open(&window);
+                if let Ok(mut handler) = window.window.state.handler.try_borrow_mut() {
+                    handler.open(&window);
+                }
+                window.window.process_deferred();
                 return 0;
             }
             winuser::WM_CLOSE => {
-                window.window.state.handler.should_close(&window);
+                if let Ok(mut handler) = window.window.state.handler.try_borrow_mut() {
+                    handler.should_close(&window);
+                }
+                window.window.process_deferred();
                 return 0;
             }
             winuser::WM_DESTROY => {
                 window.window.state.open.set(false);
-                let mut application_windows =
-                    window.application().application.inner.windows.take();
+                let mut application_windows = window.application().application.inner.windows.take();
                 application_windows.remove(&hwnd);
                 window.application().application.inner.windows.set(application_windows);
-                window.window.state.handler.close(&window);
+
+                if let Ok(mut handler) = window.window.state.handler.try_borrow_mut() {
+                    handler.close(&window);
+                }
+                window.window.process_deferred();
+
                 return 0;
             }
             winuser::WM_NCDESTROY => {

@@ -3,11 +3,11 @@ use window::{Application, Window, WindowHandler, WindowOptions};
 struct Handler;
 
 impl WindowHandler for Handler {
-    fn open(&self, window: &Window) {
+    fn open(&mut self, _window: &Window) {
         println!("open");
     }
 
-    fn close(&self, window: &Window) {
+    fn close(&mut self, window: &Window) {
         println!("close");
         window.application().stop();
     }

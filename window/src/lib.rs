@@ -54,13 +54,13 @@ pub enum Parent<'p> {
 
 #[allow(unused_variables)]
 pub trait WindowHandler {
-    fn open(&self, window: &Window) {}
+    fn open(&mut self, window: &Window) {}
 
-    fn should_close(&self, window: &Window) {
+    fn should_close(&mut self, window: &Window) {
         window.close();
     }
 
-    fn close(&self, window: &Window) {}
+    fn close(&mut self, window: &Window) {}
 }
 
 struct DefaultWindowHandler;
@@ -113,11 +113,8 @@ impl Window {
         }
     }
 
-    pub fn close(&self) -> Result<(), WindowError> {
-        match self.window.close() {
-            Ok(()) => Ok(()),
-            Err(error) => Err(WindowError(error)),
-        }
+    pub fn close(&self) {
+        self.window.close();
     }
 
     pub fn application(&self) -> &Application {
