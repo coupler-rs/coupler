@@ -281,6 +281,13 @@ impl Window {
             action(self);
         }
     }
+
+    fn with_handler(&self, f: impl FnOnce(&mut Box<dyn WindowHandler>)) {
+        if let Ok(mut handler) = self.state.handler.try_borrow_mut() {
+            f(&mut *handler);
+        }
+        self.process_deferred();
+    }
 }
 
 unsafe impl HasRawWindowHandle for Window {
@@ -326,17 +333,11 @@ unsafe extern "system" fn wnd_proc(
 
         match msg {
             winuser::WM_CREATE => {
-                if let Ok(mut handler) = window.window.state.handler.try_borrow_mut() {
-                    handler.open(&window);
-                }
-                window.window.process_deferred();
+                window.window.with_handler(|handler| handler.open(&window));
                 return 0;
             }
             winuser::WM_CLOSE => {
-                if let Ok(mut handler) = window.window.state.handler.try_borrow_mut() {
-                    handler.should_close(&window);
-                }
-                window.window.process_deferred();
+                window.window.with_handler(|handler| handler.should_close(&window));
                 return 0;
             }
             winuser::WM_DESTROY => {
@@ -344,12 +345,7 @@ unsafe extern "system" fn wnd_proc(
                 let mut application_windows = window.application().application.inner.windows.take();
                 application_windows.remove(&hwnd);
                 window.application().application.inner.windows.set(application_windows);
-
-                if let Ok(mut handler) = window.window.state.handler.try_borrow_mut() {
-                    handler.close(&window);
-                }
-                window.window.process_deferred();
-
+                window.window.with_handler(|handler| handler.close(&window));
                 return 0;
             }
             winuser::WM_NCDESTROY => {
