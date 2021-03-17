@@ -143,7 +143,7 @@ impl Application {
     }
 
     pub fn stop(&self) {
-        self.inner.open.set(false);
+        self.inner.running.set(false);
     }
 }
 
