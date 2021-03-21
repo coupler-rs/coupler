@@ -1,6 +1,10 @@
 use std::ffi::c_void;
 use std::os::raw::c_char;
 
+pub const fn cconst(a: char, b: char, c: char, d: char) -> i32 {
+    ((a as i32) << 24) | ((b as i32) << 16) | ((c as i32) << 8) | ((d as i32) << 0)
+}
+
 #[repr(C)]
 pub struct AEffect {
     pub magic: i32,
@@ -78,8 +82,7 @@ pub mod string_constants {
 }
 
 impl AEffect {
-    pub const MAGIC: i32 =
-        (('V' as i32) << 24) | (('s' as i32) << 16) | (('t' as i32) << 8) | (('P' as i32) << 0);
+    pub const MAGIC: i32 = cconst('V', 's', 't', 'P');
 }
 
 pub mod effect_flags {
