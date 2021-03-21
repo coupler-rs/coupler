@@ -69,8 +69,8 @@ impl WindowHandler for DefaultWindowHandler {}
 
 pub struct WindowOptions<'p> {
     pub title: String,
-    pub width: f32,
-    pub height: f32,
+    pub width: f64,
+    pub height: f64,
     pub parent: Parent<'p>,
     pub handler: Option<Box<dyn WindowHandler>>,
 }
