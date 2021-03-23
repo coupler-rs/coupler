@@ -253,6 +253,7 @@ impl Window {
 
             if state.open.get() {
                 winuser::ShowWindow(hwnd, winuser::SW_SHOWNORMAL);
+                winuser::UpdateWindow(hwnd);
             }
 
             Ok(crate::Window { window: Window { state }, phantom: PhantomData })
