@@ -170,6 +170,7 @@ pub struct Window {
 struct WindowState {
     open: Cell<bool>,
     hwnd: Cell<windef::HWND>,
+    hdc: Cell<Option<windef::HDC>>,
     deferred: Cell<Vec<Box<dyn FnOnce(&Window)>>>,
     application: crate::Application,
     handler: RefCell<Box<dyn WindowHandler>>,
@@ -227,6 +228,7 @@ impl Window {
             let state = Rc::new(WindowState {
                 open: Cell::new(false),
                 hwnd: Cell::new(ptr::null_mut()),
+                hdc: Cell::new(None),
                 deferred: Cell::new(Vec::new()),
                 application: application.clone(),
                 handler: RefCell::new(handler),
@@ -367,6 +369,18 @@ unsafe extern "system" fn wnd_proc(
             }
             winuser::WM_ERASEBKGND => {
                 return 1;
+            }
+            winuser::WM_PAINT => {
+                let mut paint_struct: winuser::PAINTSTRUCT = mem::zeroed();
+                let hdc = winuser::BeginPaint(hwnd, &mut paint_struct);
+                if !hdc.is_null() {
+                    window.window.state.hdc.set(Some(hdc));
+                }
+
+                window.window.with_handler(|handler| handler.display(&window));
+
+                window.window.state.hdc.set(None);
+                winuser::EndPaint(hwnd, &paint_struct);
             }
             winuser::WM_CLOSE => {
                 window.window.with_handler(|handler| handler.request_close(&window));

@@ -64,6 +64,8 @@ pub struct Rect {
 pub trait WindowHandler {
     fn open(&mut self, window: &Window) {}
 
+    fn display(&mut self, window: &Window) {}
+
     fn request_close(&mut self, window: &Window) {
         window.close();
     }
