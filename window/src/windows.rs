@@ -198,10 +198,10 @@ impl Window {
             }
 
             let mut rect = windef::RECT {
-                left: 0,
-                top: 0,
-                right: options.width.round() as i32,
-                bottom: options.height.round() as i32,
+                left: options.rect.x.round() as i32,
+                top: options.rect.y.round() as i32,
+                right: (options.rect.x + options.rect.w).round() as i32,
+                bottom: (options.rect.y + options.rect.h).round() as i32,
             };
 
             winuser::AdjustWindowRectEx(&mut rect, flags, minwindef::FALSE, 0);

@@ -77,8 +77,7 @@ impl WindowHandler for DefaultWindowHandler {}
 
 pub struct WindowOptions<'p> {
     pub title: String,
-    pub width: f64,
-    pub height: f64,
+    pub rect: Rect,
     pub parent: Parent<'p>,
     pub handler: Option<Box<dyn WindowHandler>>,
 }
@@ -87,8 +86,7 @@ impl<'p> Default for WindowOptions<'p> {
     fn default() -> Self {
         WindowOptions {
             title: "".to_string(),
-            width: 0.0,
-            height: 0.0,
+            rect: Rect { x: 0.0, y: 0.0, w: 0.0, h: 0.0 },
             parent: Parent::None,
             handler: None,
         }
