@@ -365,6 +365,9 @@ unsafe extern "system" fn wnd_proc(
                 window.window.with_handler(|handler| handler.open(&window));
                 return 0;
             }
+            winuser::WM_ERASEBKGND => {
+                return 1;
+            }
             winuser::WM_CLOSE => {
                 window.window.with_handler(|handler| handler.request_close(&window));
                 return 0;
