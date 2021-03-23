@@ -342,7 +342,7 @@ unsafe extern "system" fn wnd_proc(
                 return 0;
             }
             winuser::WM_CLOSE => {
-                window.window.with_handler(|handler| handler.should_close(&window));
+                window.window.with_handler(|handler| handler.request_close(&window));
                 return 0;
             }
             winuser::WM_DESTROY => {
