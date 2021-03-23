@@ -7,6 +7,10 @@ impl WindowHandler for Handler {
         println!("open");
     }
 
+    fn display(&mut self, window: &Window) {
+        window.update_contents(&[0xFF00FF; 1920 * 1920], 1920, 1920);
+    }
+
     fn close(&mut self, window: &Window) {
         println!("close");
         window.application().stop();

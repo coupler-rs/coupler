@@ -10,7 +10,8 @@ use std::{ffi, fmt, mem, ptr};
 
 use raw_window_handle::{windows::WindowsHandle, HasRawWindowHandle, RawWindowHandle};
 use winapi::{
-    shared::minwindef, shared::ntdef, shared::windef, um::errhandlingapi, um::winnt, um::winuser,
+    shared::minwindef, shared::ntdef, shared::windef, um::errhandlingapi, um::wingdi, um::winnt,
+    um::winuser,
 };
 
 fn to_wstring(str: &str) -> Vec<ntdef::WCHAR> {
@@ -283,6 +284,56 @@ impl Window {
                 winuser::InvalidateRect(window.state.hwnd.get(), &rect, minwindef::FALSE);
             }
         });
+    }
+
+    pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {
+        unsafe {
+            if self.state.open.get() {
+                let hdc = if let Some(hdc) = self.state.hdc.get() {
+                    hdc
+                } else {
+                    winuser::GetDC(self.state.hwnd.get())
+                };
+
+                if !hdc.is_null() {
+                    let width = width.min(framebuffer.len());
+                    let height = height.min(framebuffer.len() / width);
+
+                    let bitmap_info = wingdi::BITMAPINFO {
+                        bmiHeader: wingdi::BITMAPINFOHEADER {
+                            biSize: mem::size_of::<wingdi::BITMAPINFOHEADER>() as u32,
+                            biWidth: width as i32,
+                            biHeight: height as i32,
+                            biPlanes: 1,
+                            biBitCount: 32,
+                            biCompression: wingdi::BI_RGB,
+                            ..mem::zeroed()
+                        },
+                        ..mem::zeroed()
+                    };
+
+                    wingdi::StretchDIBits(
+                        hdc,
+                        0,
+                        0,
+                        width as i32,
+                        height as i32,
+                        0,
+                        0,
+                        width as i32,
+                        height as i32,
+                        framebuffer.as_ptr() as *const ntdef::VOID,
+                        &bitmap_info,
+                        wingdi::DIB_RGB_COLORS,
+                        wingdi::SRCCOPY,
+                    );
+
+                    if self.state.hdc.get().is_none() {
+                        winuser::ReleaseDC(self.state.hwnd.get(), hdc);
+                    }
+                }
+            }
+        }
     }
 
     pub fn close(&self) {

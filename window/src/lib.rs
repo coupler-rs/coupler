@@ -129,6 +129,10 @@ impl Window {
         self.window.request_display_rect(rect);
     }
 
+    pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {
+        self.window.update_contents(framebuffer, width, height);
+    }
+
     pub fn close(&self) {
         self.window.close();
     }
