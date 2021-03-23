@@ -1,4 +1,4 @@
-use crate::{DefaultWindowHandler, Parent, WindowHandler, WindowOptions};
+use crate::{DefaultWindowHandler, Parent, Rect, WindowHandler, WindowOptions};
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -257,6 +257,29 @@ impl Window {
 
             Ok(crate::Window { window: Window { state }, phantom: PhantomData })
         }
+    }
+
+    pub fn request_display(&self) {
+        self.defer(|window| unsafe {
+            if window.state.open.get() {
+                winuser::InvalidateRect(window.state.hwnd.get(), ptr::null(), minwindef::FALSE);
+            }
+        });
+    }
+
+    pub fn request_display_rect(&self, rect: Rect) {
+        self.defer(move |window| unsafe {
+            if window.state.open.get() {
+                let rect = windef::RECT {
+                    left: rect.x.round() as winnt::LONG,
+                    top: rect.y.round() as winnt::LONG,
+                    right: (rect.x + rect.w).round() as winnt::LONG,
+                    bottom: (rect.y + rect.h).round() as winnt::LONG,
+                };
+
+                winuser::InvalidateRect(window.state.hwnd.get(), &rect, minwindef::FALSE);
+            }
+        });
     }
 
     pub fn close(&self) {

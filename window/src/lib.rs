@@ -52,6 +52,14 @@ pub enum Parent<'p> {
     Detached,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct Rect {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
 #[allow(unused_variables)]
 pub trait WindowHandler {
     fn open(&mut self, window: &Window) {}
@@ -111,6 +119,14 @@ impl Window {
             Ok(window) => Ok(window),
             Err(error) => Err(WindowError(error)),
         }
+    }
+
+    pub fn request_display(&self) {
+        self.window.request_display();
+    }
+
+    pub fn request_display_rect(&self, rect: Rect) {
+        self.window.request_display_rect(rect);
     }
 
     pub fn close(&self) {
