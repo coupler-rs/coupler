@@ -1,7 +1,7 @@
 use crate::{DefaultWindowHandler, Parent, Rect, WindowHandler, WindowOptions};
 
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::error::Error;
 use std::marker::PhantomData;
 use std::os::windows::ffi::OsStrExt;
@@ -24,6 +24,7 @@ fn to_wstring(str: &str) -> Vec<ntdef::WCHAR> {
 pub enum ApplicationError {
     WindowClassRegistration(u32),
     WindowClassUnregistration(u32),
+    Close(Vec<WindowError>),
     GetMessage(u32),
     AlreadyRunning,
 }
@@ -45,7 +46,7 @@ struct ApplicationInner {
     open: Cell<bool>,
     running: Cell<bool>,
     class: minwindef::ATOM,
-    windows: Cell<HashMap<windef::HWND, Window>>,
+    windows: Cell<HashSet<windef::HWND>>,
 }
 
 extern "C" {
@@ -81,7 +82,7 @@ impl Application {
                     open: Cell::new(true),
                     running: Cell::new(false),
                     class,
-                    windows: Cell::new(HashMap::new()),
+                    windows: Cell::new(HashSet::new()),
                 }),
             })
         }
@@ -93,8 +94,16 @@ impl Application {
                 self.stop();
                 self.inner.open.set(false);
 
-                for (_, window) in self.inner.windows.take() {
-                    window.close();
+                let mut window_errors = Vec::new();
+                for window in self.inner.windows.take() {
+                    let result = winuser::DestroyWindow(window);
+                    if result == 0 {
+                        window_errors
+                            .push(WindowError::WindowClose(errhandlingapi::GetLastError()));
+                    }
+                }
+                if !window_errors.is_empty() {
+                    return Err(ApplicationError::Close(window_errors));
                 }
 
                 let result = winuser::UnregisterClassW(
@@ -152,6 +161,7 @@ impl Application {
 pub enum WindowError {
     ApplicationClosed,
     WindowOpen(u32),
+    WindowClose(u32),
     InvalidWindowHandle,
 }
 
@@ -332,11 +342,16 @@ impl Window {
         }
     }
 
-    pub fn close(&self) {
+    pub fn close(&self) -> Result<(), WindowError> {
         unsafe {
             if self.state.open.get() {
-                winuser::DestroyWindow(self.state.hwnd.get());
+                let result = winuser::DestroyWindow(self.state.hwnd.get());
+                if result == 0 {
+                    return Err(WindowError::WindowClose(errhandlingapi::GetLastError()));
+                }
             }
+
+            Ok(())
         }
     }
 
@@ -372,7 +387,7 @@ unsafe extern "system" fn wnd_proc(
         state.hwnd.set(hwnd);
 
         let mut application_windows = state.application.application.inner.windows.take();
-        application_windows.insert(hwnd, Window { state: state.clone() });
+        application_windows.insert(hwnd);
         state.application.application.inner.windows.set(application_windows);
 
         winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, Rc::into_raw(state) as isize);

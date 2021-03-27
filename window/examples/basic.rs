@@ -12,6 +12,10 @@ impl WindowHandler for Handler {
         window.update_contents(&[0xFF00FF; 1920 * 1920], 1920, 1920);
     }
 
+    fn request_close(&self, window: &Window) {
+        window.close().unwrap();
+    }
+
     fn close(&self, window: &Window) {
         println!("close");
         window.application().stop();

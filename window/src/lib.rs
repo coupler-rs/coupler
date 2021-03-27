@@ -63,13 +63,8 @@ pub struct Rect {
 #[allow(unused_variables)]
 pub trait WindowHandler {
     fn open(&self, window: &Window) {}
-
     fn display(&self, window: &Window) {}
-
-    fn request_close(&self, window: &Window) {
-        window.close();
-    }
-
+    fn request_close(&self, window: &Window) {}
     fn close(&self, window: &Window) {}
 }
 
@@ -133,8 +128,11 @@ impl Window {
         self.window.update_contents(framebuffer, width, height);
     }
 
-    pub fn close(&self) {
-        self.window.close();
+    pub fn close(&self) -> Result<(), WindowError> {
+        match self.window.close() {
+            Ok(()) => Ok(()),
+            Err(error) => Err(WindowError(error)),
+        }
     }
 
     pub fn application(&self) -> &Application {
