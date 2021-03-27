@@ -403,7 +403,7 @@ unsafe extern "system" fn wnd_proc(
 
         match msg {
             winuser::WM_CREATE => {
-                window.window.state.handler.open(&window);
+                window.window.state.handler.create(&window);
                 return 0;
             }
             winuser::WM_ERASEBKGND => {
@@ -430,7 +430,7 @@ unsafe extern "system" fn wnd_proc(
                 let mut application_windows = window.application().application.inner.windows.take();
                 application_windows.remove(&hwnd);
                 window.application().application.inner.windows.set(application_windows);
-                window.window.state.handler.close(&window);
+                window.window.state.handler.destroy(&window);
                 return 0;
             }
             winuser::WM_NCDESTROY => {

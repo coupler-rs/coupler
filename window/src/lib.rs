@@ -62,10 +62,10 @@ pub struct Rect {
 
 #[allow(unused_variables)]
 pub trait WindowHandler {
-    fn open(&self, window: &Window) {}
+    fn create(&self, window: &Window) {}
     fn display(&self, window: &Window) {}
     fn request_close(&self, window: &Window) {}
-    fn close(&self, window: &Window) {}
+    fn destroy(&self, window: &Window) {}
 }
 
 struct DefaultWindowHandler;

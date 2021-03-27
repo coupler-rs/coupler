@@ -3,8 +3,8 @@ use window::{Application, Rect, Window, WindowHandler, WindowOptions};
 struct Handler;
 
 impl WindowHandler for Handler {
-    fn open(&self, _window: &Window) {
-        println!("open");
+    fn create(&self, _window: &Window) {
+        println!("create");
     }
 
     fn display(&self, window: &Window) {
@@ -16,8 +16,8 @@ impl WindowHandler for Handler {
         window.close().unwrap();
     }
 
-    fn close(&self, window: &Window) {
-        println!("close");
+    fn destroy(&self, window: &Window) {
+        println!("destroy");
         window.application().stop();
     }
 }
