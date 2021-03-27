@@ -1,6 +1,6 @@
 use crate::{DefaultWindowHandler, Parent, Rect, WindowHandler, WindowOptions};
 
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::error::Error;
 use std::marker::PhantomData;
@@ -172,9 +172,8 @@ struct WindowState {
     open: Cell<bool>,
     hwnd: Cell<windef::HWND>,
     hdc: Cell<Option<windef::HDC>>,
-    deferred: Cell<Vec<Box<dyn FnOnce(&Window)>>>,
     application: crate::Application,
-    handler: RefCell<Box<dyn WindowHandler>>,
+    handler: Box<dyn WindowHandler>,
 }
 
 impl Window {
@@ -224,15 +223,12 @@ impl Window {
                 ptr::null_mut()
             };
 
-            let handler = options.handler.unwrap_or_else(|| Box::new(DefaultWindowHandler));
-
             let state = Rc::new(WindowState {
                 open: Cell::new(false),
                 hwnd: Cell::new(ptr::null_mut()),
                 hdc: Cell::new(None),
-                deferred: Cell::new(Vec::new()),
                 application: application.clone(),
-                handler: RefCell::new(handler),
+                handler: options.handler.unwrap_or_else(|| Box::new(DefaultWindowHandler)),
             });
 
             let window_name = to_wstring(&options.title);
@@ -264,16 +260,16 @@ impl Window {
     }
 
     pub fn request_display(&self) {
-        self.defer(|window| unsafe {
-            if window.state.open.get() {
-                winuser::InvalidateRect(window.state.hwnd.get(), ptr::null(), minwindef::FALSE);
+        unsafe {
+            if self.state.open.get() {
+                winuser::InvalidateRect(self.state.hwnd.get(), ptr::null(), minwindef::FALSE);
             }
-        });
+        }
     }
 
     pub fn request_display_rect(&self, rect: Rect) {
-        self.defer(move |window| unsafe {
-            if window.state.open.get() {
+        unsafe {
+            if self.state.open.get() {
                 let rect = windef::RECT {
                     left: rect.x.round() as winnt::LONG,
                     top: rect.y.round() as winnt::LONG,
@@ -281,9 +277,9 @@ impl Window {
                     bottom: (rect.y + rect.h).round() as winnt::LONG,
                 };
 
-                winuser::InvalidateRect(window.state.hwnd.get(), &rect, minwindef::FALSE);
+                winuser::InvalidateRect(self.state.hwnd.get(), &rect, minwindef::FALSE);
             }
-        });
+        }
     }
 
     pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {
@@ -337,38 +333,15 @@ impl Window {
     }
 
     pub fn close(&self) {
-        self.defer(|window| unsafe {
-            if window.state.open.get() {
-                winuser::DestroyWindow(window.state.hwnd.get());
+        unsafe {
+            if self.state.open.get() {
+                winuser::DestroyWindow(self.state.hwnd.get());
             }
-        });
+        }
     }
 
     pub fn application(&self) -> &crate::Application {
         &self.state.application
-    }
-
-    fn defer(&self, action: impl FnOnce(&Window) + 'static) {
-        if self.state.handler.try_borrow().is_ok() {
-            action(self);
-        } else {
-            let mut deferred = self.state.deferred.take();
-            deferred.push(Box::new(action));
-            self.state.deferred.set(deferred);
-        }
-    }
-
-    fn process_deferred(&self) {
-        for action in self.state.deferred.take() {
-            action(self);
-        }
-    }
-
-    fn with_handler(&self, f: impl FnOnce(&mut Box<dyn WindowHandler>)) {
-        if let Ok(mut handler) = self.state.handler.try_borrow_mut() {
-            f(&mut *handler);
-        }
-        self.process_deferred();
     }
 }
 
@@ -415,7 +388,7 @@ unsafe extern "system" fn wnd_proc(
 
         match msg {
             winuser::WM_CREATE => {
-                window.window.with_handler(|handler| handler.open(&window));
+                window.window.state.handler.open(&window);
                 return 0;
             }
             winuser::WM_ERASEBKGND => {
@@ -428,13 +401,13 @@ unsafe extern "system" fn wnd_proc(
                     window.window.state.hdc.set(Some(hdc));
                 }
 
-                window.window.with_handler(|handler| handler.display(&window));
+                window.window.state.handler.display(&window);
 
                 window.window.state.hdc.set(None);
                 winuser::EndPaint(hwnd, &paint_struct);
             }
             winuser::WM_CLOSE => {
-                window.window.with_handler(|handler| handler.request_close(&window));
+                window.window.state.handler.request_close(&window);
                 return 0;
             }
             winuser::WM_DESTROY => {
@@ -442,7 +415,7 @@ unsafe extern "system" fn wnd_proc(
                 let mut application_windows = window.application().application.inner.windows.take();
                 application_windows.remove(&hwnd);
                 window.application().application.inner.windows.set(application_windows);
-                window.window.with_handler(|handler| handler.close(&window));
+                window.window.state.handler.close(&window);
                 return 0;
             }
             winuser::WM_NCDESTROY => {

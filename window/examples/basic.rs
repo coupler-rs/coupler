@@ -3,15 +3,16 @@ use window::{Application, Rect, Window, WindowHandler, WindowOptions};
 struct Handler;
 
 impl WindowHandler for Handler {
-    fn open(&mut self, _window: &Window) {
+    fn open(&self, _window: &Window) {
         println!("open");
     }
 
-    fn display(&mut self, window: &Window) {
+    fn display(&self, window: &Window) {
+        println!("display");
         window.update_contents(&[0xFF00FF; 1920 * 1920], 1920, 1920);
     }
 
-    fn close(&mut self, window: &Window) {
+    fn close(&self, window: &Window) {
         println!("close");
         window.application().stop();
     }
