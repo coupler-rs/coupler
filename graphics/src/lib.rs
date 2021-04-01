@@ -1,3 +1,5 @@
+mod geom;
+
 pub struct Image {
     width: usize,
     height: usize,
