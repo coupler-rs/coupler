@@ -372,6 +372,9 @@ unsafe impl HasRawWindowHandle for Window {
     }
 }
 
+const TIMER_ID: usize = 1;
+const TIMER_INTERVAL: u32 = 16;
+
 unsafe extern "system" fn wnd_proc(
     hwnd: windef::HWND,
     msg: minwindef::UINT,
@@ -403,7 +406,15 @@ unsafe extern "system" fn wnd_proc(
 
         match msg {
             winuser::WM_CREATE => {
+                winuser::SetTimer(hwnd, TIMER_ID, TIMER_INTERVAL, None);
+
                 window.window.state.handler.create(&window);
+                return 0;
+            }
+            winuser::WM_TIMER => {
+                if wparam == TIMER_ID {
+                    window.window.state.handler.frame(&window);
+                }
                 return 0;
             }
             winuser::WM_ERASEBKGND => {
@@ -431,6 +442,9 @@ unsafe extern "system" fn wnd_proc(
                 application_windows.remove(&hwnd);
                 window.application().application.inner.windows.set(application_windows);
                 window.window.state.handler.destroy(&window);
+
+                winuser::KillTimer(hwnd, TIMER_ID);
+
                 return 0;
             }
             winuser::WM_NCDESTROY => {

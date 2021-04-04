@@ -7,6 +7,10 @@ impl WindowHandler for Handler {
         println!("create");
     }
 
+    fn frame(&self, _window: &Window) {
+        println!("frame");
+    }
+
     fn display(&self, window: &Window) {
         println!("display");
         window.update_contents(&[0xFF00FF; 1920 * 1920], 1920, 1920);
