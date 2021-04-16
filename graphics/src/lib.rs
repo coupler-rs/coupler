@@ -41,6 +41,8 @@ impl<'i> Canvas<'i> {
     }
 }
 
+const TOLERANCE: f64 = 0.1;
+
 pub struct Path {
     commands: Vec<PathCmd>,
     points: Vec<Vec2>,
@@ -69,30 +71,30 @@ impl Path {
 }
 
 impl PathBuilder {
-    pub fn move_to(&mut self, x: f64, y: f64) -> &mut Self {
+    pub fn move_to(&mut self, point: Vec2) -> &mut Self {
         self.commands.push(PathCmd::Move);
-        self.points.push(Vec2::new(x, y));
+        self.points.push(point);
         self
     }
 
-    pub fn line_to(&mut self, x: f64, y: f64) -> &mut Self {
+    pub fn line_to(&mut self, point: Vec2) -> &mut Self {
         self.commands.push(PathCmd::Line);
-        self.points.push(Vec2::new(x, y));
+        self.points.push(point);
         self
     }
 
-    pub fn quadratic_to(&mut self, x1: f64, y1: f64, x: f64, y: f64) -> &mut Self {
+    pub fn quadratic_to(&mut self, control: Vec2, point: Vec2) -> &mut Self {
         self.commands.push(PathCmd::Quadratic);
-        self.points.push(Vec2::new(x1, y1));
-        self.points.push(Vec2::new(x, y));
+        self.points.push(control);
+        self.points.push(point);
         self
     }
 
-    pub fn cubic_to(&mut self, x1: f64, y1: f64, x2: f64, y2: f64, x: f64, y: f64) -> &mut Self {
+    pub fn cubic_to(&mut self, control1: Vec2, control2: Vec2, point: Vec2) -> &mut Self {
         self.commands.push(PathCmd::Cubic);
-        self.points.push(Vec2::new(x1, y1));
-        self.points.push(Vec2::new(x2, y2));
-        self.points.push(Vec2::new(x, y));
+        self.points.push(control1);
+        self.points.push(control2);
+        self.points.push(point);
         self
     }
 
@@ -106,5 +108,64 @@ impl PathBuilder {
             commands: self.commands,
             points: self.points,
         }
+    }
+}
+
+impl Path {
+    fn flatten(&self) -> Path {
+        let mut path = Path::builder();
+        let mut last = Vec2::new(0.0, 0.0);
+        let mut points = self.points.iter();
+        for command in self.commands.iter() {
+            match *command {
+                PathCmd::Move => {
+                    let point = *points.next().unwrap();
+                    path.move_to(point);
+                    last = point;
+                }
+                PathCmd::Line => {
+                    let point = *points.next().unwrap();
+                    path.line_to(point);
+                    last = point;
+                }
+                PathCmd::Quadratic => {
+                    let control = *points.next().unwrap();
+                    let point = *points.next().unwrap();
+                    let dt = ((4.0 * TOLERANCE) / (last - 2.0 * control + point).length()).sqrt();
+                    let mut t = 0.0;
+                    while t < 1.0 {
+                        t = (t + dt).min(1.0);
+                        let p01 = Vec2::lerp(t, last, control);
+                        let p12 = Vec2::lerp(t, control, point);
+                        path.line_to(Vec2::lerp(t, p01, p12));
+                    }
+                    last = point;
+                }
+                PathCmd::Cubic => {
+                    let control1 = *points.next().unwrap();
+                    let control2 = *points.next().unwrap();
+                    let point = *points.next().unwrap();
+                    let a = -1.0 * last + 3.0 * control1 - 3.0 * control2 + point;
+                    let b = 3.0 * (last - 2.0 * control1 + control2);
+                    let conc = b.length().max((a + b).length());
+                    let dt = ((8.0f64.sqrt() * TOLERANCE) / conc).sqrt();
+                    let mut t = 0.0;
+                    while t < 1.0 {
+                        t = (t + dt).min(1.0);
+                        let p01 = Vec2::lerp(t, last, control1);
+                        let p12 = Vec2::lerp(t, control1, control2);
+                        let p23 = Vec2::lerp(t, control2, point);
+                        let p012 = Vec2::lerp(t, p01, p12);
+                        let p123 = Vec2::lerp(t, p12, p23);
+                        path.line_to(Vec2::lerp(t, p012, p123));
+                    }
+                    last = point;
+                }
+                PathCmd::Close => {
+                    path.close();
+                }
+            }
+        }
+        path.build()
     }
 }
