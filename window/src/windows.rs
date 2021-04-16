@@ -309,7 +309,7 @@ impl Window {
                         bmiHeader: wingdi::BITMAPINFOHEADER {
                             biSize: mem::size_of::<wingdi::BITMAPINFOHEADER>() as u32,
                             biWidth: width as i32,
-                            biHeight: height as i32,
+                            biHeight: -(height as i32),
                             biPlanes: 1,
                             biBitCount: 32,
                             biCompression: wingdi::BI_RGB,
