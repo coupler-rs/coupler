@@ -2,6 +2,19 @@ mod geom;
 
 pub use geom::*;
 
+struct TileMap {
+    width: usize,
+    height: usize,
+    tiles: Vec<Option<usize>>,
+    data: Vec<f32>,
+}
+
+impl TileMap {
+    fn with_size(width: usize, height: usize) -> TileMap {
+        TileMap { width, height, tiles: vec![None; width * height], data: Vec::new() }
+    }
+}
+
 pub struct Canvas {
     width: usize,
     height: usize,
@@ -46,7 +59,7 @@ impl Canvas {
         let width = right - left + 1;
         let height = bottom - top;
 
-        let mut buffer: Vec<f32> = vec![0.0; width * height];
+        let mut tiles = TileMap::with_size((width + 7) >> 3, (height + 7) >> 3);
 
         let mut first = Vec2::new(0.0, 0.0);
         let mut last = Vec2::new(0.0, 0.0);
@@ -123,9 +136,27 @@ impl Canvas {
                         && y >= top as isize
                         && y < bottom as isize
                     {
-                        let index = (y as usize - top) * width + (x as usize - left);
-                        buffer[index] += area;
-                        buffer[index + 1] += height - area;
+                        #[inline(always)]
+                        fn add(tile_map: &mut TileMap, x: usize, y: usize, delta: f32) {
+                            let tile_x = x >> 3;
+                            let tile_y = y >> 3;
+                            let tile = &mut tile_map.tiles[tile_y * tile_map.width + tile_x];
+                            let index = if let Some(index) = *tile {
+                                index
+                            } else {
+                                let len = tile_map.data.len();
+                                tile_map.data.resize(len + 64, 0.0);
+                                *tile = Some(len);
+                                len
+                            };
+                            let tile_data = &mut tile_map.data[index..index + 64];
+                            tile_data[((y & 0x7) << 3) | (x & 0x7)] += delta;
+                        }
+
+                        let x = x as usize - left;
+                        let y = y as usize - top;
+                        add(&mut tiles, x, y, area);
+                        add(&mut tiles, x + 1, y, height - area);
                     }
 
                     if row_t1 < col_t1 {
@@ -150,11 +181,23 @@ impl Canvas {
         }
 
         let mut accum = 0.0;
-        for row in top..bottom {
-            for col in left..right + 1 {
-                accum += buffer[(row - top) * width + (col - left)];
-                let coverage = (accum.abs().min(1.0) * 255.0) as u32;
-                self.data[row * self.width + col] = (coverage << 16) | (coverage << 8) | coverage;
+        let mut coverage = 0;
+        for row in 0..bottom - top {
+            for tile_col in 0..tiles.width {
+                if let Some(index) = tiles.tiles[(row >> 3) * tiles.width + tile_col] {
+                    let tile_data = &mut tiles.data[index..index + 64];
+                    for col in 0..8 {
+                        accum += tile_data[((row & 0x7) << 3) | col];
+                        coverage = (accum.abs().min(1.0) * 255.0) as u32;
+                        self.data[(top + row) * self.width + left + (tile_col << 3) + col] =
+                            (coverage << 24) | 0x00FFFFFF;
+                    }
+                } else if coverage != 0 {
+                    for col in 0..8 {
+                        self.data[(top + row) * self.width + left + (tile_col << 3) + col] =
+                            (coverage << 24) | 0x00FFFFFF;
+                    }
+                }
             }
         }
     }
