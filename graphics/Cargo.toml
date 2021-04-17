@@ -5,3 +5,6 @@ authors = ["Micah Johnston <micah@glowcoil.com>"]
 edition = "2018"
 
 [dependencies]
+
+[dev-dependencies]
+window = { path = "../window" }

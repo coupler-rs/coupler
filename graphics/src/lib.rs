@@ -1,16 +1,16 @@
 mod geom;
 
-use geom::Vec2;
+pub use geom::*;
 
-pub struct Image {
+pub struct Canvas {
     width: usize,
     height: usize,
     data: Vec<u32>,
 }
 
-impl Image {
-    pub fn with_size(width: usize, height: usize) -> Image {
-        Image { width, height, data: vec![0; width * height] }
+impl Canvas {
+    pub fn with_size(width: usize, height: usize) -> Canvas {
+        Canvas { width, height, data: vec![0; width * height] }
     }
 
     pub fn width(&self) -> usize {
@@ -24,20 +24,133 @@ impl Image {
     pub fn data(&self) -> &[u32] {
         &self.data
     }
-}
 
-pub struct Canvas<'i> {
-    target: &'i mut Image,
-    scale_factor: f32,
-}
+    pub fn fill(&mut self, path: &Path) {
+        if path.points.is_empty() {
+            return;
+        }
 
-impl<'i> Canvas<'i> {
-    pub fn with_target(target: &'i mut Image, scale_factor: f32) -> Canvas<'i> {
-        Canvas { target, scale_factor }
-    }
+        let flattened = path.flatten();
 
-    pub fn push(&'i mut self) -> Canvas<'i> {
-        Canvas { target: self.target, scale_factor: self.scale_factor }
+        let mut min = flattened.points[0];
+        let mut max = flattened.points[0];
+        for point in flattened.points.iter() {
+            min = min.min(*point);
+            max = max.max(*point);
+        }
+
+        let left = (min.x.floor() as isize).max(0).min(self.width as isize) as usize;
+        let right = (max.x.floor() as isize + 1).max(0).min(self.width as isize) as usize;
+        let top = (min.y.floor() as isize + 1).max(0).min(self.height as isize) as usize;
+        let bottom = (max.y.floor() as isize).max(0).min(self.height as isize) as usize;
+        let width = right - left + 1;
+        let height = bottom - top;
+
+        let mut buffer: Vec<f32> = vec![0.0; width * height];
+
+        let mut first = Vec2::new(0.0, 0.0);
+        let mut last = Vec2::new(0.0, 0.0);
+
+        let mut commands = flattened.commands.iter();
+        let mut points = flattened.points.iter();
+        loop {
+            let command = commands.next();
+
+            let p1;
+            let p2;
+            if let Some(command) = command {
+                match command {
+                    PathCmd::Move => {
+                        let point = *points.next().unwrap();
+                        p1 = last;
+                        p2 = first;
+                        first = point;
+                        last = point;
+                    }
+                    PathCmd::Line => {
+                        let point = *points.next().unwrap();
+                        p1 = last;
+                        p2 = point;
+                        last = point;
+                    }
+                    PathCmd::Close => {
+                        continue;
+                    }
+                    _ => {
+                        unreachable!();
+                    }
+                }
+            } else {
+                p1 = last;
+                p2 = first;
+            }
+
+            if p1 != p2 {
+                let x_dir = (p2.x - p1.x).signum() as isize;
+                let y_dir = (p2.y - p1.y).signum() as isize;
+                let dtdx = 1.0 / (p2.x - p1.x);
+                let dtdy = 1.0 / (p2.y - p1.y);
+                let mut x = p1.x.floor() as isize;
+                let mut y = p1.y.floor() as isize;
+                let mut row_t0: f64 = 0.0;
+                let mut col_t0: f64 = 0.0;
+                let mut row_t1 = if p1.y == p2.y {
+                    std::f64::INFINITY
+                } else {
+                    let next_y = if p2.y > p1.y { (y + 1) as f64 } else { y as f64 };
+                    (dtdy * (next_y - p1.y)).min(1.0)
+                };
+                let mut col_t1 = if p1.x == p2.x {
+                    std::f64::INFINITY
+                } else {
+                    let next_x = if p2.x > p1.x { (x + 1) as f64 } else { x as f64 };
+                    (dtdx * (next_x - p1.x)).min(1.0)
+                };
+                let x_step = dtdx.abs();
+                let y_step = dtdy.abs();
+
+                loop {
+                    let t0 = row_t0.max(col_t0);
+                    let t1 = row_t1.min(col_t1);
+                    let p0 = (1.0 - t0) * p1 + t0 * p2;
+                    let p1 = (1.0 - t1) * p1 + t1 * p2;
+                    let height = (p1.y - p0.y) as f32;
+                    let right_edge = (x + 1) as f64;
+                    let area = 0.5 * height * ((right_edge - p0.x) + (right_edge - p1.x)) as f32;
+
+                    if x >= left as isize && x < right as isize && y >= top as isize && y < bottom as isize {
+                        let index = (y as usize - top) * width + (x as usize - left);
+                        buffer[index] += area;
+                        buffer[index + 1] += height - area;
+                    }
+
+                    if row_t1 < col_t1 {
+                        row_t0 = row_t1;
+                        row_t1 = (row_t1 + y_step).min(1.0);
+                        y += y_dir;
+                    } else {
+                        col_t0 = col_t1;
+                        col_t1 = (col_t1 + x_step).min(1.0);
+                        x += x_dir;
+                    }
+
+                    if row_t0 == 1.0 || col_t0 == 1.0 {
+                        break;
+                    }
+                }
+            }
+
+            if command.is_none() { break; }
+        }
+
+        let mut accum = 0.0;
+        for row in top..bottom {
+            for col in left..right + 1 {
+                accum += buffer[(row - top) * width + (col - left)];
+                let coverage = (accum.abs().min(1.0) * 255.0) as u32;
+                self.data[row * self.width + col] = (coverage << 16) | (coverage << 8) | coverage;
+            }
+        }
     }
 }
 
