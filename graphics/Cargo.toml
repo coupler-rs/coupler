@@ -7,4 +7,5 @@ edition = "2018"
 [dependencies]
 
 [dev-dependencies]
+png = "0.11"
 window = { path = "../window" }
