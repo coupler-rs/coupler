@@ -9,9 +9,7 @@ struct Handler {
 
 impl Handler {
     fn new() -> Handler {
-        Handler {
-            canvas: RefCell::new(Canvas::with_size(500, 500)),
-        }
+        Handler { canvas: RefCell::new(Canvas::with_size(500, 500)) }
     }
 }
 
@@ -25,7 +23,11 @@ impl WindowHandler for Handler {
 
         self.canvas.borrow_mut().fill(&path);
 
-        window.update_contents(self.canvas.borrow().data(), self.canvas.borrow().width(), self.canvas.borrow().height());
+        window.update_contents(
+            self.canvas.borrow().data(),
+            self.canvas.borrow().width(),
+            self.canvas.borrow().height(),
+        );
     }
 }
 

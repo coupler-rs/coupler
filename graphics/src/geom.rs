@@ -54,19 +54,13 @@ impl Vec2 {
     /// Finds the componentwise minimum of two vectors.
     #[inline]
     pub fn min(self, other: Vec2) -> Vec2 {
-        Vec2 {
-            x: self.x.min(other.x),
-            y: self.y.min(other.y),
-        }
+        Vec2 { x: self.x.min(other.x), y: self.y.min(other.y) }
     }
 
     /// Finds the componentwise maximum of two vectors.
     #[inline]
     pub fn max(self, other: Vec2) -> Vec2 {
-        Vec2 {
-            x: self.x.max(other.x),
-            y: self.y.max(other.y),
-        }
+        Vec2 { x: self.x.max(other.x), y: self.y.max(other.y) }
     }
 }
 
@@ -74,10 +68,7 @@ impl ops::Add for Vec2 {
     type Output = Vec2;
     #[inline]
     fn add(self, rhs: Vec2) -> Vec2 {
-        Vec2 {
-            x: self.x + rhs.x,
-            y: self.y + rhs.y,
-        }
+        Vec2 { x: self.x + rhs.x, y: self.y + rhs.y }
     }
 }
 
@@ -92,10 +83,7 @@ impl ops::Sub for Vec2 {
     type Output = Vec2;
     #[inline]
     fn sub(self, rhs: Vec2) -> Vec2 {
-        Vec2 {
-            x: self.x - rhs.x,
-            y: self.y - rhs.y,
-        }
+        Vec2 { x: self.x - rhs.x, y: self.y - rhs.y }
     }
 }
 
@@ -110,10 +98,7 @@ impl ops::Mul<f64> for Vec2 {
     type Output = Vec2;
     #[inline]
     fn mul(self, rhs: f64) -> Vec2 {
-        Vec2 {
-            x: self.x * rhs,
-            y: self.y * rhs,
-        }
+        Vec2 { x: self.x * rhs, y: self.y * rhs }
     }
 }
 
@@ -121,10 +106,7 @@ impl ops::Mul<Vec2> for f64 {
     type Output = Vec2;
     #[inline]
     fn mul(self, rhs: Vec2) -> Vec2 {
-        Vec2 {
-            x: self * rhs.x,
-            y: self * rhs.y,
-        }
+        Vec2 { x: self * rhs.x, y: self * rhs.y }
     }
 }
 
@@ -171,10 +153,7 @@ impl ops::Mul<Vec2> for Mat2x2 {
     type Output = Vec2;
     #[inline]
     fn mul(self, rhs: Vec2) -> Vec2 {
-        Vec2 {
-            x: self.0[0] * rhs.x + self.0[1] * rhs.y,
-            y: self.0[2] * rhs.x + self.0[3] * rhs.y,
-        }
+        Vec2 { x: self.0[0] * rhs.x + self.0[1] * rhs.y, y: self.0[2] * rhs.x + self.0[3] * rhs.y }
     }
 }
 
@@ -182,12 +161,7 @@ impl ops::Mul<Mat2x2> for f64 {
     type Output = Mat2x2;
     #[inline]
     fn mul(self, rhs: Mat2x2) -> Mat2x2 {
-        Mat2x2([
-            self * rhs.0[0],
-            self * rhs.0[1],
-            self * rhs.0[2],
-            self * rhs.0[3],
-        ])
+        Mat2x2([self * rhs.0[0], self * rhs.0[1], self * rhs.0[2], self * rhs.0[3]])
     }
 }
 
@@ -210,42 +184,27 @@ impl Transform {
     /// Constructs an affine transformation from the given transformation
     /// matrix and translation vector.
     pub fn new(matrix: Mat2x2, offset: Vec2) -> Transform {
-        Transform {
-            matrix,
-            offset,
-        }
+        Transform { matrix, offset }
     }
 
     /// Constructs an identity transformation.
     pub fn id() -> Transform {
-        Transform {
-            matrix: Mat2x2::id(),
-            offset: Vec2::new(0.0, 0.0),
-        }
+        Transform { matrix: Mat2x2::id(), offset: Vec2::new(0.0, 0.0) }
     }
 
     /// Constructs a translation.
     pub fn translate(x: f64, y: f64) -> Transform {
-        Transform {
-            matrix: Mat2x2::id(),
-            offset: Vec2::new(x, y),
-        }
+        Transform { matrix: Mat2x2::id(), offset: Vec2::new(x, y) }
     }
 
     /// Constructs a uniform scaling.
     pub fn scale(scale: f64) -> Transform {
-        Transform {
-            matrix: Mat2x2::scale(scale),
-            offset: Vec2::new(0.0, 0.0),
-        }
+        Transform { matrix: Mat2x2::scale(scale), offset: Vec2::new(0.0, 0.0) }
     }
 
     /// Constructs a rotation.
     pub fn rotate(angle: f64) -> Transform {
-        Transform {
-            matrix: Mat2x2::rotate(angle),
-            offset: Vec2::new(0.0, 0.0),
-        }
+        Transform { matrix: Mat2x2::rotate(angle), offset: Vec2::new(0.0, 0.0) }
     }
 
     /// Sequentially composes two affine transformations.

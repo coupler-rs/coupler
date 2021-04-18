@@ -15,9 +15,9 @@ fn main() {
     }
     dbg!(time.elapsed().div_f64(1000.0));
 
+    use png::HasParameters;
     use std::fs::File;
     use std::io::BufWriter;
-    use png::HasParameters;
 
     let path = std::path::Path::new(r"out.png");
     let file = File::create(path).unwrap();
@@ -27,6 +27,7 @@ fn main() {
     encoder.set(png::ColorType::RGBA).set(png::BitDepth::Eight);
     let mut writer = encoder.write_header().unwrap();
     let data = canvas.data();
-    let data_u8: &[u8] = unsafe { std::slice::from_raw_parts(data.as_ptr() as *const _, data.len() * 4) };
+    let data_u8: &[u8] =
+        unsafe { std::slice::from_raw_parts(data.as_ptr() as *const _, data.len() * 4) };
     writer.write_image_data(data_u8).unwrap();
 }

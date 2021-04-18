@@ -118,7 +118,11 @@ impl Canvas {
                     let right_edge = (x + 1) as f64;
                     let area = 0.5 * height * ((right_edge - p0.x) + (right_edge - p1.x)) as f32;
 
-                    if x >= left as isize && x < right as isize && y >= top as isize && y < bottom as isize {
+                    if x >= left as isize
+                        && x < right as isize
+                        && y >= top as isize
+                        && y < bottom as isize
+                    {
                         let index = (y as usize - top) * width + (x as usize - left);
                         buffer[index] += area;
                         buffer[index + 1] += height - area;
@@ -140,7 +144,9 @@ impl Canvas {
                 }
             }
 
-            if command.is_none() { break; }
+            if command.is_none() {
+                break;
+            }
         }
 
         let mut accum = 0.0;
@@ -176,10 +182,7 @@ pub struct PathBuilder {
 
 impl Path {
     pub fn builder() -> PathBuilder {
-        PathBuilder {
-            commands: Vec::new(),
-            points: Vec::new(),
-        }
+        PathBuilder { commands: Vec::new(), points: Vec::new() }
     }
 }
 
@@ -217,10 +220,7 @@ impl PathBuilder {
     }
 
     pub fn build(self) -> Path {
-        Path {
-            commands: self.commands,
-            points: self.points,
-        }
+        Path { commands: self.commands, points: self.points }
     }
 }
 
@@ -284,7 +284,13 @@ impl Path {
 
     pub fn stroke(&self, width: f64) -> Path {
         #[inline]
-        fn join(path: &mut PathBuilder, width: f64, prev_normal: Vec2, next_normal: Vec2, point: Vec2) {
+        fn join(
+            path: &mut PathBuilder,
+            width: f64,
+            prev_normal: Vec2,
+            next_normal: Vec2,
+            point: Vec2,
+        ) {
             let offset = 1.0 / (1.0 + prev_normal.dot(next_normal));
             if offset.abs() > 2.0 {
                 path.line_to(point + 0.5 * width * prev_normal);
@@ -295,12 +301,14 @@ impl Path {
         }
 
         #[inline]
-        fn offset(path: &mut PathBuilder, width: f64, contour: &[Vec2], closed: bool, reverse: bool) {
-            let first_point = if closed == reverse {
-                contour[0]
-            } else {
-                *contour.last().unwrap()
-            };
+        fn offset(
+            path: &mut PathBuilder,
+            width: f64,
+            contour: &[Vec2],
+            closed: bool,
+            reverse: bool,
+        ) {
+            let first_point = if closed == reverse { contour[0] } else { *contour.last().unwrap() };
             let mut prev_point = first_point;
             let mut prev_normal = Vec2::new(0.0, 0.0);
             let mut i = 0;
