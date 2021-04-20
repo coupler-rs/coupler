@@ -15,6 +15,31 @@ impl TileMap {
     }
 }
 
+#[derive(Copy, Clone)]
+pub struct Color(u32);
+
+impl Color {
+    pub fn rgba(r: u8, g: u8, b: u8, a: u8) -> Color {
+        Color(((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | ((b as u32) << 0))
+    }
+
+    pub fn r(&self) -> u8 {
+        ((self.0 >> 16) & 0xFF) as u8
+    }
+
+    pub fn g(&self) -> u8 {
+        ((self.0 >> 8) & 0xFF) as u8
+    }
+
+    pub fn b(&self) -> u8 {
+        ((self.0 >> 0) & 0xFF) as u8
+    }
+
+    pub fn a(&self) -> u8 {
+        ((self.0 >> 24) & 0xFF) as u8
+    }
+}
+
 pub struct Canvas {
     width: usize,
     height: usize,
@@ -23,7 +48,7 @@ pub struct Canvas {
 
 impl Canvas {
     pub fn with_size(width: usize, height: usize) -> Canvas {
-        Canvas { width, height, data: vec![0; width * height] }
+        Canvas { width, height, data: vec![0xFFFFFFFF; width * height] }
     }
 
     pub fn width(&self) -> usize {
@@ -38,7 +63,7 @@ impl Canvas {
         &self.data
     }
 
-    pub fn fill(&mut self, path: &Path) {
+    pub fn fill(&mut self, path: &Path, color: Color) {
         if path.points.is_empty() {
             return;
         }
@@ -53,13 +78,13 @@ impl Canvas {
         }
 
         let left = (min.x.floor() as isize).max(0).min(self.width as isize) as usize;
-        let right = (max.x.floor() as isize + 1).max(0).min(self.width as isize) as usize;
-        let top = (min.y.floor() as isize + 1).max(0).min(self.height as isize) as usize;
-        let bottom = (max.y.floor() as isize).max(0).min(self.height as isize) as usize;
-        let width = right - left + 1;
+        let right = (max.x.floor() as isize + 2).max(0).min(self.width as isize) as usize;
+        let top = (min.y.floor() as isize).max(0).min(self.height as isize) as usize;
+        let bottom = (max.y.floor() as isize + 1).max(0).min(self.height as isize) as usize;
+        let width = right - left;
         let height = bottom - top;
 
-        let mut tiles = TileMap::with_size((width + 7) >> 3, (height + 7) >> 3);
+        let mut tiles = TileMap::with_size((width + 8) >> 3, (height + 8) >> 3);
 
         let mut first = Vec2::new(0.0, 0.0);
         let mut last = Vec2::new(0.0, 0.0);
@@ -141,8 +166,8 @@ impl Canvas {
                             let tile_x = x >> 3;
                             let tile_y = y >> 3;
                             let tile = &mut tile_map.tiles[tile_y * tile_map.width + tile_x];
-                            let index = if let Some(index) = *tile {
-                                index
+                            let index = if let Some(index) = tile {
+                                *index
                             } else {
                                 let len = tile_map.data.len();
                                 tile_map.data.resize(len + 64, 0.0);
@@ -180,22 +205,64 @@ impl Canvas {
             }
         }
 
-        let mut accum = 0.0;
-        let mut coverage = 0;
-        for row in 0..bottom - top {
+        for row in 0..height {
+            let mut accum = 0.0;
+            let mut coverage = 0;
             for tile_col in 0..tiles.width {
+                let columns = if tile_col == tiles.width - 1 { width % 8 } else { 8 };
                 if let Some(index) = tiles.tiles[(row >> 3) * tiles.width + tile_col] {
                     let tile_data = &mut tiles.data[index..index + 64];
-                    for col in 0..8 {
+                    for col in 0..columns {
                         accum += tile_data[((row & 0x7) << 3) | col];
-                        coverage = (accum.abs().min(1.0) * 255.0) as u32;
+
+                        let pixel = &mut self.data[(top + row) * self.width + left + (tile_col << 3) + col];
+
+                        coverage = (accum.abs() * 255.0 + 0.5).min(255.0) as u32;
+
+                        let mut r = (coverage * color.r() as u32 + 127) / 255;
+                        let mut g = (coverage * color.g() as u32 + 127) / 255;
+                        let mut b = (coverage * color.b() as u32 + 127) / 255;
+                        let mut a = (coverage * color.a() as u32 + 127) / 255;
+
+                        let inv_a = 255 - a;
+
+                        a += (inv_a * ((*pixel >> 24) & 0xFF) + 127) / 255;
+                        r += (inv_a * ((*pixel >> 16) & 0xFF) + 127) / 255;
+                        g += (inv_a * ((*pixel >> 8) & 0xFF) + 127) / 255;
+                        b += (inv_a * ((*pixel >> 0) & 0xFF) + 127) / 255;
+
                         self.data[(top + row) * self.width + left + (tile_col << 3) + col] =
-                            (coverage << 24) | 0x00FFFFFF;
+                            (a << 24) | (r << 16) | (g << 8) | (b << 0);
                     }
-                } else if coverage != 0 {
-                    for col in 0..8 {
-                        self.data[(top + row) * self.width + left + (tile_col << 3) + col] =
-                            (coverage << 24) | 0x00FFFFFF;
+                } else {
+                    if coverage == 255 {
+                        for col in 0..columns {
+                            let r = (coverage * color.r() as u32 + 127) / 255;
+                            let g = (coverage * color.g() as u32 + 127) / 255;
+                            let b = (coverage * color.b() as u32 + 127) / 255;
+                            let a = (coverage * color.a() as u32 + 127) / 255;
+                            self.data[(top + row) * self.width + left + (tile_col << 3) + col] =
+                                (a << 24) | (r << 16) | (g << 8) | (b << 0);
+                        }
+                    } else if coverage != 0 {
+                        for col in 0..columns {
+                            let pixel = &mut self.data[(top + row) * self.width + left + (tile_col << 3) + col];
+
+                            let mut r = (coverage * color.r() as u32 + 127) / 255;
+                            let mut g = (coverage * color.g() as u32 + 127) / 255;
+                            let mut b = (coverage * color.b() as u32 + 127) / 255;
+                            let mut a = (coverage * color.a() as u32 + 127) / 255;
+
+                            let inv_a = 255 - a;
+
+                            a += (inv_a * ((*pixel >> 24) & 0xFF) + 127) / 255;
+                            r += (inv_a * ((*pixel >> 16) & 0xFF) + 127) / 255;
+                            g += (inv_a * ((*pixel >> 8) & 0xFF) + 127) / 255;
+                            b += (inv_a * ((*pixel >> 0) & 0xFF) + 127) / 255;
+
+                            self.data[(top + row) * self.width + left + (tile_col << 3) + col] =
+                                (a << 24) | (r << 16) | (g << 8) | (b << 0);
+                        }
                     }
                 }
             }

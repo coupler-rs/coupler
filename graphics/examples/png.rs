@@ -1,4 +1,4 @@
-use graphics::{Canvas, Path, Vec2};
+use graphics::{Canvas, Color, Path, Vec2};
 
 fn main() {
     let mut path = Path::builder();
@@ -11,7 +11,7 @@ fn main() {
 
     let time = std::time::Instant::now();
     for _ in 0..1000 {
-        canvas.fill(&path);
+        canvas.fill(&path, Color::rgba(255, 0, 255, 255));
     }
     dbg!(time.elapsed().div_f64(1000.0));
 
