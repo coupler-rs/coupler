@@ -272,11 +272,13 @@ impl Canvas {
 
 const TOLERANCE: f64 = 0.1;
 
+#[derive(Clone)]
 pub struct Path {
     commands: Vec<PathCmd>,
     points: Vec<Vec2>,
 }
 
+#[derive(Copy, Clone)]
 pub enum PathCmd {
     Move,
     Line,
@@ -501,7 +503,7 @@ impl Path {
                         contour_end += 1;
                     }
                     PathCmd::Close => {
-                        contour_start = contour_end + 1;
+                        contour_start = contour_end;
                         contour_end = contour_start;
                         closed = true;
                     }
