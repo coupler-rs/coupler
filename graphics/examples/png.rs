@@ -1,19 +1,63 @@
-use graphics::{Canvas, Color, Path, Vec2};
+use graphics::{Canvas, Color, Mat2x2, Path, Transform, Vec2};
 
 fn main() {
-    let mut path = Path::builder();
-    path.move_to(Vec2::new(400.0, 300.0))
-        .quadratic_to(Vec2::new(500.0, 200.0), Vec2::new(400.0, 100.0))
-        .cubic_to(Vec2::new(350.0, 150.0), Vec2::new(100.0, 250.0), Vec2::new(400.0, 300.0));
-    let path = path.build();
+    let mut canvas = Canvas::with_size(1920, 1080);
 
-    let mut canvas = Canvas::with_size(500, 500);
+    let path = std::env::args().nth(1).expect("provide an svg file");
+    let tree = usvg::Tree::from_file(path, &usvg::Options::default()).unwrap();
+
+    fn render(node: &usvg::Node, canvas: &mut Canvas) {
+        use usvg::NodeExt;
+        match *node.borrow() {
+            usvg::NodeKind::Path(ref p) => {
+                let t = node.transform();
+                let transform =
+                    Transform::new(Mat2x2::new(t.a, t.c, t.b, t.d), Vec2::new(t.e, t.f)).then(Transform::scale(2.0));
+
+                let mut path = Path::builder();
+                for segment in p.data.0.iter() {
+                    match *segment {
+                        usvg::PathSegment::MoveTo { x, y } => {
+                            path.move_to(Vec2::new(500.0,0.0) + transform.apply(1.0 * Vec2::new(x, y)));
+                        }
+                        usvg::PathSegment::LineTo { x, y } => {
+                            path.line_to(Vec2::new(500.0,0.0) + transform.apply(1.0 * Vec2::new(x, y)));
+                        }
+                        usvg::PathSegment::CurveTo { x1, y1, x2, y2, x, y } => {
+                            path.cubic_to(Vec2::new(500.0,0.0) + transform.apply(1.0 * Vec2::new(x1, y1)), Vec2::new(500.0,0.0) + transform.apply(1.0 * Vec2::new(x2, y2)), Vec2::new(500.0,0.0) + transform.apply(1.0 * Vec2::new(x, y)));
+                        }
+                        usvg::PathSegment::ClosePath => {
+                            path.close();
+                        }
+                    }
+                }
+                let path = path.build();
+
+                if let Some(ref fill) = p.fill {
+                    if let usvg::Paint::Color(color) = fill.paint {
+                        let color = Color::rgba(color.red, color.green, color.blue, fill.opacity.to_u8());
+                        canvas.fill(&path, color);
+                    }
+                }
+
+                if let Some(ref stroke) = p.stroke {
+                    if let usvg::Paint::Color(color) = stroke.paint {
+                        let color = Color::rgba(color.red, color.green, color.blue, stroke.opacity.to_u8());
+                        canvas.fill(&path.stroke(stroke.width.value() * 2.0), color);
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        for child in node.children() {
+            render(&child, canvas);
+        }
+    }
 
     let time = std::time::Instant::now();
-    for _ in 0..1000 {
-        canvas.fill(&path, Color::rgba(255, 0, 255, 255));
-    }
-    dbg!(time.elapsed().div_f64(1000.0));
+    render(&tree.root(), &mut canvas);
+    dbg!(time.elapsed());
 
     use png::HasParameters;
     use std::fs::File;
@@ -23,11 +67,19 @@ fn main() {
     let file = File::create(path).unwrap();
     let ref mut w = BufWriter::new(file);
 
-    let mut encoder = png::Encoder::new(w, 500, 500);
+    let mut encoder = png::Encoder::new(w, 1920, 1080);
     encoder.set(png::ColorType::RGBA).set(png::BitDepth::Eight);
     let mut writer = encoder.write_header().unwrap();
-    let data = canvas.data();
-    let data_u8: &[u8] =
-        unsafe { std::slice::from_raw_parts(data.as_ptr() as *const _, data.len() * 4) };
-    writer.write_image_data(data_u8).unwrap();
+
+    let mut data = vec![0; 4 * 1920 * 1080];
+    let mut i = 0;
+    for pixel in canvas.data() {
+        data[4 * i] = ((pixel >> 16) & 0xFF) as u8;
+        data[4 * i + 1] = ((pixel >> 8) & 0xFF) as u8;
+        data[4 * i + 2] = ((pixel >> 0) & 0xFF) as u8;
+        data[4 * i + 3] = ((pixel >> 24) & 0xFF) as u8;
+        i += 1;
+    }
+
+    writer.write_image_data(&data[..]).unwrap();
 }
