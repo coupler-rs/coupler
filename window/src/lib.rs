@@ -77,7 +77,7 @@ pub struct WindowOptions<'p> {
     pub title: String,
     pub rect: Rect,
     pub parent: Parent<'p>,
-    pub handler: Option<Box<dyn WindowHandler>>,
+    pub handler: Box<dyn WindowHandler>,
 }
 
 impl<'p> Default for WindowOptions<'p> {
@@ -86,7 +86,7 @@ impl<'p> Default for WindowOptions<'p> {
             title: "".to_string(),
             rect: Rect { x: 0.0, y: 0.0, w: 0.0, h: 0.0 },
             parent: Parent::None,
-            handler: None,
+            handler: Box::new(DefaultWindowHandler),
         }
     }
 }

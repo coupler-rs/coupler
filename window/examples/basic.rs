@@ -40,7 +40,7 @@ fn main() {
         WindowOptions {
             title: "window".to_string(),
             rect: Rect { x: 0.0, y: 0.0, w: 500.0, h: 500.0 },
-            handler: Some(Box::new(Handler)),
+            handler: Box::new(Handler),
             ..WindowOptions::default()
         },
     )

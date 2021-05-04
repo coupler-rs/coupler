@@ -1,4 +1,4 @@
-use crate::{DefaultWindowHandler, Parent, Rect, WindowHandler, WindowOptions};
+use crate::{Parent, Rect, WindowHandler, WindowOptions};
 
 use std::cell::Cell;
 use std::collections::HashSet;
@@ -238,7 +238,7 @@ impl Window {
                 hwnd: Cell::new(ptr::null_mut()),
                 hdc: Cell::new(None),
                 application: application.clone(),
-                handler: options.handler.unwrap_or_else(|| Box::new(DefaultWindowHandler)),
+                handler: options.handler,
             });
 
             let window_name = to_wstring(&options.title);
