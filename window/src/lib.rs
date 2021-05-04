@@ -3,6 +3,11 @@ mod windows;
 #[cfg(target_os = "windows")]
 use windows as platform;
 
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "macos")]
+use macos as platform;
+
 use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
