@@ -12,19 +12,28 @@ fn main() {
             usvg::NodeKind::Path(ref p) => {
                 let t = node.transform();
                 let transform =
-                    Transform::new(Mat2x2::new(t.a, t.c, t.b, t.d), Vec2::new(t.e, t.f)).then(Transform::scale(2.0));
+                    Transform::new(Mat2x2::new(t.a, t.c, t.b, t.d), Vec2::new(t.e, t.f))
+                        .then(Transform::scale(2.0));
 
                 let mut path = Path::builder();
                 for segment in p.data.0.iter() {
                     match *segment {
                         usvg::PathSegment::MoveTo { x, y } => {
-                            path.move_to(Vec2::new(500.0,0.0) + transform.apply(1.0 * Vec2::new(x, y)));
+                            path.move_to(
+                                Vec2::new(500.0, 0.0) + transform.apply(1.0 * Vec2::new(x, y)),
+                            );
                         }
                         usvg::PathSegment::LineTo { x, y } => {
-                            path.line_to(Vec2::new(500.0,0.0) + transform.apply(1.0 * Vec2::new(x, y)));
+                            path.line_to(
+                                Vec2::new(500.0, 0.0) + transform.apply(1.0 * Vec2::new(x, y)),
+                            );
                         }
                         usvg::PathSegment::CurveTo { x1, y1, x2, y2, x, y } => {
-                            path.cubic_to(Vec2::new(500.0,0.0) + transform.apply(1.0 * Vec2::new(x1, y1)), Vec2::new(500.0,0.0) + transform.apply(1.0 * Vec2::new(x2, y2)), Vec2::new(500.0,0.0) + transform.apply(1.0 * Vec2::new(x, y)));
+                            path.cubic_to(
+                                Vec2::new(500.0, 0.0) + transform.apply(1.0 * Vec2::new(x1, y1)),
+                                Vec2::new(500.0, 0.0) + transform.apply(1.0 * Vec2::new(x2, y2)),
+                                Vec2::new(500.0, 0.0) + transform.apply(1.0 * Vec2::new(x, y)),
+                            );
                         }
                         usvg::PathSegment::ClosePath => {
                             path.close();
@@ -35,14 +44,16 @@ fn main() {
 
                 if let Some(ref fill) = p.fill {
                     if let usvg::Paint::Color(color) = fill.paint {
-                        let color = Color::rgba(color.red, color.green, color.blue, fill.opacity.to_u8());
+                        let color =
+                            Color::rgba(color.red, color.green, color.blue, fill.opacity.to_u8());
                         canvas.fill(&path, color);
                     }
                 }
 
                 if let Some(ref stroke) = p.stroke {
                     if let usvg::Paint::Color(color) = stroke.paint {
-                        let color = Color::rgba(color.red, color.green, color.blue, stroke.opacity.to_u8());
+                        let color =
+                            Color::rgba(color.red, color.green, color.blue, stroke.opacity.to_u8());
                         canvas.fill(&path.stroke(stroke.width.value() * 2.0), color);
                     }
                 }

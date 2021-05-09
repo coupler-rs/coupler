@@ -215,7 +215,8 @@ impl Canvas {
                     for col in 0..columns {
                         accum += tile_data[((row & 0x7) << 3) | col];
 
-                        let pixel = &mut self.data[(top + row) * self.width + left + (tile_col << 3) + col];
+                        let pixel =
+                            &mut self.data[(top + row) * self.width + left + (tile_col << 3) + col];
 
                         coverage = (accum.abs() * 255.0 + 0.5).min(255.0) as u32;
 
@@ -246,7 +247,8 @@ impl Canvas {
                         }
                     } else if coverage != 0 {
                         for col in 0..columns {
-                            let pixel = &mut self.data[(top + row) * self.width + left + (tile_col << 3) + col];
+                            let pixel = &mut self.data
+                                [(top + row) * self.width + left + (tile_col << 3) + col];
 
                             let mut r = (coverage * color.r() as u32 + 127) / 255;
                             let mut g = (coverage * color.g() as u32 + 127) / 255;
