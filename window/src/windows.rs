@@ -26,7 +26,6 @@ pub enum ApplicationError {
     WindowClassUnregistration(u32),
     Close(Vec<WindowError>),
     GetMessage(u32),
-    AlreadyRunning,
 }
 
 impl fmt::Display for ApplicationError {
@@ -44,7 +43,7 @@ pub struct Application {
 
 struct ApplicationInner {
     open: Cell<bool>,
-    running: Cell<bool>,
+    running: Cell<usize>,
     class: minwindef::ATOM,
     windows: Cell<HashSet<windef::HWND>>,
 }
@@ -80,7 +79,7 @@ impl Application {
             Ok(Application {
                 inner: Rc::new(ApplicationInner {
                     open: Cell::new(true),
-                    running: Cell::new(false),
+                    running: Cell::new(0),
                     class,
                     windows: Cell::new(HashSet::new()),
                 }),
@@ -91,7 +90,7 @@ impl Application {
     pub fn close(&self) -> Result<(), ApplicationError> {
         unsafe {
             if self.inner.open.get() {
-                self.stop();
+                self.inner.running.set(0);
                 self.inner.open.set(false);
 
                 let mut window_errors = Vec::new();
@@ -125,18 +124,15 @@ impl Application {
     pub fn start(&self) -> Result<(), ApplicationError> {
         unsafe {
             if self.inner.open.get() {
-                if self.inner.running.get() {
-                    return Err(ApplicationError::AlreadyRunning);
-                }
+                let depth = self.inner.running.get();
+                self.inner.running.set(depth + 1);
 
-                self.inner.running.set(true);
-
-                while self.inner.open.get() && self.inner.running.get() {
+                while self.inner.open.get() && self.inner.running.get() > depth {
                     let mut msg: winuser::MSG = mem::zeroed();
 
                     let result = winuser::GetMessageW(&mut msg, ptr::null_mut(), 0, 0);
                     if result < 0 {
-                        self.inner.running.set(false);
+                        self.inner.running.set(depth);
                         return Err(ApplicationError::GetMessage(errhandlingapi::GetLastError()));
                     } else if result == 0 {
                         // ignore WM_QUIT messages
@@ -153,7 +149,7 @@ impl Application {
     }
 
     pub fn stop(&self) {
-        self.inner.running.set(false);
+        self.inner.running.set(self.inner.running.get().saturating_sub(1));
     }
 }
 
