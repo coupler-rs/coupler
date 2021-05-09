@@ -33,6 +33,7 @@ pub extern "C" fn get_parameter(_effect: *mut AEffect, _index: i32) -> f32 {
     0.0
 }
 
+#[cfg(not(test))]
 #[no_mangle]
 pub extern "C" fn main(host_callback: HostCallbackProc) -> *mut AEffect {
     VSTPluginMain(host_callback)
