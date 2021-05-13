@@ -14,6 +14,7 @@ use raw_window_handle::{macos::MacOSHandle, HasRawWindowHandle, RawWindowHandle}
 #[derive(Debug)]
 pub enum ApplicationError {
     ViewClassRegistration,
+    GetEvent,
 }
 
 impl fmt::Display for ApplicationError {
@@ -31,6 +32,7 @@ pub struct Application {
 
 struct ApplicationInner {
     open: Cell<bool>,
+    running: Cell<usize>,
     class: *mut runtime::Class,
 }
 
@@ -51,6 +53,7 @@ impl Application {
             Ok(Application {
                 inner: Rc::new(ApplicationInner {
                     open: Cell::new(true),
+                    running: Cell::new(0),
                     class: class as *const runtime::Class as *mut runtime::Class,
                 }),
             })
@@ -60,6 +63,7 @@ impl Application {
     pub fn close(&self) -> Result<(), ApplicationError> {
         unsafe {
             if self.inner.open.get() {
+                self.inner.running.set(0);
                 self.inner.open.set(false);
 
                 runtime::objc_disposeClassPair(self.inner.class);
@@ -70,10 +74,48 @@ impl Application {
     }
 
     pub fn start(&self) -> Result<(), ApplicationError> {
-        Ok(())
+        unsafe {
+            if self.inner.open.get() {
+                let depth = self.inner.running.get();
+                self.inner.running.set(depth + 1);
+
+                let app = appkit::NSApp();
+                let until_date = msg_send![class!(NSDate), distantFuture];
+                while self.inner.open.get() && self.inner.running.get() > depth {
+                    let pool = foundation::NSAutoreleasePool::new(base::nil);
+
+                    let event =
+                        appkit::NSApplication::nextEventMatchingMask_untilDate_inMode_dequeue_(
+                            app,
+                            appkit::NSEventMask::NSAnyEventMask.bits(),
+                            until_date,
+                            foundation::NSDefaultRunLoopMode,
+                            base::YES,
+                        );
+
+                    if event.is_null() {
+                        self.inner.running.set(depth);
+                        let () = msg_send![pool, drain];
+                        return Err(ApplicationError::GetEvent);
+                    } else {
+                        appkit::NSApplication::sendEvent_(app, event);
+                    }
+
+                    let () = msg_send![pool, drain];
+                }
+            }
+
+            Ok(())
+        }
     }
 
-    pub fn stop(&self) {}
+    pub fn stop(&self) {
+        unsafe {
+            if self.inner.open.get() {
+                self.inner.running.set(self.inner.running.get().saturating_sub(1));
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
