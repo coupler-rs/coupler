@@ -1,14 +1,18 @@
 use crate::{Rect, WindowOptions};
 
+use std::cell::Cell;
 use std::error::Error;
-use std::fmt;
 use std::marker::PhantomData;
 use std::rc::Rc;
+use std::{fmt, ptr};
 
 use raw_window_handle::{unix::XlibHandle, HasRawWindowHandle, RawWindowHandle};
+use xcb_sys as xcb;
 
 #[derive(Debug)]
-pub enum ApplicationError {}
+pub enum ApplicationError {
+    ConnectionFailed(i32),
+}
 
 impl fmt::Display for ApplicationError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -23,15 +27,47 @@ pub struct Application {
     inner: Rc<ApplicationInner>,
 }
 
-struct ApplicationInner {}
+struct ApplicationInner {
+    open: Cell<bool>,
+    connection: *mut xcb::xcb_connection_t,
+    screen: *mut xcb::xcb_screen_t,
+}
 
 impl Application {
     pub fn open() -> Result<Application, ApplicationError> {
-        Ok(Application { inner: Rc::new(ApplicationInner {}) })
+        unsafe {
+            let mut default_screen_index = 0;
+            let connection = xcb::xcb_connect(ptr::null(), &mut default_screen_index);
+
+            let error = xcb::xcb_connection_has_error(connection);
+            if error != 0 {
+                xcb::xcb_disconnect(connection);
+                return Err(ApplicationError::ConnectionFailed(error));
+            }
+
+            let setup = xcb::xcb_get_setup(connection);
+            let mut roots_iter = xcb::xcb_setup_roots_iterator(setup);
+            for _ in 0..default_screen_index {
+                xcb::xcb_screen_next(&mut roots_iter);
+            }
+            let screen = roots_iter.data;
+
+            Ok(Application {
+                inner: Rc::new(ApplicationInner { open: Cell::new(true), connection, screen }),
+            })
+        }
     }
 
     pub fn close(&self) -> Result<(), ApplicationError> {
-        Ok(())
+        unsafe {
+            if self.inner.open.get() {
+                self.inner.open.set(false);
+
+                xcb::xcb_disconnect(self.inner.connection);
+            }
+
+            Ok(())
+        }
     }
 
     pub fn start(&self) -> Result<(), ApplicationError> {
