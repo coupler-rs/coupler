@@ -8,6 +8,11 @@ mod macos;
 #[cfg(target_os = "macos")]
 use macos as platform;
 
+#[cfg(target_os = "linux")]
+mod x11;
+#[cfg(target_os = "linux")]
+use x11 as platform;
+
 use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
