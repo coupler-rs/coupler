@@ -4,7 +4,7 @@ use std::cell::Cell;
 use std::error::Error;
 use std::marker::PhantomData;
 use std::rc::Rc;
-use std::{fmt, ptr};
+use std::{ffi, fmt, ptr};
 
 use raw_window_handle::{unix::XlibHandle, HasRawWindowHandle, RawWindowHandle};
 use xcb_sys as xcb;
@@ -12,6 +12,7 @@ use xcb_sys as xcb;
 #[derive(Debug)]
 pub enum ApplicationError {
     ConnectionFailed(i32),
+    GetEvent(i32),
 }
 
 impl fmt::Display for ApplicationError {
@@ -29,6 +30,7 @@ pub struct Application {
 
 struct ApplicationInner {
     open: Cell<bool>,
+    running: Cell<usize>,
     connection: *mut xcb::xcb_connection_t,
     screen: *mut xcb::xcb_screen_t,
 }
@@ -53,7 +55,12 @@ impl Application {
             let screen = roots_iter.data;
 
             Ok(Application {
-                inner: Rc::new(ApplicationInner { open: Cell::new(true), connection, screen }),
+                inner: Rc::new(ApplicationInner {
+                    open: Cell::new(true),
+                    running: Cell::new(0),
+                    connection,
+                    screen,
+                }),
             })
         }
     }
@@ -71,7 +78,29 @@ impl Application {
     }
 
     pub fn start(&self) -> Result<(), ApplicationError> {
-        Ok(())
+        unsafe {
+            if self.inner.open.get() {
+                let depth = self.inner.running.get();
+                self.inner.running.set(depth + 1);
+
+                while self.inner.open.get() && self.inner.running.get() > depth {
+                    let event = xcb::xcb_wait_for_event(self.inner.connection);
+
+                    if event.is_null() {
+                        let error = xcb::xcb_connection_has_error(self.inner.connection);
+                        return Err(ApplicationError::GetEvent(error));
+                    }
+
+                    match (*event).response_type {
+                        _ => {}
+                    }
+
+                    libc::free(event as *mut ffi::c_void);
+                }
+            }
+
+            Ok(())
+        }
     }
 
     pub fn stop(&self) {}
