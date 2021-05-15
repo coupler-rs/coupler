@@ -4,10 +4,30 @@ use std::cell::Cell;
 use std::error::Error;
 use std::marker::PhantomData;
 use std::rc::Rc;
-use std::{ffi, fmt, ptr};
+use std::{ffi, fmt, os, ptr};
 
 use raw_window_handle::{unix::XlibHandle, HasRawWindowHandle, RawWindowHandle};
 use xcb_sys as xcb;
+
+unsafe fn intern_atom(
+    connection: *mut xcb::xcb_connection_t,
+    name: &[u8],
+) -> xcb::xcb_intern_atom_cookie_t {
+    xcb::xcb_intern_atom(connection, 1, name.len() as u16, name.as_ptr() as *const os::raw::c_char)
+}
+
+unsafe fn intern_atom_reply(
+    connection: *mut xcb::xcb_connection_t,
+    cookie: xcb::xcb_intern_atom_cookie_t,
+) -> xcb::xcb_atom_t {
+    let reply = xcb::xcb_intern_atom_reply(connection, cookie, ptr::null_mut());
+    if reply.is_null() {
+        return xcb::XCB_NONE;
+    }
+    let atom = (*reply).atom;
+    libc::free(reply as *mut ffi::c_void);
+    atom
+}
 
 #[derive(Debug)]
 pub enum ApplicationError {
@@ -33,6 +53,8 @@ struct ApplicationInner {
     running: Cell<usize>,
     connection: *mut xcb::xcb_connection_t,
     screen: *mut xcb::xcb_screen_t,
+    wm_protocols: xcb::xcb_atom_t,
+    wm_delete_window: xcb::xcb_atom_t,
 }
 
 impl Application {
@@ -54,12 +76,19 @@ impl Application {
             }
             let screen = roots_iter.data;
 
+            let wm_protocols_cookie = intern_atom(connection, b"WM_PROTOCOLS");
+            let wm_delete_window_cookie = intern_atom(connection, b"WM_DELETE_WINDOW");
+
+            let wm_protocols = intern_atom_reply(connection, wm_protocols_cookie);
+            let wm_delete_window = intern_atom_reply(connection, wm_delete_window_cookie);
             Ok(Application {
                 inner: Rc::new(ApplicationInner {
                     open: Cell::new(true),
                     running: Cell::new(0),
                     connection,
                     screen,
+                    wm_protocols,
+                    wm_delete_window,
                 }),
             })
         }
@@ -174,6 +203,17 @@ impl Window {
                 libc::free(error as *mut ffi::c_void);
                 return Err(WindowError::MapWindow(error_code));
             }
+
+            let atoms = &[application.application.inner.wm_delete_window];
+            xcb::xcb_icccm_set_wm_protocols(
+                application.application.inner.connection,
+                window,
+                application.application.inner.wm_protocols,
+                atoms.len() as u32,
+                atoms.as_ptr() as *mut xcb::xcb_atom_t,
+            );
+
+            xcb::xcb_flush(application.application.inner.connection);
 
             Ok(crate::Window {
                 window: Window { state: Rc::new(WindowState { application: application.clone() }) },
