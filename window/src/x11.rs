@@ -120,7 +120,14 @@ impl Application {
                         return Err(ApplicationError::GetEvent(error));
                     }
 
-                    match (*event).response_type {
+                    match ((*event).response_type & !0x80) as u32 {
+                        xcb::XCB_CLIENT_MESSAGE => {
+                            let event = event as *mut xcb_sys::xcb_client_message_event_t;
+                            if (*event).data.data32[0] == self.inner.wm_delete_window {
+                                let cookie = xcb::xcb_destroy_window(self.inner.connection, (*event).window);
+                                xcb::xcb_request_check(self.inner.connection, cookie);
+                            }
+                        }
                         _ => {}
                     }
 
