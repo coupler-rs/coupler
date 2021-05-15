@@ -107,7 +107,11 @@ impl Application {
 }
 
 #[derive(Debug)]
-pub enum WindowError {}
+pub enum WindowError {
+    ApplicationClosed,
+    WindowCreation(u8),
+    MapWindow(u8),
+}
 
 impl fmt::Display for WindowError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -131,10 +135,51 @@ impl Window {
         application: &crate::Application,
         options: WindowOptions,
     ) -> Result<crate::Window, WindowError> {
-        Ok(crate::Window {
-            window: Window { state: Rc::new(WindowState { application: application.clone() }) },
-            phantom: PhantomData,
-        })
+        unsafe {
+            if !application.application.inner.open.get() {
+                return Err(WindowError::ApplicationClosed);
+            }
+
+            let window = xcb::xcb_generate_id(application.application.inner.connection);
+            let cookie = xcb::xcb_create_window_checked(
+                application.application.inner.connection,
+                xcb::XCB_COPY_FROM_PARENT as u8,
+                window,
+                (*application.application.inner.screen).root,
+                options.rect.x as i16,
+                options.rect.y as i16,
+                options.rect.w as u16,
+                options.rect.h as u16,
+                0,
+                xcb::XCB_WINDOW_CLASS_INPUT_OUTPUT as u16,
+                (*application.application.inner.screen).root_visual,
+                0,
+                ptr::null(),
+                // value_mask,
+            );
+
+            let error = xcb::xcb_request_check(application.application.inner.connection, cookie);
+            if !error.is_null() {
+                let error_code = (*error).error_code;
+                libc::free(error as *mut ffi::c_void);
+                return Err(WindowError::WindowCreation(error_code));
+            }
+
+            let cookie =
+                xcb::xcb_map_window_checked(application.application.inner.connection, window);
+
+            let error = xcb::xcb_request_check(application.application.inner.connection, cookie);
+            if !error.is_null() {
+                let error_code = (*error).error_code;
+                libc::free(error as *mut ffi::c_void);
+                return Err(WindowError::MapWindow(error_code));
+            }
+
+            Ok(crate::Window {
+                window: Window { state: Rc::new(WindowState { application: application.clone() }) },
+                phantom: PhantomData,
+            })
+        }
     }
 
     pub fn request_display(&self) {}
