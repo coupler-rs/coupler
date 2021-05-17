@@ -34,6 +34,7 @@ unsafe fn intern_atom_reply(
 pub enum ApplicationError {
     ConnectionFailed(i32),
     GetEvent(i32),
+    Close(Vec<WindowError>),
 }
 
 impl fmt::Display for ApplicationError {
@@ -102,7 +103,18 @@ impl Application {
             if self.inner.open.get() {
                 self.inner.open.set(false);
 
+                let mut window_errors = Vec::new();
+                for (_, window) in self.inner.windows.take() {
+                    if let Err(error) = window.window.close() {
+                        window_errors.push(error);
+                    }
+                }
+
                 xcb::xcb_disconnect(self.inner.connection);
+
+                if !window_errors.is_empty() {
+                    return Err(ApplicationError::Close(window_errors));
+                }
             }
 
             Ok(())
