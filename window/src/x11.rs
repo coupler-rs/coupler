@@ -238,6 +238,19 @@ impl Window {
                 atoms.as_ptr() as *mut xcb::xcb_atom_t,
             );
 
+            let title =
+                ffi::CString::new(options.title).unwrap_or_else(|_| ffi::CString::default());
+            xcb::xcb_change_property(
+                application.application.inner.connection,
+                xcb::XCB_PROP_MODE_REPLACE as u8,
+                window_id,
+                xcb::XCB_ATOM_WM_NAME,
+                xcb::XCB_ATOM_STRING,
+                8,
+                title.as_bytes().len() as u32,
+                title.as_ptr() as *const ffi::c_void,
+            );
+
             let window = crate::Window {
                 window: Window {
                     state: Rc::new(WindowState {
