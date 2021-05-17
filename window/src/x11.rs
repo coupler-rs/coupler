@@ -139,7 +139,11 @@ impl Application {
         }
     }
 
-    pub fn stop(&self) {}
+    pub fn stop(&self) {
+        unsafe {
+            self.inner.running.set(self.inner.running.get().saturating_sub(1));
+        }
+    }
 }
 
 #[derive(Debug)]
