@@ -1,4 +1,4 @@
-use crate::{Rect, WindowOptions};
+use crate::{Rect, WindowHandler, WindowOptions};
 
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -84,6 +84,7 @@ impl Application {
 
             let wm_protocols = intern_atom_reply(connection, wm_protocols_cookie);
             let wm_delete_window = intern_atom_reply(connection, wm_delete_window_cookie);
+
             Ok(Application {
                 inner: Rc::new(ApplicationInner {
                     open: Cell::new(true),
@@ -143,7 +144,7 @@ impl Application {
                                 let window = windows.get(&(*event).window).cloned();
                                 self.inner.windows.set(windows);
                                 if let Some(window) = window {
-                                    window.window.close();
+                                    window.window.state.handler.request_close(&window);
                                 }
                             }
                         }
@@ -190,6 +191,7 @@ struct WindowState {
     open: Cell<bool>,
     window_id: u32,
     application: crate::Application,
+    handler: Box<dyn WindowHandler>,
 }
 
 impl Window {
@@ -227,6 +229,33 @@ impl Window {
                 return Err(WindowError::WindowCreation(error_code));
             }
 
+            let atoms = &[application.application.inner.wm_delete_window];
+            xcb::xcb_icccm_set_wm_protocols(
+                application.application.inner.connection,
+                window_id,
+                application.application.inner.wm_protocols,
+                atoms.len() as u32,
+                atoms.as_ptr() as *mut xcb::xcb_atom_t,
+            );
+
+            let window = crate::Window {
+                window: Window {
+                    state: Rc::new(WindowState {
+                        open: Cell::new(true),
+                        window_id,
+                        application: application.clone(),
+                        handler: options.handler,
+                    }),
+                },
+                phantom: PhantomData,
+            };
+
+            let mut application_windows = application.application.inner.windows.take();
+            application_windows.insert(window_id, window.clone());
+            application.application.inner.windows.set(application_windows);
+
+            window.window.state.handler.create(&window);
+
             let cookie =
                 xcb::xcb_map_window_checked(application.application.inner.connection, window_id);
 
@@ -237,31 +266,7 @@ impl Window {
                 return Err(WindowError::MapWindow(error_code));
             }
 
-            let atoms = &[application.application.inner.wm_delete_window];
-            xcb::xcb_icccm_set_wm_protocols(
-                application.application.inner.connection,
-                window_id,
-                application.application.inner.wm_protocols,
-                atoms.len() as u32,
-                atoms.as_ptr() as *mut xcb::xcb_atom_t,
-            );
-
             xcb::xcb_flush(application.application.inner.connection);
-
-            let window = crate::Window {
-                window: Window {
-                    state: Rc::new(WindowState {
-                        open: Cell::new(true),
-                        window_id,
-                        application: application.clone(),
-                    }),
-                },
-                phantom: PhantomData,
-            };
-
-            let mut application_windows = application.application.inner.windows.take();
-            application_windows.insert(window_id, window.clone());
-            application.application.inner.windows.set(application_windows);
 
             Ok(window)
         }
@@ -282,6 +287,9 @@ impl Window {
                     self.state.application.application.inner.windows.take();
                 application_windows.remove(&self.state.window_id);
                 self.state.application.application.inner.windows.set(application_windows);
+
+                let window = crate::Window { window: self.clone(), phantom: PhantomData };
+                window.window.state.handler.destroy(&window);
 
                 let cookie = xcb::xcb_destroy_window_checked(
                     self.state.application.application.inner.connection,
