@@ -1,6 +1,7 @@
 use crate::{Rect, WindowOptions};
 
 use std::cell::Cell;
+use std::collections::HashMap;
 use std::error::Error;
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -55,6 +56,7 @@ struct ApplicationInner {
     screen: *mut xcb::xcb_screen_t,
     wm_protocols: xcb::xcb_atom_t,
     wm_delete_window: xcb::xcb_atom_t,
+    windows: Cell<HashMap<u32, crate::Window>>,
 }
 
 impl Application {
@@ -89,6 +91,7 @@ impl Application {
                     screen,
                     wm_protocols,
                     wm_delete_window,
+                    windows: Cell::new(HashMap::new()),
                 }),
             })
         }
@@ -124,8 +127,12 @@ impl Application {
                         xcb::XCB_CLIENT_MESSAGE => {
                             let event = event as *mut xcb_sys::xcb_client_message_event_t;
                             if (*event).data.data32[0] == self.inner.wm_delete_window {
-                                let cookie = xcb::xcb_destroy_window(self.inner.connection, (*event).window);
-                                xcb::xcb_request_check(self.inner.connection, cookie);
+                                let windows = self.inner.windows.take();
+                                let window = windows.get(&(*event).window).cloned();
+                                self.inner.windows.set(windows);
+                                if let Some(window) = window {
+                                    window.window.close();
+                                }
                             }
                         }
                         _ => {}
@@ -151,6 +158,7 @@ pub enum WindowError {
     ApplicationClosed,
     WindowCreation(u8),
     MapWindow(u8),
+    InvalidWindowId,
 }
 
 impl fmt::Display for WindowError {
@@ -167,6 +175,8 @@ pub struct Window {
 }
 
 struct WindowState {
+    open: Cell<bool>,
+    window_id: u32,
     application: crate::Application,
 }
 
@@ -180,11 +190,11 @@ impl Window {
                 return Err(WindowError::ApplicationClosed);
             }
 
-            let window = xcb::xcb_generate_id(application.application.inner.connection);
+            let window_id = xcb::xcb_generate_id(application.application.inner.connection);
             let cookie = xcb::xcb_create_window_checked(
                 application.application.inner.connection,
                 xcb::XCB_COPY_FROM_PARENT as u8,
-                window,
+                window_id,
                 (*application.application.inner.screen).root,
                 options.rect.x as i16,
                 options.rect.y as i16,
@@ -206,7 +216,7 @@ impl Window {
             }
 
             let cookie =
-                xcb::xcb_map_window_checked(application.application.inner.connection, window);
+                xcb::xcb_map_window_checked(application.application.inner.connection, window_id);
 
             let error = xcb::xcb_request_check(application.application.inner.connection, cookie);
             if !error.is_null() {
@@ -218,7 +228,7 @@ impl Window {
             let atoms = &[application.application.inner.wm_delete_window];
             xcb::xcb_icccm_set_wm_protocols(
                 application.application.inner.connection,
-                window,
+                window_id,
                 application.application.inner.wm_protocols,
                 atoms.len() as u32,
                 atoms.as_ptr() as *mut xcb::xcb_atom_t,
@@ -226,10 +236,22 @@ impl Window {
 
             xcb::xcb_flush(application.application.inner.connection);
 
-            Ok(crate::Window {
-                window: Window { state: Rc::new(WindowState { application: application.clone() }) },
+            let window = crate::Window {
+                window: Window {
+                    state: Rc::new(WindowState {
+                        open: Cell::new(true),
+                        window_id,
+                        application: application.clone(),
+                    }),
+                },
                 phantom: PhantomData,
-            })
+            };
+
+            let mut application_windows = application.application.inner.windows.take();
+            application_windows.insert(window_id, window.clone());
+            application.application.inner.windows.set(application_windows);
+
+            Ok(window)
         }
     }
 
@@ -240,7 +262,32 @@ impl Window {
     pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {}
 
     pub fn close(&self) -> Result<(), WindowError> {
-        Ok(())
+        unsafe {
+            if self.state.open.get() {
+                self.state.open.set(false);
+
+                let mut application_windows =
+                    self.state.application.application.inner.windows.take();
+                application_windows.remove(&self.state.window_id);
+                self.state.application.application.inner.windows.set(application_windows);
+
+                let cookie = xcb::xcb_destroy_window_checked(
+                    self.state.application.application.inner.connection,
+                    self.state.window_id,
+                );
+                let error = xcb::xcb_request_check(
+                    self.state.application.application.inner.connection,
+                    cookie,
+                );
+
+                if !error.is_null() {
+                    libc::free(error as *mut ffi::c_void);
+                    return Err(WindowError::InvalidWindowId);
+                }
+            }
+
+            Ok(())
+        }
     }
 
     pub fn application(&self) -> &crate::Application {
