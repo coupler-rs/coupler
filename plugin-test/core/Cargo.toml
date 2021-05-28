@@ -1,0 +1,11 @@
+[package]
+name = "plugin-test"
+version = "0.1.0"
+authors = ["Micah Johnston <micah@glowcoil.com>"]
+edition = "2018"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+plugin = { path = "../../plugin" }

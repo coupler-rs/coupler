@@ -6,5 +6,7 @@ members = [
     "api/vst3",
     "api/vst3-test",
     "graphics",
+    "plugin",
+    "plugin-test/*",
     "window",
 ]
