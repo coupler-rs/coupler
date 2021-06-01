@@ -9,11 +9,7 @@ use vst2::*;
 
 unsafe fn copy_cstring(string: &str, dst: *mut c_char, len: usize) {
     let name = ffi::CString::new(string).unwrap_or_else(|_| ffi::CString::default());
-    ptr::copy_nonoverlapping(
-        name.as_ptr(),
-        dst as *mut c_char,
-        name.as_bytes().len().min(len),
-    );
+    ptr::copy_nonoverlapping(name.as_ptr(), dst as *mut c_char, name.as_bytes().len().min(len));
 }
 
 #[repr(C)]
@@ -39,14 +35,18 @@ extern "C" fn dispatcher<P: Plugin>(
             OPEN => {}
             CLOSE => {
                 drop(Box::from_raw(effect));
-            },
+            }
             SET_PROGRAM => {}
             GET_PROGRAM => {}
             SET_PROGRAM_NAME => {}
             GET_PROGRAM_NAME => {}
             GET_PARAM_LABEL => {
                 if let Some(param) = P::PARAMS.get(index as usize) {
-                    copy_cstring(param.label, ptr as *mut c_char, string_constants::MAX_PARAM_STR_LEN);
+                    copy_cstring(
+                        param.label,
+                        ptr as *mut c_char,
+                        string_constants::MAX_PARAM_STR_LEN,
+                    );
                 }
                 return 0;
             }
@@ -59,7 +59,11 @@ extern "C" fn dispatcher<P: Plugin>(
             }
             GET_PARAM_NAME => {
                 if let Some(param) = P::PARAMS.get(index as usize) {
-                    copy_cstring(param.name, ptr as *mut c_char, string_constants::MAX_PARAM_STR_LEN);
+                    copy_cstring(
+                        param.name,
+                        ptr as *mut c_char,
+                        string_constants::MAX_PARAM_STR_LEN,
+                    );
                 }
                 return 0;
             }
@@ -92,15 +96,27 @@ extern "C" fn dispatcher<P: Plugin>(
             SET_SPEAKER_ARRANGEMENT => {}
             SET_BYPASS => {}
             GET_EFFECT_NAME => {
-                copy_cstring(P::INFO.name, ptr as *mut c_char, string_constants::MAX_EFFECT_NAME_LEN);
+                copy_cstring(
+                    P::INFO.name,
+                    ptr as *mut c_char,
+                    string_constants::MAX_EFFECT_NAME_LEN,
+                );
                 return 1;
             }
             GET_VENDOR_STRING => {
-                copy_cstring(P::INFO.vendor, ptr as *mut c_char, string_constants::MAX_VENDOR_STR_LEN);
+                copy_cstring(
+                    P::INFO.vendor,
+                    ptr as *mut c_char,
+                    string_constants::MAX_VENDOR_STR_LEN,
+                );
                 return 1;
             }
             GET_PRODUCT_STRING => {
-                copy_cstring(P::INFO.name, ptr as *mut c_char, string_constants::MAX_PRODUCT_STR_LEN);
+                copy_cstring(
+                    P::INFO.name,
+                    ptr as *mut c_char,
+                    string_constants::MAX_PRODUCT_STR_LEN,
+                );
                 return 1;
             }
             GET_VENDOR_VERSION => {}
@@ -201,7 +217,12 @@ pub fn plugin_main<P: Plugin>(_host_callback: HostCallbackProc) -> *mut AEffect 
             io_ratio: 0.0,
             object: std::ptr::null_mut(),
             user: std::ptr::null_mut(),
-            unique_id: cconst(P::INFO.unique_id[0], P::INFO.unique_id[1], P::INFO.unique_id[2], P::INFO.unique_id[3]),
+            unique_id: cconst(
+                P::INFO.unique_id[0],
+                P::INFO.unique_id[1],
+                P::INFO.unique_id[2],
+                P::INFO.unique_id[3],
+            ),
             version: 0,
             process_replacing: process,
             process_replacing_f64: process_f64,
