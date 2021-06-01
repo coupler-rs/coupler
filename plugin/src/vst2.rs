@@ -1,8 +1,9 @@
-use crate::Plugin;
+use crate::{Param, Params, ParamsInner, Plugin};
 
+use std::cell::UnsafeCell;
 use std::os::raw::c_char;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::{ffi, ptr};
+use std::{ffi, ptr, slice};
 
 pub use vst2;
 use vst2::*;
@@ -13,9 +14,24 @@ unsafe fn copy_cstring(string: &str, dst: *mut c_char, len: usize) {
 }
 
 #[repr(C)]
-struct Wrapper {
+struct Wrapper<P> {
     effect: AEffect,
     params: Vec<AtomicU64>,
+    plugin: UnsafeCell<P>,
+}
+
+struct Vst2Params<'a> {
+    params: &'a [AtomicU64],
+}
+
+impl<'a> ParamsInner for Vst2Params<'a> {
+    fn get(&self, param: &Param) -> f64 {
+        f64::from_bits(self.params[param.id].load(Ordering::Relaxed))
+    }
+
+    fn set(&self, param: &Param, value: f64) {
+        self.params[param.id].store(value.to_bits(), Ordering::Relaxed);
+    }
 }
 
 extern "C" fn dispatcher<P: Plugin>(
@@ -29,7 +45,7 @@ extern "C" fn dispatcher<P: Plugin>(
     unsafe {
         use effect_opcodes::*;
 
-        let wrapper = &*(effect as *const Wrapper);
+        let wrapper = &*(effect as *const Wrapper<P>);
 
         match opcode {
             OPEN => {}
@@ -163,17 +179,9 @@ pub extern "C" fn process(
 ) {
 }
 
-pub extern "C" fn process_f64(
-    _effect: *mut AEffect,
-    _inputs: *const *const f64,
-    _outputs: *mut *mut f64,
-    _sample_frames: i32,
-) {
-}
-
 pub extern "C" fn set_parameter<P: Plugin>(effect: *mut AEffect, index: i32, parameter: f32) {
     unsafe {
-        let wrapper = &*(effect as *const Wrapper);
+        let wrapper = &*(effect as *const Wrapper<P>);
         if let Some(param) = wrapper.params.get(index as usize) {
             param.store((parameter as f64).to_bits(), Ordering::Relaxed);
         }
@@ -182,7 +190,7 @@ pub extern "C" fn set_parameter<P: Plugin>(effect: *mut AEffect, index: i32, par
 
 pub extern "C" fn get_parameter<P: Plugin>(effect: *mut AEffect, index: i32) -> f32 {
     unsafe {
-        let wrapper = &*(effect as *const Wrapper);
+        let wrapper = &*(effect as *const Wrapper<P>);
         if let Some(param) = wrapper.params.get(index as usize) {
             f64::from_bits(param.load(Ordering::Relaxed)) as f32
         } else {
@@ -191,11 +199,48 @@ pub extern "C" fn get_parameter<P: Plugin>(effect: *mut AEffect, index: i32) -> 
     }
 }
 
+pub extern "C" fn process_replacing<P: Plugin>(
+    effect: *mut AEffect,
+    inputs: *const *const f32,
+    outputs: *mut *mut f32,
+    sample_frames: i32,
+) {
+    unsafe {
+        let wrapper = &*(effect as *const Wrapper<P>);
+
+        let params = Params { inner: &Vst2Params { params: &wrapper.params } };
+
+        let input_ptrs = slice::from_raw_parts(inputs, 2);
+        let input_slices = &[
+            slice::from_raw_parts(input_ptrs[0], sample_frames as usize),
+            slice::from_raw_parts(input_ptrs[1], sample_frames as usize),
+        ];
+
+        let output_ptrs = slice::from_raw_parts(outputs, 2);
+        let output_slices = &mut [
+            slice::from_raw_parts_mut(output_ptrs[0], sample_frames as usize),
+            slice::from_raw_parts_mut(output_ptrs[1], sample_frames as usize),
+        ];
+
+        (*wrapper.plugin.get()).process(&params, input_slices, output_slices);
+    }
+}
+
+pub extern "C" fn process_replacing_f64(
+    _effect: *mut AEffect,
+    _inputs: *const *const f64,
+    _outputs: *mut *mut f64,
+    _sample_frames: i32,
+) {
+}
+
 pub fn plugin_main<P: Plugin>(_host_callback: HostCallbackProc) -> *mut AEffect {
     let mut params = Vec::with_capacity(P::PARAMS.len());
     for _ in 0..P::PARAMS.len() {
         params.push(AtomicU64::new(0f64.to_bits()));
     }
+
+    let plugin = UnsafeCell::new(P::new());
 
     Box::into_raw(Box::new(Wrapper {
         effect: AEffect {
@@ -208,7 +253,7 @@ pub fn plugin_main<P: Plugin>(_host_callback: HostCallbackProc) -> *mut AEffect 
             num_params: P::PARAMS.len() as i32,
             num_inputs: 2,
             num_outputs: 2,
-            flags: 0,
+            flags: effect_flags::CAN_REPLACING,
             _reserved_1: 0,
             _reserved_2: 0,
             initial_delay: 0,
@@ -224,11 +269,12 @@ pub fn plugin_main<P: Plugin>(_host_callback: HostCallbackProc) -> *mut AEffect 
                 P::INFO.unique_id[3],
             ),
             version: 0,
-            process_replacing: process,
-            process_replacing_f64: process_f64,
+            process_replacing: process_replacing::<P>,
+            process_replacing_f64,
             _future: [0; 56],
         },
         params,
+        plugin,
     })) as *mut AEffect
 }
 
