@@ -45,12 +45,12 @@ extern "C" fn dispatcher<P: Plugin>(
     unsafe {
         use effect_opcodes::*;
 
-        let wrapper = &*(effect as *const Wrapper<P>);
+        let wrapper_ptr = effect as *mut Wrapper<P>;
 
         match opcode {
             OPEN => {}
             CLOSE => {
-                drop(Box::from_raw(effect));
+                drop(Box::from_raw(wrapper_ptr));
             }
             SET_PROGRAM => {}
             GET_PROGRAM => {}
@@ -67,6 +67,7 @@ extern "C" fn dispatcher<P: Plugin>(
                 return 0;
             }
             GET_PARAM_DISPLAY => {
+                let wrapper = &*wrapper_ptr;
                 if let Some(param) = wrapper.params.get(index as usize) {
                     let display = format!("{}", f64::from_bits(param.load(Ordering::Relaxed)));
                     copy_cstring(&display, ptr as *mut c_char, string_constants::MAX_PARAM_STR_LEN);
