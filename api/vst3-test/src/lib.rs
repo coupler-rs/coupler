@@ -111,13 +111,39 @@ static FACTORY_VTABLE: IPluginFactory = {
 
 static FACTORY: Factory = Factory { vtable: &FACTORY_VTABLE };
 
+#[cfg(target_os = "windows")]
 #[no_mangle]
 pub extern "system" fn InitDll() -> bool {
     true
 }
 
+#[cfg(target_os = "windows")]
 #[no_mangle]
 pub extern "system" fn ExitDll() -> bool {
+    true
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "system" fn BundleEntry(bundle_ref: core_foundation::CFBundleRef) -> bool {
+    true
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "system" fn BundleExit() -> bool {
+    true
+}
+
+#[cfg(target_os = "linux")]
+#[no_mangle]
+pub extern "system" fn ModuleEntry(library_handle: *mut c_void) -> bool {
+    true
+}
+
+#[cfg(target_os = "linux")]
+#[no_mangle]
+pub extern "system" fn ModuleExit() -> bool {
     true
 }
 
