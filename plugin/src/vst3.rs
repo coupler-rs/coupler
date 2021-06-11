@@ -60,7 +60,7 @@ impl<P: Plugin> Factory<P> {
             copy_cstring(P::INFO.vendor, info.vendor.as_mut_ptr(), info.vendor.len());
             copy_cstring(P::INFO.url, info.url.as_mut_ptr(), info.url.len());
             copy_cstring(P::INFO.email, info.email.as_mut_ptr(), info.email.len());
-            info.flags = PFactoryInfo::NO_FLAGS;
+            info.flags = PFactoryInfo::UNICODE;
 
             result::OK
         }

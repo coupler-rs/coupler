@@ -50,7 +50,7 @@ static FACTORY_VTABLE: IPluginFactory = {
             std::ptr::copy(email.as_ptr() as *const c_char, info.email.as_mut_ptr(), email.len())
         };
 
-        info.flags = PFactoryInfo::NO_FLAGS;
+        info.flags = PFactoryInfo::UNICODE;
 
         result::OK
     }
