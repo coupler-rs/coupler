@@ -125,7 +125,7 @@ pub extern "system" fn ExitDll() -> bool {
 
 #[cfg(target_os = "macos")]
 #[no_mangle]
-pub extern "system" fn BundleEntry(_bundle_ref: core_foundation::CFBundleRef) -> bool {
+pub extern "system" fn BundleEntry(_bundle_ref: core_foundation::bundle::CFBundleRef) -> bool {
     true
 }
 

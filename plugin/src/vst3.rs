@@ -5,6 +5,9 @@ use std::marker::PhantomData;
 use std::os::raw::c_char;
 use std::{ffi, ptr};
 
+#[cfg(target_os = "macos")]
+pub use core_foundation;
+
 pub use vst3 as vst3_api;
 use vst3::*;
 
@@ -137,7 +140,9 @@ macro_rules! vst3 {
 
             #[cfg(target_os = "macos")]
             #[no_mangle]
-            extern "system" fn BundleEntry(bundle_ref: _core_foundation::CFBundleRef) -> bool {
+            extern "system" fn BundleEntry(
+                _bundle_ref: $crate::vst3::core_foundation::bundle::CFBundleRef,
+            ) -> bool {
                 true
             }
 
