@@ -7,8 +7,14 @@ pub struct TestPlugin {
 const GAIN: Param = Param { id: 0, name: "gain", label: "dB" };
 
 impl Plugin for TestPlugin {
-    const INFO: PluginInfo =
-        PluginInfo { name: "Test Plugin", vendor: "Test Vendor", unique_id: *b"asdf" };
+    const INFO: PluginInfo = PluginInfo {
+        name: "gain",
+        vendor: "glowcoil",
+        url: "https://glowcoil.com",
+        email: "micah@glowcoil.com",
+        unique_id: *b"asdf",
+        uid: [0x1A4F6893, 0x11460191, 0x0000B439, 0xE5648ADA],
+    };
 
     const PARAMS: &'static [&'static Param] = &[&GAIN];
 

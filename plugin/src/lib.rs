@@ -1,9 +1,13 @@
 pub mod vst2;
+pub mod vst3;
 
 pub struct PluginInfo {
     pub name: &'static str,
     pub vendor: &'static str,
+    pub url: &'static str,
+    pub email: &'static str,
     pub unique_id: [u8; 4],
+    pub uid: [u32; 4],
 }
 
 pub struct Param {
