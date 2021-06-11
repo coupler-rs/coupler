@@ -5,7 +5,7 @@ use std::os::raw::c_char;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::{ffi, ptr, slice};
 
-pub use vst2;
+pub use vst2 as vst2_api;
 use vst2::*;
 
 unsafe fn copy_cstring(string: &str, dst: *mut c_char, len: usize) {
@@ -172,7 +172,7 @@ extern "C" fn dispatcher<P: Plugin>(
     }
 }
 
-pub extern "C" fn process(
+extern "C" fn process(
     _effect: *mut AEffect,
     _inputs: *const *const f32,
     _outputs: *mut *mut f32,
@@ -180,7 +180,7 @@ pub extern "C" fn process(
 ) {
 }
 
-pub extern "C" fn set_parameter<P: Plugin>(effect: *mut AEffect, index: i32, parameter: f32) {
+extern "C" fn set_parameter<P: Plugin>(effect: *mut AEffect, index: i32, parameter: f32) {
     unsafe {
         let wrapper = &*(effect as *const Wrapper<P>);
         if let Some(param) = wrapper.params.get(index as usize) {
@@ -189,7 +189,7 @@ pub extern "C" fn set_parameter<P: Plugin>(effect: *mut AEffect, index: i32, par
     }
 }
 
-pub extern "C" fn get_parameter<P: Plugin>(effect: *mut AEffect, index: i32) -> f32 {
+extern "C" fn get_parameter<P: Plugin>(effect: *mut AEffect, index: i32) -> f32 {
     unsafe {
         let wrapper = &*(effect as *const Wrapper<P>);
         if let Some(param) = wrapper.params.get(index as usize) {
@@ -200,7 +200,7 @@ pub extern "C" fn get_parameter<P: Plugin>(effect: *mut AEffect, index: i32) -> 
     }
 }
 
-pub extern "C" fn process_replacing<P: Plugin>(
+extern "C" fn process_replacing<P: Plugin>(
     effect: *mut AEffect,
     inputs: *const *const f32,
     outputs: *mut *mut f32,
@@ -227,7 +227,7 @@ pub extern "C" fn process_replacing<P: Plugin>(
     }
 }
 
-pub extern "C" fn process_replacing_f64(
+extern "C" fn process_replacing_f64(
     _effect: *mut AEffect,
     _inputs: *const *const f64,
     _outputs: *mut *mut f64,
@@ -282,19 +282,20 @@ pub fn plugin_main<P: Plugin>(_host_callback: HostCallbackProc) -> *mut AEffect 
 #[macro_export]
 macro_rules! vst2 {
     ($plugin:ty) => {
-        #[cfg(not(test))]
-        #[no_mangle]
-        pub extern "C" fn main(
-            host_callback: $crate::vst2::vst2::HostCallbackProc,
-        ) -> *mut $crate::vst2::vst2::AEffect {
-            $crate::vst2::plugin_main::<$plugin>(host_callback)
-        }
+        mod vst2_impl {
+            use $crate::vst2::vst2_api::*;
+            use $crate::vst2::*;
 
-        #[no_mangle]
-        pub extern "C" fn VSTPluginMain(
-            host_callback: $crate::vst2::vst2::HostCallbackProc,
-        ) -> *mut $crate::vst2::vst2::AEffect {
-            $crate::vst2::plugin_main::<$plugin>(host_callback)
+            #[cfg(not(test))]
+            #[no_mangle]
+            extern "C" fn main(host_callback: HostCallbackProc) -> *mut AEffect {
+                plugin_main::<$plugin>(host_callback)
+            }
+
+            #[no_mangle]
+            extern "C" fn VSTPluginMain(host_callback: HostCallbackProc) -> *mut AEffect {
+                plugin_main::<$plugin>(host_callback)
+            }
         }
     };
 }
