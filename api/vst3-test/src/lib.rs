@@ -101,7 +101,7 @@ static FACTORY_VTABLE: IPluginFactory = {
     }
 
     IPluginFactory {
-        parent: FUnknown { query_interface, add_ref, release },
+        unknown: FUnknown { query_interface, add_ref, release },
         get_factory_info,
         count_classes,
         get_class_info,
@@ -125,7 +125,7 @@ pub extern "system" fn ExitDll() -> bool {
 
 #[cfg(target_os = "macos")]
 #[no_mangle]
-pub extern "system" fn BundleEntry(bundle_ref: core_foundation::CFBundleRef) -> bool {
+pub extern "system" fn BundleEntry(_bundle_ref: core_foundation::CFBundleRef) -> bool {
     true
 }
 
@@ -137,7 +137,7 @@ pub extern "system" fn BundleExit() -> bool {
 
 #[cfg(target_os = "linux")]
 #[no_mangle]
-pub extern "system" fn ModuleEntry(library_handle: *mut c_void) -> bool {
+pub extern "system" fn ModuleEntry(_library_handle: *mut c_void) -> bool {
     true
 }
 

@@ -95,8 +95,19 @@ impl FUnknown {
 }
 
 #[repr(C)]
+pub struct IPluginBase {
+    pub unknown: FUnknown,
+    pub initialize: unsafe extern "system" fn(context: *mut FUnknown) -> TResult,
+    pub terminate: unsafe extern "system" fn() -> TResult,
+}
+
+impl IPluginBase {
+    pub const IID: TUID = iid(0x22888DDB, 0x156E45AE, 0x8358B348, 0x08190625);
+}
+
+#[repr(C)]
 pub struct IPluginFactory {
-    pub parent: FUnknown,
+    pub unknown: FUnknown,
     pub get_factory_info:
         unsafe extern "system" fn(this: *mut c_void, info: *mut PFactoryInfo) -> TResult,
     pub count_classes: unsafe extern "system" fn(this: *mut c_void) -> i32,
@@ -140,4 +151,51 @@ pub struct PClassInfo {
 
 impl PClassInfo {
     pub const MANY_INSTANCES: i32 = 0x7FFFFFFF;
+}
+
+#[repr(C)]
+pub struct IPluginFactory2 {
+    plugin_factory: IPluginFactory,
+    get_class_info_2: unsafe extern "system" fn(index: i32, info: *mut PClassInfo2) -> TResult,
+}
+
+impl IPluginFactory2 {
+    pub const IID: TUID = iid(0x0007B650, 0xF24B4C0B, 0xA464EDB9, 0xF00B2ABB);
+}
+
+#[repr(C)]
+pub struct PClassInfo2 {
+    pub cid: TUID,
+    pub cardinality: i32,
+    pub category: [c_char; 32],
+    pub name: [c_char; 64],
+    pub class_flags: u32,
+    pub sub_categories: [c_char; 128],
+    pub vendor: [c_char; 64],
+    pub version: [c_char; 64],
+    pub sdk_version: [c_char; 64],
+}
+
+#[repr(C)]
+pub struct IPluginFactory3 {
+    pub plugin_factory_2: IPluginFactory2,
+    pub get_class_info_unicode: unsafe extern "system" fn(index: i32, info: *mut PClassInfoW) -> TResult,
+    pub set_host_context: unsafe extern "system" fn(context: *mut FUnknown) -> TResult,
+}
+
+impl IPluginFactory3 {
+    pub const IID: TUID = iid(0x4555A2AB, 0xC1234E57, 0x9B122910, 0x36878931);
+}
+
+#[repr(C)]
+pub struct PClassInfoW {
+    pub cid: TUID,
+    pub cardinality: i32,
+    pub category: [c_char; 32],
+    pub name: [i16; 64],
+    pub class_flags: u32,
+    pub sub_categories: [c_char; 128],
+    pub vendor: [i16; 64],
+    pub version: [i16; 64],
+    pub sdk_version: [i16; 64],
 }
