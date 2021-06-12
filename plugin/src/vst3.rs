@@ -1,5 +1,6 @@
 use crate::Plugin;
 
+use std::cell::UnsafeCell;
 use std::ffi::c_void;
 use std::marker::PhantomData;
 use std::os::raw::c_char;
@@ -18,7 +19,7 @@ unsafe fn copy_cstring(string: &str, dst: *mut c_char, len: usize) {
 
 #[repr(C)]
 pub struct Factory<P> {
-    pub vtable: *const IPluginFactory,
+    pub plugin_factory: *const IPluginFactory,
     pub phantom: PhantomData<P>,
 }
 
@@ -101,6 +102,293 @@ impl<P: Plugin> Factory<P> {
     }
 }
 
+#[repr(C)]
+pub struct Wrapper<P> {
+    pub component: *const IComponent,
+    pub audio_processor: *const IAudioProcessor,
+    pub edit_controller: *const IEditController,
+    pub plugin: UnsafeCell<P>,
+}
+
+impl<P: Plugin> Wrapper<P> {
+    pub extern "system" fn component_query_interface(
+        this: *mut c_void,
+        iid: *const TUID,
+        obj: *mut *mut c_void,
+    ) -> TResult {
+        result::NO_INTERFACE
+    }
+
+    pub extern "system" fn component_add_ref(_this: *mut c_void) -> u32 {
+        1
+    }
+
+    pub extern "system" fn component_release(_this: *mut c_void) -> u32 {
+        1
+    }
+
+    pub unsafe extern "system" fn component_initialize(
+        this: *mut c_void,
+        context: *mut FUnknown,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn component_terminate(this: *mut c_void) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn get_controller_class_id(
+        this: *mut c_void,
+        class_id: *const TUID,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn set_io_mode(this: *mut c_void, mode: IoMode) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn get_bus_count(
+        this: *mut c_void,
+        media_type: MediaType,
+        dir: BusDirection,
+    ) -> i32 {
+        0
+    }
+
+    pub unsafe extern "system" fn get_bus_info(
+        this: *mut c_void,
+        media_type: MediaType,
+        dir: BusDirection,
+        index: i32,
+        bus: *mut BusInfo,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn get_routing_info(
+        this: *mut c_void,
+        in_info: *mut RoutingInfo,
+        out_info: *mut RoutingInfo,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn activate_bus(
+        this: *mut c_void,
+        media_type: MediaType,
+        dir: BusDirection,
+        index: i32,
+        state: TBool,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn set_active(this: *mut c_void, state: TBool) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn component_set_state(
+        this: *mut c_void,
+        state: *mut IBStream,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn component_get_state(
+        this: *mut c_void,
+        state: *mut IBStream,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub extern "system" fn audio_processor_query_interface(
+        this: *mut c_void,
+        iid: *const TUID,
+        obj: *mut *mut c_void,
+    ) -> TResult {
+        result::NO_INTERFACE
+    }
+
+    pub extern "system" fn audio_processor_add_ref(_this: *mut c_void) -> u32 {
+        1
+    }
+
+    pub extern "system" fn audio_processor_release(_this: *mut c_void) -> u32 {
+        1
+    }
+
+    pub unsafe extern "system" fn set_bus_arrangements(
+        this: *mut c_void,
+        inputs: *const SpeakerArrangement,
+        num_ins: i32,
+        outputs: *const SpeakerArrangement,
+        num_outs: i32,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn get_bus_arrangement(
+        this: *mut c_void,
+        dir: BusDirection,
+        index: i32,
+        arr: *mut SpeakerArrangement,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn can_process_sample_size(
+        this: *mut c_void,
+        symbolic_sample_size: i32,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn get_latency_samples(this: *mut c_void) -> u32 {
+        0
+    }
+
+    pub unsafe extern "system" fn setup_processing(
+        this: *mut c_void,
+        setup: *mut ProcessSetup,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn set_processing(this: *mut c_void, state: TBool) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn process(this: *mut c_void, data: *mut ProcessData) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn get_tail_samples(this: *mut c_void) -> u32 {
+        0
+    }
+
+    pub extern "system" fn edit_controller_query_interface(
+        this: *mut c_void,
+        iid: *const TUID,
+        obj: *mut *mut c_void,
+    ) -> TResult {
+        result::NO_INTERFACE
+    }
+
+    pub extern "system" fn edit_controller_add_ref(_this: *mut c_void) -> u32 {
+        1
+    }
+
+    pub extern "system" fn edit_controller_release(_this: *mut c_void) -> u32 {
+        1
+    }
+
+    pub unsafe extern "system" fn edit_controller_initialize(
+        this: *mut c_void,
+        context: *mut FUnknown,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn edit_controller_terminate(this: *mut c_void) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn set_component_state(
+        this: *mut c_void,
+        state: *mut *const IBStream,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn edit_controller_set_state(
+        this: *mut c_void,
+        state: *mut *const IBStream,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn edit_controller_get_state(
+        this: *mut c_void,
+        state: *mut *const IBStream,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn get_parameter_count(this: *mut c_void) -> i32 {
+        0
+    }
+
+    pub unsafe extern "system" fn get_parameter_info(
+        this: *mut c_void,
+        param_index: i32,
+        info: *mut ParameterInfo,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn get_param_string_by_value(
+        this: *mut c_void,
+        id: u32,
+        value_normalized: f64,
+        string: *mut String128,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn get_param_value_by_string(
+        this: *mut c_void,
+        id: u32,
+        string: *const TChar,
+        value_normalized: *mut f64,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn normalized_param_to_plain(
+        this: *mut c_void,
+        id: u32,
+        value_normalized: f64,
+    ) -> f64 {
+        0.0
+    }
+
+    pub unsafe extern "system" fn plain_param_to_normalized(
+        this: *mut c_void,
+        id: u32,
+        plain_value: f64,
+    ) -> f64 {
+        0.0
+    }
+
+    pub unsafe extern "system" fn get_param_normalized(this: *mut c_void, id: u32) -> f64 {
+        0.0
+    }
+
+    pub unsafe extern "system" fn set_param_normalized(
+        this: *mut c_void,
+        id: u32,
+        value: f64,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn set_component_handler(
+        this: *mut c_void,
+        handler: *mut *const IComponentHandler,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn create_view(
+        this: *mut c_void,
+        name: *const c_char,
+    ) -> *mut *const IPlugView {
+        ptr::null_mut()
+    }
+}
+
 #[macro_export]
 macro_rules! vst3 {
     ($plugin:ty) => {
@@ -124,7 +412,69 @@ macro_rules! vst3 {
             };
 
             static FACTORY: Factory<$plugin> =
-                Factory { vtable: &FACTORY_VTABLE, phantom: PhantomData };
+                Factory { plugin_factory: &FACTORY_VTABLE, phantom: PhantomData };
+
+            static COMPONENT_VTABLE: IComponent = IComponent {
+                plugin_base: IPluginBase {
+                    unknown: FUnknown {
+                        query_interface: Wrapper::<$plugin>::component_query_interface,
+                        add_ref: Wrapper::<$plugin>::component_add_ref,
+                        release: Wrapper::<$plugin>::component_release,
+                    },
+                    initialize: Wrapper::<$plugin>::component_initialize,
+                    terminate: Wrapper::<$plugin>::component_terminate,
+                },
+                get_controller_class_id: Wrapper::<$plugin>::get_controller_class_id,
+                set_io_mode: Wrapper::<$plugin>::set_io_mode,
+                get_bus_count: Wrapper::<$plugin>::get_bus_count,
+                get_bus_info: Wrapper::<$plugin>::get_bus_info,
+                get_routing_info: Wrapper::<$plugin>::get_routing_info,
+                activate_bus: Wrapper::<$plugin>::activate_bus,
+                set_active: Wrapper::<$plugin>::set_active,
+                set_state: Wrapper::<$plugin>::component_set_state,
+                get_state: Wrapper::<$plugin>::component_get_state,
+            };
+
+            static AUDIO_PROCESSOR_VTABLE: IAudioProcessor = IAudioProcessor {
+                unknown: FUnknown {
+                    query_interface: Wrapper::<$plugin>::audio_processor_query_interface,
+                    add_ref: Wrapper::<$plugin>::audio_processor_add_ref,
+                    release: Wrapper::<$plugin>::audio_processor_release,
+                },
+                set_bus_arrangements: Wrapper::<$plugin>::set_bus_arrangements,
+                get_bus_arrangement: Wrapper::<$plugin>::get_bus_arrangement,
+                can_process_sample_size: Wrapper::<$plugin>::can_process_sample_size,
+                get_latency_samples: Wrapper::<$plugin>::get_latency_samples,
+                setup_processing: Wrapper::<$plugin>::setup_processing,
+                set_processing: Wrapper::<$plugin>::set_processing,
+                process: Wrapper::<$plugin>::process,
+                get_tail_samples: Wrapper::<$plugin>::get_tail_samples,
+            };
+
+            static EDIT_CONTROLLER_VTABLE: IEditController = IEditController {
+                plugin_base: IPluginBase {
+                    unknown: FUnknown {
+                        query_interface: Wrapper::<$plugin>::edit_controller_query_interface,
+                        add_ref: Wrapper::<$plugin>::edit_controller_add_ref,
+                        release: Wrapper::<$plugin>::edit_controller_release,
+                    },
+                    initialize: Wrapper::<$plugin>::edit_controller_initialize,
+                    terminate: Wrapper::<$plugin>::edit_controller_terminate,
+                },
+                set_component_state: Wrapper::<$plugin>::set_component_state,
+                set_state: Wrapper::<$plugin>::edit_controller_set_state,
+                get_state: Wrapper::<$plugin>::edit_controller_get_state,
+                get_parameter_count: Wrapper::<$plugin>::get_parameter_count,
+                get_parameter_info: Wrapper::<$plugin>::get_parameter_info,
+                get_param_string_by_value: Wrapper::<$plugin>::get_param_string_by_value,
+                get_param_value_by_string: Wrapper::<$plugin>::get_param_value_by_string,
+                normalized_param_to_plain: Wrapper::<$plugin>::normalized_param_to_plain,
+                plain_param_to_normalized: Wrapper::<$plugin>::plain_param_to_normalized,
+                get_param_normalized: Wrapper::<$plugin>::get_param_normalized,
+                set_param_normalized: Wrapper::<$plugin>::set_param_normalized,
+                set_component_handler: Wrapper::<$plugin>::set_component_handler,
+                create_view: Wrapper::<$plugin>::create_view,
+            };
 
             #[cfg(target_os = "windows")]
             #[no_mangle]
