@@ -220,7 +220,7 @@ pub struct IPluginFactory3 {
     pub get_class_info_unicode:
         unsafe extern "system" fn(this: *mut c_void, index: i32, info: *mut PClassInfoW) -> TResult,
     pub set_host_context:
-        unsafe extern "system" fn(this: *mut c_void, context: *mut FUnknown) -> TResult,
+        unsafe extern "system" fn(this: *mut c_void, context: *mut *const FUnknown) -> TResult,
 }
 
 impl IPluginFactory3 {
