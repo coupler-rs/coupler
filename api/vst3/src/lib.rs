@@ -191,8 +191,8 @@ pub struct PClassInfo2 {
 
 #[repr(C)]
 pub struct IPluginFactory2 {
-    plugin_factory: IPluginFactory,
-    get_class_info_2:
+    pub plugin_factory: IPluginFactory,
+    pub get_class_info_2:
         unsafe extern "system" fn(this: *mut c_void, index: i32, info: *mut PClassInfo2) -> TResult,
 }
 
