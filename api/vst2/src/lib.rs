@@ -6,6 +6,7 @@ pub const fn cconst(a: u8, b: u8, c: u8, d: u8) -> i32 {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct AEffect {
     pub magic: i32,
     pub dispatcher: DispatcherProc,
@@ -230,6 +231,7 @@ pub mod effect_opcodes {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct Rect {
     pub top: i16,
     pub left: i16,
@@ -238,6 +240,7 @@ pub struct Rect {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct Event {
     pub event_type: i32,
     pub byte_size: i32,
@@ -252,6 +255,7 @@ pub mod event_types {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct Events {
     pub num_events: i32,
     pub _reserved: isize,
@@ -259,6 +263,7 @@ pub struct Events {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct MidiEvent {
     pub event_type: i32,
     pub byte_size: i32,
@@ -278,6 +283,7 @@ pub mod midi_event_flags {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct MidiSysexEvent {
     pub event_type: i32,
     pub byte_size: i32,
@@ -290,6 +296,7 @@ pub struct MidiSysexEvent {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct TimeInfo {
     pub sample_pos: f64,
     pub sample_rate: f64,
@@ -340,6 +347,7 @@ pub mod smpte_frame_rates {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct VariableIo {
     pub inputs: *const *const f32,
     pub outputs: *mut *mut f32,
@@ -364,6 +372,7 @@ pub mod process_precision {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct ParameterProperties {
     pub step_float: f32,
     pub small_step_float: f32,
@@ -394,6 +403,7 @@ pub mod parameter_flags {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct PinProperties {
     pub label: [c_char; string_constants::MAX_LABEL_LEN],
     pub flags: i32,
@@ -424,6 +434,7 @@ pub mod plugin_categories {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct MidiProgramName {
     pub this_program_index: i32,
     pub name: [c_char; string_constants::MAX_NAME_LEN],
@@ -436,6 +447,7 @@ pub struct MidiProgramName {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct MidiProgramCategory {
     pub this_category_index: i32,
     pub name: [c_char; string_constants::MAX_NAME_LEN],
@@ -444,6 +456,7 @@ pub struct MidiProgramCategory {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct MidiKeyName {
     pub this_program_index: i32,
     pub this_key_number: i32,
@@ -453,6 +466,7 @@ pub struct MidiKeyName {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct SpeakerArrangement {
     pub speaker_arrangement_type: i32,
     pub num_channels: i32,
@@ -460,6 +474,7 @@ pub struct SpeakerArrangement {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct SpeakerProperties {
     pub azimuth: f32,
     pub elevation: f32,
@@ -562,6 +577,7 @@ pub mod speaker_arrangement_types {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct OfflineTask {
     pub process_name: [c_char; 96],
     pub read_position: f64,
@@ -619,6 +635,7 @@ pub mod offline_options {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct AudioFile {
     pub flags: i32,
     pub host_owned: *const c_void,
@@ -658,6 +675,7 @@ pub mod audio_file_flags {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct AudioFileMarker {
     pub position: f64,
     pub name: [c_char; 32],
@@ -667,6 +685,7 @@ pub struct AudioFileMarker {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct _Window {
     pub title: [c_char; 128],
     pub x_pos: i16,
@@ -681,6 +700,7 @@ pub struct _Window {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct KeyCode {
     pub character: i32,
     pub virtual_key: u8,
@@ -755,6 +775,7 @@ pub mod modifier_keys {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct FileSelect {
     pub command: i32,
     pub file_select_type: i32,
@@ -772,6 +793,7 @@ pub struct FileSelect {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct FileType {
     pub name: [c_char; 128],
     pub mac_type: [c_char; 8],
@@ -793,6 +815,7 @@ pub mod file_select_types {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct PatchChunkInfo {
     pub version: i32,
     pub plugin_unique_id: i32,

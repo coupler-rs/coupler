@@ -126,6 +126,7 @@ impl IPluginFactory {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct PFactoryInfo {
     pub vendor: [c_char; 64],
     pub url: [c_char; 256],
@@ -142,6 +143,7 @@ impl PFactoryInfo {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct PClassInfo {
     pub cid: TUID,
     pub cardinality: i32,
@@ -164,6 +166,7 @@ impl IPluginFactory2 {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct PClassInfo2 {
     pub cid: TUID,
     pub cardinality: i32,
@@ -188,6 +191,7 @@ impl IPluginFactory3 {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct PClassInfoW {
     pub cid: TUID,
     pub cardinality: i32,
