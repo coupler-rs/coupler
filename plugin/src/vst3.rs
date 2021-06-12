@@ -19,7 +19,7 @@ unsafe fn copy_cstring(string: &str, dst: *mut c_char, len: usize) {
 
 #[repr(C)]
 pub struct Factory<P> {
-    pub plugin_factory: *const IPluginFactory,
+    pub plugin_factory_3: *const IPluginFactory3,
     pub phantom: PhantomData<P>,
 }
 
@@ -99,6 +99,18 @@ impl<P: Plugin> Factory<P> {
         _obj: *mut *mut c_void,
     ) -> TResult {
         result::NOT_IMPLEMENTED
+    }
+
+    pub unsafe extern "system" fn get_class_info_2(this: *mut c_void, index: i32, info: *mut PClassInfo2) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn get_class_info_unicode(this: *mut c_void, index: i32, info: *mut PClassInfoW) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn set_host_context(this: *mut c_void, context: *mut *const FUnknown) -> TResult {
+        result::OK
     }
 }
 
@@ -399,20 +411,27 @@ macro_rules! vst3 {
             use $crate::vst3::vst3_api::*;
             use $crate::vst3::*;
 
-            static FACTORY_VTABLE: IPluginFactory = IPluginFactory {
-                unknown: FUnknown {
-                    query_interface: Factory::<$plugin>::query_interface,
-                    add_ref: Factory::<$plugin>::add_ref,
-                    release: Factory::<$plugin>::release,
+            static PLUGIN_FACTORY_3_VTABLE: IPluginFactory3 = IPluginFactory3 {
+                plugin_factory_2: IPluginFactory2 {
+                    plugin_factory: IPluginFactory {
+                        unknown: FUnknown {
+                            query_interface: Factory::<$plugin>::query_interface,
+                            add_ref: Factory::<$plugin>::add_ref,
+                            release: Factory::<$plugin>::release,
+                        },
+                        get_factory_info: Factory::<$plugin>::get_factory_info,
+                        count_classes: Factory::<$plugin>::count_classes,
+                        get_class_info: Factory::<$plugin>::get_class_info,
+                        create_instance: Factory::<$plugin>::create_instance,
+                    },
+                    get_class_info_2: Factory::<$plugin>::get_class_info_2
                 },
-                get_factory_info: Factory::<$plugin>::get_factory_info,
-                count_classes: Factory::<$plugin>::count_classes,
-                get_class_info: Factory::<$plugin>::get_class_info,
-                create_instance: Factory::<$plugin>::create_instance,
+                get_class_info_unicode: Factory::<$plugin>::get_class_info_unicode,
+                set_host_context: Factory::<$plugin>::set_host_context,
             };
 
-            static FACTORY: Factory<$plugin> =
-                Factory { plugin_factory: &FACTORY_VTABLE, phantom: PhantomData };
+            static PLUGIN_FACTORY: Factory<$plugin> =
+                Factory { plugin_factory_3: &PLUGIN_FACTORY_3_VTABLE, phantom: PhantomData };
 
             static COMPONENT_VTABLE: IComponent = IComponent {
                 plugin_base: IPluginBase {
@@ -516,7 +535,7 @@ macro_rules! vst3 {
 
             #[no_mangle]
             extern "system" fn GetPluginFactory() -> *mut c_void {
-                &FACTORY as *const Factory<$plugin> as *mut c_void
+                &PLUGIN_FACTORY as *const Factory<$plugin> as *mut c_void
             }
         }
     };
