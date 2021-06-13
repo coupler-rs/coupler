@@ -19,6 +19,12 @@ fn copy_cstring(src: &str, dst: &mut [c_char]) {
     }
 }
 
+fn copy_wstring(src: &str, dst: &mut [i16]) {
+    for (src, dst) in src.encode_utf16().zip(dst.iter_mut()) {
+        *dst = src as i16;
+    }
+}
+
 #[repr(C)]
 pub struct Factory<P> {
     pub plugin_factory_3: *const IPluginFactory3,
@@ -101,15 +107,58 @@ impl<P: Plugin> Factory<P> {
         result::NOT_IMPLEMENTED
     }
 
-    pub unsafe extern "system" fn get_class_info_2(this: *mut c_void, index: i32, info: *mut PClassInfo2) -> TResult {
+    pub unsafe extern "system" fn get_class_info_2(
+        this: *mut c_void,
+        index: i32,
+        info: *mut PClassInfo2,
+    ) -> TResult {
+        if index != 0 {
+            return result::INVALID_ARGUMENT;
+        }
+
+        let info = unsafe { &mut *info };
+
+        info.cid = iid(P::INFO.uid[0], P::INFO.uid[1], P::INFO.uid[2], P::INFO.uid[3]);
+        info.cardinality = PClassInfo::MANY_INSTANCES;
+        copy_cstring("Audio Module Class", &mut info.category);
+        copy_cstring(P::INFO.name, &mut info.name);
+        info.class_flags = 0;
+        copy_cstring("Fx", &mut info.sub_categories);
+        copy_cstring(P::INFO.vendor, &mut info.vendor);
+        copy_cstring("", &mut info.version);
+        copy_cstring("VST 3.7", &mut info.sdk_version);
+
         result::OK
     }
 
-    pub unsafe extern "system" fn get_class_info_unicode(this: *mut c_void, index: i32, info: *mut PClassInfoW) -> TResult {
+    pub unsafe extern "system" fn get_class_info_unicode(
+        this: *mut c_void,
+        index: i32,
+        info: *mut PClassInfoW,
+    ) -> TResult {
+        if index != 0 {
+            return result::INVALID_ARGUMENT;
+        }
+
+        let info = unsafe { &mut *info };
+
+        info.cid = iid(P::INFO.uid[0], P::INFO.uid[1], P::INFO.uid[2], P::INFO.uid[3]);
+        info.cardinality = PClassInfo::MANY_INSTANCES;
+        copy_cstring("Audio Module Class", &mut info.category);
+        copy_wstring(P::INFO.name, &mut info.name);
+        info.class_flags = 0;
+        copy_cstring("Fx", &mut info.sub_categories);
+        copy_wstring(P::INFO.vendor, &mut info.vendor);
+        copy_wstring("", &mut info.version);
+        copy_wstring("VST 3.7", &mut info.sdk_version);
+
         result::OK
     }
 
-    pub unsafe extern "system" fn set_host_context(this: *mut c_void, context: *mut *const FUnknown) -> TResult {
+    pub unsafe extern "system" fn set_host_context(
+        this: *mut c_void,
+        context: *mut *const FUnknown,
+    ) -> TResult {
         result::OK
     }
 }
@@ -424,7 +473,7 @@ macro_rules! vst3 {
                         get_class_info: Factory::<$plugin>::get_class_info,
                         create_instance: Factory::<$plugin>::create_instance,
                     },
-                    get_class_info_2: Factory::<$plugin>::get_class_info_2
+                    get_class_info_2: Factory::<$plugin>::get_class_info_2,
                 },
                 get_class_info_unicode: Factory::<$plugin>::get_class_info_unicode,
                 set_host_context: Factory::<$plugin>::set_host_context,
