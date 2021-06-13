@@ -108,7 +108,7 @@ impl<P: Plugin> Factory<P> {
     }
 
     pub unsafe extern "system" fn get_class_info_2(
-        this: *mut c_void,
+        _this: *mut c_void,
         index: i32,
         info: *mut PClassInfo2,
     ) -> TResult {
@@ -132,7 +132,7 @@ impl<P: Plugin> Factory<P> {
     }
 
     pub unsafe extern "system" fn get_class_info_unicode(
-        this: *mut c_void,
+        _this: *mut c_void,
         index: i32,
         info: *mut PClassInfoW,
     ) -> TResult {
@@ -156,8 +156,8 @@ impl<P: Plugin> Factory<P> {
     }
 
     pub unsafe extern "system" fn set_host_context(
-        this: *mut c_void,
-        context: *mut *const FUnknown,
+        _this: *mut c_void,
+        _context: *mut *const FUnknown,
     ) -> TResult {
         result::OK
     }
@@ -173,9 +173,9 @@ pub struct Wrapper<P> {
 
 impl<P: Plugin> Wrapper<P> {
     pub unsafe extern "system" fn component_query_interface(
-        this: *mut c_void,
-        iid: *const TUID,
-        obj: *mut *mut c_void,
+        _this: *mut c_void,
+        _iid: *const TUID,
+        _obj: *mut *mut c_void,
     ) -> TResult {
         result::NO_INTERFACE
     }
@@ -189,85 +189,85 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn component_initialize(
-        this: *mut c_void,
-        context: *mut FUnknown,
+        _this: *mut c_void,
+        _context: *mut FUnknown,
     ) -> TResult {
         result::OK
     }
 
-    pub unsafe extern "system" fn component_terminate(this: *mut c_void) -> TResult {
+    pub unsafe extern "system" fn component_terminate(_this: *mut c_void) -> TResult {
         result::OK
     }
 
     pub unsafe extern "system" fn get_controller_class_id(
-        this: *mut c_void,
-        class_id: *const TUID,
+        _this: *mut c_void,
+        _class_id: *const TUID,
     ) -> TResult {
         result::OK
     }
 
-    pub unsafe extern "system" fn set_io_mode(this: *mut c_void, mode: IoMode) -> TResult {
+    pub unsafe extern "system" fn set_io_mode(_this: *mut c_void, _mode: IoMode) -> TResult {
         result::OK
     }
 
     pub unsafe extern "system" fn get_bus_count(
-        this: *mut c_void,
-        media_type: MediaType,
-        dir: BusDirection,
+        _this: *mut c_void,
+        _media_type: MediaType,
+        _dir: BusDirection,
     ) -> i32 {
         0
     }
 
     pub unsafe extern "system" fn get_bus_info(
-        this: *mut c_void,
-        media_type: MediaType,
-        dir: BusDirection,
-        index: i32,
-        bus: *mut BusInfo,
+        _this: *mut c_void,
+        _media_type: MediaType,
+        _dir: BusDirection,
+        _index: i32,
+        _bus: *mut BusInfo,
     ) -> TResult {
         result::OK
     }
 
     pub unsafe extern "system" fn get_routing_info(
-        this: *mut c_void,
-        in_info: *mut RoutingInfo,
-        out_info: *mut RoutingInfo,
+        _this: *mut c_void,
+        _in_info: *mut RoutingInfo,
+        _out_info: *mut RoutingInfo,
     ) -> TResult {
         result::OK
     }
 
     pub unsafe extern "system" fn activate_bus(
-        this: *mut c_void,
-        media_type: MediaType,
-        dir: BusDirection,
-        index: i32,
-        state: TBool,
+        _this: *mut c_void,
+        _media_type: MediaType,
+        _dir: BusDirection,
+        _index: i32,
+        _state: TBool,
     ) -> TResult {
         result::OK
     }
 
-    pub unsafe extern "system" fn set_active(this: *mut c_void, state: TBool) -> TResult {
+    pub unsafe extern "system" fn set_active(_this: *mut c_void, _state: TBool) -> TResult {
         result::OK
     }
 
     pub unsafe extern "system" fn component_set_state(
-        this: *mut c_void,
-        state: *mut IBStream,
+        _this: *mut c_void,
+        _state: *mut IBStream,
     ) -> TResult {
         result::OK
     }
 
     pub unsafe extern "system" fn component_get_state(
-        this: *mut c_void,
-        state: *mut IBStream,
+        _this: *mut c_void,
+        _state: *mut IBStream,
     ) -> TResult {
         result::OK
     }
 
     pub unsafe extern "system" fn audio_processor_query_interface(
-        this: *mut c_void,
-        iid: *const TUID,
-        obj: *mut *mut c_void,
+        _this: *mut c_void,
+        _iid: *const TUID,
+        _obj: *mut *mut c_void,
     ) -> TResult {
         result::NO_INTERFACE
     }
@@ -281,58 +281,58 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn set_bus_arrangements(
-        this: *mut c_void,
-        inputs: *const SpeakerArrangement,
-        num_ins: i32,
-        outputs: *const SpeakerArrangement,
-        num_outs: i32,
+        _this: *mut c_void,
+        _inputs: *const SpeakerArrangement,
+        _num_ins: i32,
+        _outputs: *const SpeakerArrangement,
+        _num_outs: i32,
     ) -> TResult {
         result::OK
     }
 
     pub unsafe extern "system" fn get_bus_arrangement(
-        this: *mut c_void,
-        dir: BusDirection,
-        index: i32,
-        arr: *mut SpeakerArrangement,
+        _this: *mut c_void,
+        _dir: BusDirection,
+        _index: i32,
+        _arr: *mut SpeakerArrangement,
     ) -> TResult {
         result::OK
     }
 
     pub unsafe extern "system" fn can_process_sample_size(
-        this: *mut c_void,
-        symbolic_sample_size: i32,
+        _this: *mut c_void,
+        _symbolic_sample_size: i32,
     ) -> TResult {
         result::OK
     }
 
-    pub unsafe extern "system" fn get_latency_samples(this: *mut c_void) -> u32 {
+    pub unsafe extern "system" fn get_latency_samples(_this: *mut c_void) -> u32 {
         0
     }
 
     pub unsafe extern "system" fn setup_processing(
-        this: *mut c_void,
-        setup: *mut ProcessSetup,
+        _this: *mut c_void,
+        _setup: *mut ProcessSetup,
     ) -> TResult {
         result::OK
     }
 
-    pub unsafe extern "system" fn set_processing(this: *mut c_void, state: TBool) -> TResult {
+    pub unsafe extern "system" fn set_processing(_this: *mut c_void, _state: TBool) -> TResult {
         result::OK
     }
 
-    pub unsafe extern "system" fn process(this: *mut c_void, data: *mut ProcessData) -> TResult {
+    pub unsafe extern "system" fn process(_this: *mut c_void, _data: *mut ProcessData) -> TResult {
         result::OK
     }
 
-    pub unsafe extern "system" fn get_tail_samples(this: *mut c_void) -> u32 {
+    pub unsafe extern "system" fn get_tail_samples(_this: *mut c_void) -> u32 {
         0
     }
 
     pub unsafe extern "system" fn edit_controller_query_interface(
-        this: *mut c_void,
-        iid: *const TUID,
-        obj: *mut *mut c_void,
+        _this: *mut c_void,
+        _iid: *const TUID,
+        _obj: *mut *mut c_void,
     ) -> TResult {
         result::NO_INTERFACE
     }
@@ -346,105 +346,105 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn edit_controller_initialize(
-        this: *mut c_void,
-        context: *mut FUnknown,
+        _this: *mut c_void,
+        _context: *mut FUnknown,
     ) -> TResult {
         result::OK
     }
 
-    pub unsafe extern "system" fn edit_controller_terminate(this: *mut c_void) -> TResult {
+    pub unsafe extern "system" fn edit_controller_terminate(_this: *mut c_void) -> TResult {
         result::OK
     }
 
     pub unsafe extern "system" fn set_component_state(
-        this: *mut c_void,
-        state: *mut *const IBStream,
+        _this: *mut c_void,
+        _state: *mut *const IBStream,
     ) -> TResult {
         result::OK
     }
 
     pub unsafe extern "system" fn edit_controller_set_state(
-        this: *mut c_void,
-        state: *mut *const IBStream,
+        _this: *mut c_void,
+        _state: *mut *const IBStream,
     ) -> TResult {
         result::OK
     }
 
     pub unsafe extern "system" fn edit_controller_get_state(
-        this: *mut c_void,
-        state: *mut *const IBStream,
+        _this: *mut c_void,
+        _state: *mut *const IBStream,
     ) -> TResult {
         result::OK
     }
 
-    pub unsafe extern "system" fn get_parameter_count(this: *mut c_void) -> i32 {
+    pub unsafe extern "system" fn get_parameter_count(_this: *mut c_void) -> i32 {
         0
     }
 
     pub unsafe extern "system" fn get_parameter_info(
-        this: *mut c_void,
-        param_index: i32,
-        info: *mut ParameterInfo,
+        _this: *mut c_void,
+        _param_index: i32,
+        _info: *mut ParameterInfo,
     ) -> TResult {
         result::OK
     }
 
     pub unsafe extern "system" fn get_param_string_by_value(
-        this: *mut c_void,
-        id: u32,
-        value_normalized: f64,
-        string: *mut String128,
+        _this: *mut c_void,
+        _id: u32,
+        _value_normalized: f64,
+        _string: *mut String128,
     ) -> TResult {
         result::OK
     }
 
     pub unsafe extern "system" fn get_param_value_by_string(
-        this: *mut c_void,
-        id: u32,
-        string: *const TChar,
-        value_normalized: *mut f64,
+        _this: *mut c_void,
+        _id: u32,
+        _string: *const TChar,
+        _value_normalized: *mut f64,
     ) -> TResult {
         result::OK
     }
 
     pub unsafe extern "system" fn normalized_param_to_plain(
-        this: *mut c_void,
-        id: u32,
-        value_normalized: f64,
+        _this: *mut c_void,
+        _id: u32,
+        _value_normalized: f64,
     ) -> f64 {
         0.0
     }
 
     pub unsafe extern "system" fn plain_param_to_normalized(
-        this: *mut c_void,
-        id: u32,
-        plain_value: f64,
+        _this: *mut c_void,
+        _id: u32,
+        _plain_value: f64,
     ) -> f64 {
         0.0
     }
 
-    pub unsafe extern "system" fn get_param_normalized(this: *mut c_void, id: u32) -> f64 {
+    pub unsafe extern "system" fn get_param_normalized(_this: *mut c_void, _id: u32) -> f64 {
         0.0
     }
 
     pub unsafe extern "system" fn set_param_normalized(
-        this: *mut c_void,
-        id: u32,
-        value: f64,
+        _this: *mut c_void,
+        _id: u32,
+        _value: f64,
     ) -> TResult {
         result::OK
     }
 
     pub unsafe extern "system" fn set_component_handler(
-        this: *mut c_void,
-        handler: *mut *const IComponentHandler,
+        _this: *mut c_void,
+        _handler: *mut *const IComponentHandler,
     ) -> TResult {
         result::OK
     }
 
     pub unsafe extern "system" fn create_view(
-        this: *mut c_void,
-        name: *const c_char,
+        _this: *mut c_void,
+        _name: *const c_char,
     ) -> *mut *const IPlugView {
         ptr::null_mut()
     }
