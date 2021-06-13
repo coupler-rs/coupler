@@ -12,9 +12,11 @@ pub use core_foundation;
 pub use vst3 as vst3_api;
 use vst3::*;
 
-unsafe fn copy_cstring(string: &str, dst: *mut c_char, len: usize) {
-    let name = ffi::CString::new(string).unwrap_or_else(|_| ffi::CString::default());
-    ptr::copy_nonoverlapping(name.as_ptr(), dst as *mut c_char, name.as_bytes().len().min(len));
+fn copy_cstring(src: &str, dst: &mut [c_char]) {
+    let c_string = ffi::CString::new(src).unwrap_or_else(|_| ffi::CString::default());
+    for (src, dst) in c_string.as_bytes_with_nul().iter().zip(dst.iter_mut()) {
+        *dst = *src as c_char;
+    }
 }
 
 #[repr(C)]
@@ -31,16 +33,18 @@ impl<P: Plugin> Factory<P> {
         iid: *const TUID,
         obj: *mut *mut c_void,
     ) -> TResult {
-        unsafe {
-            let iid = *iid;
+        let iid = unsafe { *iid };
 
-            if iid == FUnknown::IID || iid == IPluginFactory::IID {
-                *obj = this;
-                return result::OK;
-            }
-
-            result::NO_INTERFACE
+        if iid == FUnknown::IID
+            || iid == IPluginFactory::IID
+            || iid == IPluginFactory2::IID
+            || iid == IPluginFactory3::IID
+        {
+            unsafe { *obj = this };
+            return result::OK;
         }
+
+        result::NO_INTERFACE
     }
 
     pub extern "system" fn add_ref(_this: *mut c_void) -> u32 {
@@ -55,16 +59,14 @@ impl<P: Plugin> Factory<P> {
         _this: *mut c_void,
         info: *mut PFactoryInfo,
     ) -> TResult {
-        unsafe {
-            let info = &mut *info;
+        let info = unsafe { &mut *info };
 
-            copy_cstring(P::INFO.vendor, info.vendor.as_mut_ptr(), info.vendor.len());
-            copy_cstring(P::INFO.url, info.url.as_mut_ptr(), info.url.len());
-            copy_cstring(P::INFO.email, info.email.as_mut_ptr(), info.email.len());
-            info.flags = PFactoryInfo::UNICODE;
+        copy_cstring(P::INFO.vendor, &mut info.vendor);
+        copy_cstring(P::INFO.url, &mut info.url);
+        copy_cstring(P::INFO.email, &mut info.email);
+        info.flags = PFactoryInfo::UNICODE;
 
-            result::OK
-        }
+        result::OK
     }
 
     pub extern "system" fn count_classes(_this: *mut c_void) -> i32 {
@@ -76,20 +78,18 @@ impl<P: Plugin> Factory<P> {
         index: i32,
         info: *mut PClassInfo,
     ) -> TResult {
-        unsafe {
-            if index != 0 {
-                return result::INVALID_ARGUMENT;
-            }
-
-            let info = &mut *info;
-
-            info.cid = iid(P::INFO.uid[0], P::INFO.uid[1], P::INFO.uid[2], P::INFO.uid[3]);
-            info.cardinality = PClassInfo::MANY_INSTANCES;
-            copy_cstring("Audio Module Class", info.category.as_mut_ptr(), info.category.len());
-            copy_cstring(P::INFO.name, info.name.as_mut_ptr(), info.name.len());
-
-            result::OK
+        if index != 0 {
+            return result::INVALID_ARGUMENT;
         }
+
+        let info = unsafe { &mut *info };
+
+        info.cid = iid(P::INFO.uid[0], P::INFO.uid[1], P::INFO.uid[2], P::INFO.uid[3]);
+        info.cardinality = PClassInfo::MANY_INSTANCES;
+        copy_cstring("Audio Module Class", &mut info.category);
+        copy_cstring(P::INFO.name, &mut info.name);
+
+        result::OK
     }
 
     pub extern "system" fn create_instance(
