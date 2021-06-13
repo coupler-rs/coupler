@@ -34,38 +34,38 @@ pub struct Factory<P> {
 unsafe impl<P> Sync for Factory<P> {}
 
 impl<P: Plugin> Factory<P> {
-    pub extern "system" fn query_interface(
+    pub unsafe extern "system" fn query_interface(
         this: *mut c_void,
         iid: *const TUID,
         obj: *mut *mut c_void,
     ) -> TResult {
-        let iid = unsafe { *iid };
+        let iid = *iid;
 
         if iid == FUnknown::IID
             || iid == IPluginFactory::IID
             || iid == IPluginFactory2::IID
             || iid == IPluginFactory3::IID
         {
-            unsafe { *obj = this };
+            *obj = this;
             return result::OK;
         }
 
         result::NO_INTERFACE
     }
 
-    pub extern "system" fn add_ref(_this: *mut c_void) -> u32 {
+    pub unsafe extern "system" fn add_ref(_this: *mut c_void) -> u32 {
         1
     }
 
-    pub extern "system" fn release(_this: *mut c_void) -> u32 {
+    pub unsafe extern "system" fn release(_this: *mut c_void) -> u32 {
         1
     }
 
-    pub extern "system" fn get_factory_info(
+    pub unsafe extern "system" fn get_factory_info(
         _this: *mut c_void,
         info: *mut PFactoryInfo,
     ) -> TResult {
-        let info = unsafe { &mut *info };
+        let info = &mut *info;
 
         copy_cstring(P::INFO.vendor, &mut info.vendor);
         copy_cstring(P::INFO.url, &mut info.url);
@@ -75,11 +75,11 @@ impl<P: Plugin> Factory<P> {
         result::OK
     }
 
-    pub extern "system" fn count_classes(_this: *mut c_void) -> i32 {
+    pub unsafe extern "system" fn count_classes(_this: *mut c_void) -> i32 {
         1
     }
 
-    pub extern "system" fn get_class_info(
+    pub unsafe extern "system" fn get_class_info(
         _this: *mut c_void,
         index: i32,
         info: *mut PClassInfo,
@@ -88,7 +88,7 @@ impl<P: Plugin> Factory<P> {
             return result::INVALID_ARGUMENT;
         }
 
-        let info = unsafe { &mut *info };
+        let info = &mut *info;
 
         info.cid = iid(P::INFO.uid[0], P::INFO.uid[1], P::INFO.uid[2], P::INFO.uid[3]);
         info.cardinality = PClassInfo::MANY_INSTANCES;
@@ -98,7 +98,7 @@ impl<P: Plugin> Factory<P> {
         result::OK
     }
 
-    pub extern "system" fn create_instance(
+    pub unsafe extern "system" fn create_instance(
         _this: *mut c_void,
         _cid: *const c_char,
         _iid: *const c_char,
@@ -116,7 +116,7 @@ impl<P: Plugin> Factory<P> {
             return result::INVALID_ARGUMENT;
         }
 
-        let info = unsafe { &mut *info };
+        let info = &mut *info;
 
         info.cid = iid(P::INFO.uid[0], P::INFO.uid[1], P::INFO.uid[2], P::INFO.uid[3]);
         info.cardinality = PClassInfo::MANY_INSTANCES;
@@ -140,7 +140,7 @@ impl<P: Plugin> Factory<P> {
             return result::INVALID_ARGUMENT;
         }
 
-        let info = unsafe { &mut *info };
+        let info = &mut *info;
 
         info.cid = iid(P::INFO.uid[0], P::INFO.uid[1], P::INFO.uid[2], P::INFO.uid[3]);
         info.cardinality = PClassInfo::MANY_INSTANCES;
@@ -172,7 +172,7 @@ pub struct Wrapper<P> {
 }
 
 impl<P: Plugin> Wrapper<P> {
-    pub extern "system" fn component_query_interface(
+    pub unsafe extern "system" fn component_query_interface(
         this: *mut c_void,
         iid: *const TUID,
         obj: *mut *mut c_void,
@@ -180,11 +180,11 @@ impl<P: Plugin> Wrapper<P> {
         result::NO_INTERFACE
     }
 
-    pub extern "system" fn component_add_ref(_this: *mut c_void) -> u32 {
+    pub unsafe extern "system" fn component_add_ref(_this: *mut c_void) -> u32 {
         1
     }
 
-    pub extern "system" fn component_release(_this: *mut c_void) -> u32 {
+    pub unsafe extern "system" fn component_release(_this: *mut c_void) -> u32 {
         1
     }
 
@@ -264,7 +264,7 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    pub extern "system" fn audio_processor_query_interface(
+    pub unsafe extern "system" fn audio_processor_query_interface(
         this: *mut c_void,
         iid: *const TUID,
         obj: *mut *mut c_void,
@@ -272,11 +272,11 @@ impl<P: Plugin> Wrapper<P> {
         result::NO_INTERFACE
     }
 
-    pub extern "system" fn audio_processor_add_ref(_this: *mut c_void) -> u32 {
+    pub unsafe extern "system" fn audio_processor_add_ref(_this: *mut c_void) -> u32 {
         1
     }
 
-    pub extern "system" fn audio_processor_release(_this: *mut c_void) -> u32 {
+    pub unsafe extern "system" fn audio_processor_release(_this: *mut c_void) -> u32 {
         1
     }
 
@@ -329,7 +329,7 @@ impl<P: Plugin> Wrapper<P> {
         0
     }
 
-    pub extern "system" fn edit_controller_query_interface(
+    pub unsafe extern "system" fn edit_controller_query_interface(
         this: *mut c_void,
         iid: *const TUID,
         obj: *mut *mut c_void,
@@ -337,11 +337,11 @@ impl<P: Plugin> Wrapper<P> {
         result::NO_INTERFACE
     }
 
-    pub extern "system" fn edit_controller_add_ref(_this: *mut c_void) -> u32 {
+    pub unsafe extern "system" fn edit_controller_add_ref(_this: *mut c_void) -> u32 {
         1
     }
 
-    pub extern "system" fn edit_controller_release(_this: *mut c_void) -> u32 {
+    pub unsafe extern "system" fn edit_controller_release(_this: *mut c_void) -> u32 {
         1
     }
 
