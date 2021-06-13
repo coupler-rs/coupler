@@ -1,6 +1,6 @@
 use crate::Plugin;
 
-use std::cell::UnsafeCell;
+use std::cell::{Cell, UnsafeCell};
 use std::ffi::c_void;
 use std::marker::PhantomData;
 use std::os::raw::c_char;
@@ -123,6 +123,7 @@ impl<P: Plugin> Factory<P> {
             audio_processor: this.audio_processor,
             edit_controller: this.edit_controller,
             count: AtomicU32::new(1),
+            params: vec![Cell::new(0.0); P::PARAMS.len()],
             plugin: UnsafeCell::new(P::new()),
         })) as *mut c_void;
 
@@ -191,6 +192,7 @@ pub struct Wrapper<P> {
     pub audio_processor: *const IAudioProcessor,
     pub edit_controller: *const IEditController,
     pub count: AtomicU32,
+    pub params: Vec<Cell<f64>>,
     pub plugin: UnsafeCell<P>,
 }
 
@@ -494,15 +496,30 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn get_parameter_count(_this: *mut c_void) -> i32 {
-        0
+        P::PARAMS.len() as i32
     }
 
     pub unsafe extern "system" fn get_parameter_info(
         _this: *mut c_void,
-        _param_index: i32,
-        _info: *mut ParameterInfo,
+        param_index: i32,
+        info: *mut ParameterInfo,
     ) -> TResult {
-        result::OK
+        if let Some(param) = P::PARAMS.get(param_index as usize) {
+            let info = &mut *info;
+
+            info.id = param_index as u32;
+            copy_wstring(param.name, &mut info.title);
+            copy_wstring(param.name, &mut info.short_title);
+            copy_wstring(param.label, &mut info.units);
+            info.step_count = 0;
+            info.default_normalized_value = 0.0;
+            info.unit_id = 0;
+            info.flags = ParameterInfo::CAN_AUTOMATE;
+
+            result::OK
+        } else {
+            result::INVALID_ARGUMENT
+        }
     }
 
     pub unsafe extern "system" fn get_param_string_by_value(
@@ -526,29 +543,42 @@ impl<P: Plugin> Wrapper<P> {
     pub unsafe extern "system" fn normalized_param_to_plain(
         _this: *mut c_void,
         _id: u32,
-        _value_normalized: f64,
+        value_normalized: f64,
     ) -> f64 {
-        0.0
+        value_normalized
     }
 
     pub unsafe extern "system" fn plain_param_to_normalized(
         _this: *mut c_void,
         _id: u32,
-        _plain_value: f64,
+        plain_value: f64,
     ) -> f64 {
-        0.0
+        plain_value
     }
 
-    pub unsafe extern "system" fn get_param_normalized(_this: *mut c_void, _id: u32) -> f64 {
-        0.0
+    pub unsafe extern "system" fn get_param_normalized(this: *mut c_void, id: u32) -> f64 {
+        let this = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+
+        if let Some(param) = this.params.get(id as usize) {
+            param.get()
+        } else {
+            0.0
+        }
     }
 
     pub unsafe extern "system" fn set_param_normalized(
-        _this: *mut c_void,
-        _id: u32,
-        _value: f64,
+        this: *mut c_void,
+        id: u32,
+        value: f64,
     ) -> TResult {
-        result::OK
+        let this = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+
+        if let Some(param) = this.params.get(id as usize) {
+            param.set(value);
+            result::OK
+        } else {
+            result::INVALID_ARGUMENT
+        }
     }
 
     pub unsafe extern "system" fn set_component_handler(
