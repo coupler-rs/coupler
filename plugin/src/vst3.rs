@@ -28,6 +28,9 @@ fn copy_wstring(src: &str, dst: &mut [i16]) {
 #[repr(C)]
 pub struct Factory<P> {
     pub plugin_factory_3: *const IPluginFactory3,
+    pub component: *const IComponent,
+    pub audio_processor: *const IAudioProcessor,
+    pub edit_controller: *const IEditController,
     pub phantom: PhantomData<P>,
 }
 
@@ -99,12 +102,28 @@ impl<P: Plugin> Factory<P> {
     }
 
     pub unsafe extern "system" fn create_instance(
-        _this: *mut c_void,
-        _cid: *const c_char,
-        _iid: *const c_char,
-        _obj: *mut *mut c_void,
+        this: *mut c_void,
+        cid: *const c_char,
+        iid: *const c_char,
+        obj: *mut *mut c_void,
     ) -> TResult {
-        result::NOT_IMPLEMENTED
+        let cid = *(cid as *const TUID);
+        let iid = *(iid as *const TUID);
+        let wrapper_cid = vst3::iid(P::INFO.uid[0], P::INFO.uid[1], P::INFO.uid[2], P::INFO.uid[3]);
+        if cid != wrapper_cid || iid != IComponent::IID {
+            return result::INVALID_ARGUMENT;
+        }
+
+        let this = &*(this as *const Factory<P>);
+
+        *obj = Box::into_raw(Box::new(Wrapper {
+            component: this.component,
+            audio_processor: this.audio_processor,
+            edit_controller: this.edit_controller,
+            plugin: UnsafeCell::new(P::new()),
+        })) as *mut c_void;
+
+        result::OK
     }
 
     pub unsafe extern "system" fn get_class_info_2(
@@ -479,9 +498,6 @@ macro_rules! vst3 {
                 set_host_context: Factory::<$plugin>::set_host_context,
             };
 
-            static PLUGIN_FACTORY: Factory<$plugin> =
-                Factory { plugin_factory_3: &PLUGIN_FACTORY_3_VTABLE, phantom: PhantomData };
-
             static COMPONENT_VTABLE: IComponent = IComponent {
                 plugin_base: IPluginBase {
                     unknown: FUnknown {
@@ -542,6 +558,14 @@ macro_rules! vst3 {
                 set_param_normalized: Wrapper::<$plugin>::set_param_normalized,
                 set_component_handler: Wrapper::<$plugin>::set_component_handler,
                 create_view: Wrapper::<$plugin>::create_view,
+            };
+
+            static PLUGIN_FACTORY: Factory<$plugin> = Factory {
+                plugin_factory_3: &PLUGIN_FACTORY_3_VTABLE,
+                component: &COMPONENT_VTABLE,
+                audio_processor: &AUDIO_PROCESSOR_VTABLE,
+                edit_controller: &EDIT_CONTROLLER_VTABLE,
+                phantom: PhantomData,
             };
 
             #[cfg(target_os = "windows")]
