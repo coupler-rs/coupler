@@ -4,7 +4,9 @@ use std::cell::UnsafeCell;
 use std::ffi::c_void;
 use std::marker::PhantomData;
 use std::os::raw::c_char;
-use std::{ffi, ptr};
+use std::sync::atomic;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::{ffi, mem, ptr};
 
 #[cfg(target_os = "macos")]
 pub use core_foundation;
@@ -120,6 +122,7 @@ impl<P: Plugin> Factory<P> {
             component: this.component,
             audio_processor: this.audio_processor,
             edit_controller: this.edit_controller,
+            count: AtomicU32::new(1),
             plugin: UnsafeCell::new(P::new()),
         })) as *mut c_void;
 
@@ -187,24 +190,76 @@ pub struct Wrapper<P> {
     pub component: *const IComponent,
     pub audio_processor: *const IAudioProcessor,
     pub edit_controller: *const IEditController,
+    pub count: AtomicU32,
     pub plugin: UnsafeCell<P>,
 }
 
+unsafe impl<P> Sync for Wrapper<P> {}
+
 impl<P: Plugin> Wrapper<P> {
-    pub unsafe extern "system" fn component_query_interface(
-        _this: *mut c_void,
-        _iid: *const TUID,
-        _obj: *mut *mut c_void,
+    const COMPONENT_OFFSET: isize = 0;
+    const AUDIO_PROCESSOR_OFFSET: isize =
+        Self::COMPONENT_OFFSET + mem::size_of::<*const IComponent>() as isize;
+    const EDIT_CONTROLLER_OFFSET: isize =
+        Self::AUDIO_PROCESSOR_OFFSET + mem::size_of::<*const IAudioProcessor>() as isize;
+
+    unsafe fn query_interface(
+        this: *mut c_void,
+        iid: *const TUID,
+        obj: *mut *mut c_void,
     ) -> TResult {
+        let iid = *iid;
+
+        if iid == FUnknown::IID || iid == IComponent::IID {
+            Self::component_add_ref(this);
+            *obj = this.offset(Self::COMPONENT_OFFSET);
+            return result::OK;
+        }
+
+        if iid == IAudioProcessor::IID {
+            Self::component_add_ref(this);
+            *obj = this.offset(Self::AUDIO_PROCESSOR_OFFSET);
+            return result::OK;
+        }
+
+        if iid == IEditController::IID {
+            Self::component_add_ref(this);
+            *obj = this.offset(Self::EDIT_CONTROLLER_OFFSET);
+            return result::OK;
+        }
+
         result::NO_INTERFACE
     }
 
-    pub unsafe extern "system" fn component_add_ref(_this: *mut c_void) -> u32 {
-        1
+    unsafe fn add_ref(this: *mut c_void) -> u32 {
+        (*(this as *const Wrapper<P>)).count.fetch_add(1, Ordering::Relaxed) + 1
     }
 
-    pub unsafe extern "system" fn component_release(_this: *mut c_void) -> u32 {
-        1
+    unsafe fn release(this: *mut c_void) -> u32 {
+        let count = (*(this as *const Wrapper<P>)).count.fetch_sub(1, Ordering::Release) - 1;
+
+        if count == 0 {
+            atomic::fence(Ordering::Acquire);
+            drop(Box::from_raw(this as *mut Wrapper<P>));
+        }
+
+        count
+    }
+
+    pub unsafe extern "system" fn component_query_interface(
+        this: *mut c_void,
+        iid: *const TUID,
+        obj: *mut *mut c_void,
+    ) -> TResult {
+        Self::query_interface(this.offset(-Self::COMPONENT_OFFSET), iid, obj)
+    }
+
+    pub unsafe extern "system" fn component_add_ref(this: *mut c_void) -> u32 {
+        Self::add_ref(this.offset(-Self::COMPONENT_OFFSET))
+    }
+
+    pub unsafe extern "system" fn component_release(this: *mut c_void) -> u32 {
+        Self::release(this.offset(-Self::COMPONENT_OFFSET))
     }
 
     pub unsafe extern "system" fn component_initialize(
@@ -284,19 +339,19 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn audio_processor_query_interface(
-        _this: *mut c_void,
-        _iid: *const TUID,
-        _obj: *mut *mut c_void,
+        this: *mut c_void,
+        iid: *const TUID,
+        obj: *mut *mut c_void,
     ) -> TResult {
-        result::NO_INTERFACE
+        Self::query_interface(this.offset(-Self::AUDIO_PROCESSOR_OFFSET), iid, obj)
     }
 
-    pub unsafe extern "system" fn audio_processor_add_ref(_this: *mut c_void) -> u32 {
-        1
+    pub unsafe extern "system" fn audio_processor_add_ref(this: *mut c_void) -> u32 {
+        Self::add_ref(this.offset(-Self::AUDIO_PROCESSOR_OFFSET))
     }
 
-    pub unsafe extern "system" fn audio_processor_release(_this: *mut c_void) -> u32 {
-        1
+    pub unsafe extern "system" fn audio_processor_release(this: *mut c_void) -> u32 {
+        Self::release(this.offset(-Self::AUDIO_PROCESSOR_OFFSET))
     }
 
     pub unsafe extern "system" fn set_bus_arrangements(
@@ -349,19 +404,19 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn edit_controller_query_interface(
-        _this: *mut c_void,
-        _iid: *const TUID,
-        _obj: *mut *mut c_void,
+        this: *mut c_void,
+        iid: *const TUID,
+        obj: *mut *mut c_void,
     ) -> TResult {
-        result::NO_INTERFACE
+        Self::query_interface(this.offset(-Self::EDIT_CONTROLLER_OFFSET), iid, obj)
     }
 
-    pub unsafe extern "system" fn edit_controller_add_ref(_this: *mut c_void) -> u32 {
-        1
+    pub unsafe extern "system" fn edit_controller_add_ref(this: *mut c_void) -> u32 {
+        Self::add_ref(this.offset(-Self::EDIT_CONTROLLER_OFFSET))
     }
 
-    pub unsafe extern "system" fn edit_controller_release(_this: *mut c_void) -> u32 {
-        1
+    pub unsafe extern "system" fn edit_controller_release(this: *mut c_void) -> u32 {
+        Self::release(this.offset(-Self::EDIT_CONTROLLER_OFFSET))
     }
 
     pub unsafe extern "system" fn edit_controller_initialize(
