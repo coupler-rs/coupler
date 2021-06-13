@@ -277,7 +277,7 @@ impl<P: Plugin> Wrapper<P> {
         _this: *mut c_void,
         _class_id: *const TUID,
     ) -> TResult {
-        result::OK
+        result::NOT_IMPLEMENTED
     }
 
     pub unsafe extern "system" fn set_io_mode(_this: *mut c_void, _mode: IoMode) -> TResult {
@@ -286,20 +286,58 @@ impl<P: Plugin> Wrapper<P> {
 
     pub unsafe extern "system" fn get_bus_count(
         _this: *mut c_void,
-        _media_type: MediaType,
-        _dir: BusDirection,
+        media_type: MediaType,
+        dir: BusDirection,
     ) -> i32 {
-        0
+        match media_type {
+            media_types::AUDIO => match dir {
+                bus_directions::INPUT => 1,
+                bus_directions::OUTPUT => 1,
+                _ => 0,
+            },
+            media_types::EVENT => 0,
+            _ => 0,
+        }
     }
 
     pub unsafe extern "system" fn get_bus_info(
         _this: *mut c_void,
-        _media_type: MediaType,
-        _dir: BusDirection,
-        _index: i32,
-        _bus: *mut BusInfo,
+        media_type: MediaType,
+        dir: BusDirection,
+        index: i32,
+        bus: *mut BusInfo,
     ) -> TResult {
-        result::OK
+        match media_type {
+            media_types::AUDIO => match dir {
+                bus_directions::INPUT => {
+                    let bus = &mut *bus;
+
+                    bus.media_type = media_types::AUDIO;
+                    bus.direction = bus_directions::INPUT;
+                    bus.channel_count = 2;
+                    copy_wstring("input", &mut bus.name);
+                    bus.bus_type = bus_types::MAIN;
+                    bus.flags = BusInfo::DEFAULT_ACTIVE;
+
+                    result::OK
+                }
+                bus_directions::OUTPUT => {
+                    let bus = &mut *bus;
+
+                    bus.media_type = media_types::AUDIO;
+                    bus.direction = bus_directions::OUTPUT;
+                    bus.channel_count = 2;
+                    copy_wstring("output", &mut bus.name);
+                    bus.bus_type = bus_types::MAIN;
+                    bus.flags = BusInfo::DEFAULT_ACTIVE;
+
+                    result::OK
+                }
+                _ => result::INVALID_ARGUMENT,
+            },
+            media_types::EVENT => result::INVALID_ARGUMENT,
+            _ => result::INVALID_ARGUMENT,
+        }
     }
 
     pub unsafe extern "system" fn get_routing_info(
@@ -307,7 +345,7 @@ impl<P: Plugin> Wrapper<P> {
         _in_info: *mut RoutingInfo,
         _out_info: *mut RoutingInfo,
     ) -> TResult {
-        result::OK
+        result::NOT_IMPLEMENTED
     }
 
     pub unsafe extern "system" fn activate_bus(
@@ -375,9 +413,13 @@ impl<P: Plugin> Wrapper<P> {
 
     pub unsafe extern "system" fn can_process_sample_size(
         _this: *mut c_void,
-        _symbolic_sample_size: i32,
+        symbolic_sample_size: i32,
     ) -> TResult {
-        result::OK
+        match symbolic_sample_size {
+            symbolic_sample_sizes::SAMPLE_32 => result::OK,
+            symbolic_sample_sizes::SAMPLE_64 => result::NOT_IMPLEMENTED,
+            _ => result::INVALID_ARGUMENT,
+        }
     }
 
     pub unsafe extern "system" fn get_latency_samples(_this: *mut c_void) -> u32 {
