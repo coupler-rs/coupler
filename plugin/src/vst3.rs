@@ -32,6 +32,7 @@ pub struct Factory<P> {
     pub plugin_factory_3: *const IPluginFactory3,
     pub component: *const IComponent,
     pub audio_processor: *const IAudioProcessor,
+    pub process_context_requirements: *const IProcessContextRequirements,
     pub edit_controller: *const IEditController,
     pub phantom: PhantomData<P>,
 }
@@ -121,6 +122,7 @@ impl<P: Plugin> Factory<P> {
         *obj = Box::into_raw(Box::new(Wrapper {
             component: this.component,
             audio_processor: this.audio_processor,
+            process_context_requirements: this.process_context_requirements,
             edit_controller: this.edit_controller,
             count: AtomicU32::new(1),
             params: vec![Cell::new(0.0); P::PARAMS.len()],
@@ -190,6 +192,7 @@ impl<P: Plugin> Factory<P> {
 pub struct Wrapper<P> {
     pub component: *const IComponent,
     pub audio_processor: *const IAudioProcessor,
+    pub process_context_requirements: *const IProcessContextRequirements,
     pub edit_controller: *const IEditController,
     pub count: AtomicU32,
     pub params: Vec<Cell<f64>>,
@@ -202,8 +205,10 @@ impl<P: Plugin> Wrapper<P> {
     const COMPONENT_OFFSET: isize = 0;
     const AUDIO_PROCESSOR_OFFSET: isize =
         Self::COMPONENT_OFFSET + mem::size_of::<*const IComponent>() as isize;
-    const EDIT_CONTROLLER_OFFSET: isize =
-        Self::AUDIO_PROCESSOR_OFFSET + mem::size_of::<*const IAudioProcessor>() as isize;
+    const PROCESS_CONTEXT_REQUIREMENTS_OFFSET: isize = Self::AUDIO_PROCESSOR_OFFSET
+        + mem::size_of::<*const IProcessContextRequirements>() as isize;
+    const EDIT_CONTROLLER_OFFSET: isize = Self::PROCESS_CONTEXT_REQUIREMENTS_OFFSET
+        + mem::size_of::<*const IAudioProcessor>() as isize;
 
     unsafe fn query_interface(
         this: *mut c_void,
@@ -221,6 +226,12 @@ impl<P: Plugin> Wrapper<P> {
         if iid == IAudioProcessor::IID {
             Self::component_add_ref(this);
             *obj = this.offset(Self::AUDIO_PROCESSOR_OFFSET);
+            return result::OK;
+        }
+
+        if iid == IProcessContextRequirements::IID {
+            Self::component_add_ref(this);
+            *obj = this.offset(Self::PROCESS_CONTEXT_REQUIREMENTS_OFFSET);
             return result::OK;
         }
 
@@ -447,6 +458,26 @@ impl<P: Plugin> Wrapper<P> {
         0
     }
 
+    pub unsafe extern "system" fn process_context_requirements_query_interface(
+        this: *mut c_void,
+        iid: *const TUID,
+        obj: *mut *mut c_void,
+    ) -> TResult {
+        Self::query_interface(this.offset(-Self::PROCESS_CONTEXT_REQUIREMENTS_OFFSET), iid, obj)
+    }
+
+    pub unsafe extern "system" fn process_context_requirements_add_ref(this: *mut c_void) -> u32 {
+        Self::add_ref(this.offset(-Self::PROCESS_CONTEXT_REQUIREMENTS_OFFSET))
+    }
+
+    pub unsafe extern "system" fn process_context_requirements_release(this: *mut c_void) -> u32 {
+        Self::release(this.offset(-Self::PROCESS_CONTEXT_REQUIREMENTS_OFFSET))
+    }
+
+    pub unsafe extern "system" fn get_process_context_requirements(this: *mut c_void) -> u32 {
+        0
+    }
+
     pub unsafe extern "system" fn edit_controller_query_interface(
         this: *mut c_void,
         iid: *const TUID,
@@ -662,6 +693,18 @@ macro_rules! vst3 {
                 get_tail_samples: Wrapper::<$plugin>::get_tail_samples,
             };
 
+            static PROCESS_CONTEXT_REQUIREMENTS_VTABLE: IProcessContextRequirements =
+                IProcessContextRequirements {
+                    unknown: FUnknown {
+                        query_interface:
+                            Wrapper::<$plugin>::process_context_requirements_query_interface,
+                        add_ref: Wrapper::<$plugin>::process_context_requirements_add_ref,
+                        release: Wrapper::<$plugin>::process_context_requirements_release,
+                    },
+                    get_process_context_requirements:
+                        Wrapper::<$plugin>::get_process_context_requirements,
+                };
+
             static EDIT_CONTROLLER_VTABLE: IEditController = IEditController {
                 plugin_base: IPluginBase {
                     unknown: FUnknown {
@@ -691,6 +734,7 @@ macro_rules! vst3 {
                 plugin_factory_3: &PLUGIN_FACTORY_3_VTABLE,
                 component: &COMPONENT_VTABLE,
                 audio_processor: &AUDIO_PROCESSOR_VTABLE,
+                process_context_requirements: &PROCESS_CONTEXT_REQUIREMENTS_VTABLE,
                 edit_controller: &EDIT_CONTROLLER_VTABLE,
                 phantom: PhantomData,
             };

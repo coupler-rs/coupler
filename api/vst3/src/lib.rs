@@ -708,6 +708,28 @@ impl IAudioPresentationLatency {
 }
 
 #[repr(C)]
+pub struct IProcessContextRequirements {
+    pub unknown: FUnknown,
+    pub get_process_context_requirements: unsafe extern "system" fn(this: *mut c_void) -> u32,
+}
+
+impl IProcessContextRequirements {
+    pub const IID: TUID = iid(0x2A654303, 0xEF764E3D, 0x95B5FE83, 0x730EF6D0);
+
+    pub const SYSTEM_TIME: u32 = 1 << 0;
+    pub const CONTINUOUS_TIME_SAMPLES: u32 = 1 << 1;
+    pub const PROJECT_TIME_MUSIC: u32 = 1 << 2;
+    pub const BAR_POSITION_MUSIC: u32 = 1 << 3;
+    pub const CYCLE_MUSIC: u32 = 1 << 4;
+    pub const SAMPLES_TO_NEXT_CLOCK: u32 = 1 << 5;
+    pub const TEMPO: u32 = 1 << 6;
+    pub const TIME_SIGNATURE: u32 = 1 << 7;
+    pub const CHORD: u32 = 1 << 8;
+    pub const FRAME_RATE: u32 = 1 << 9;
+    pub const TRANSPORT_STATE: u32 = 1 << 10;
+}
+
+#[repr(C)]
 #[derive(Copy, Clone)]
 pub struct ParameterInfo {
     pub id: u32,
