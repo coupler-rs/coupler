@@ -407,21 +407,47 @@ impl<P: Plugin> Wrapper<P> {
 
     pub unsafe extern "system" fn set_bus_arrangements(
         _this: *mut c_void,
-        _inputs: *const SpeakerArrangement,
-        _num_ins: i32,
-        _outputs: *const SpeakerArrangement,
-        _num_outs: i32,
+        inputs: *const SpeakerArrangement,
+        num_ins: i32,
+        outputs: *const SpeakerArrangement,
+        num_outs: i32,
     ) -> TResult {
-        result::OK
+        if num_ins != 1 || num_outs != 1 {
+            return result::FALSE;
+        }
+
+        if *inputs != speaker_arrangements::STEREO || *outputs != speaker_arrangements::STEREO {
+            return result::FALSE;
+        }
+
+        result::TRUE
     }
 
     pub unsafe extern "system" fn get_bus_arrangement(
         _this: *mut c_void,
-        _dir: BusDirection,
-        _index: i32,
-        _arr: *mut SpeakerArrangement,
+        dir: BusDirection,
+        index: i32,
+        arr: *mut SpeakerArrangement,
     ) -> TResult {
-        result::OK
+        match dir {
+            bus_directions::INPUT => {
+                if index == 0 {
+                    *arr = speaker_arrangements::STEREO;
+                    result::OK
+                } else {
+                    result::INVALID_ARGUMENT
+                }
+            }
+            bus_directions::OUTPUT => {
+                if index == 0 {
+                    *arr = speaker_arrangements::STEREO;
+                    result::OK
+                } else {
+                    result::INVALID_ARGUMENT
+                }
+            }
+            _ => result::INVALID_ARGUMENT,
+        }
     }
 
     pub unsafe extern "system" fn can_process_sample_size(
