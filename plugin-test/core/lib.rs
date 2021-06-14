@@ -13,7 +13,7 @@ impl Plugin for TestPlugin {
         url: "https://glowcoil.com",
         email: "micah@glowcoil.com",
         unique_id: *b"asdf",
-        uid: [0x1A4F6893, 0x11460191, 0x0000B439, 0xE5648ADA],
+        uid: [0x84B4DD04, 0x0D964565, 0x97AC3AAA, 0x87C5CCA7],
     };
 
     const PARAMS: &'static [&'static Param] = &[&GAIN];
