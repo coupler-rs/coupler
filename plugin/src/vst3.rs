@@ -322,30 +322,36 @@ impl<P: Plugin> Wrapper<P> {
     ) -> TResult {
         match media_type {
             media_types::AUDIO => match dir {
-                bus_directions::INPUT => {
-                    let bus = &mut *bus;
+                bus_directions::INPUT => match index {
+                    0 => {
+                        let bus = &mut *bus;
 
-                    bus.media_type = media_types::AUDIO;
-                    bus.direction = bus_directions::INPUT;
-                    bus.channel_count = 2;
-                    copy_wstring("input", &mut bus.name);
-                    bus.bus_type = bus_types::MAIN;
-                    bus.flags = BusInfo::DEFAULT_ACTIVE;
+                        bus.media_type = media_types::AUDIO;
+                        bus.direction = bus_directions::INPUT;
+                        bus.channel_count = 2;
+                        copy_wstring("input", &mut bus.name);
+                        bus.bus_type = bus_types::MAIN;
+                        bus.flags = BusInfo::DEFAULT_ACTIVE;
 
-                    result::OK
-                }
-                bus_directions::OUTPUT => {
-                    let bus = &mut *bus;
+                        result::OK
+                    }
+                    _ => result::INVALID_ARGUMENT,
+                },
+                bus_directions::OUTPUT => match index {
+                    0 => {
+                        let bus = &mut *bus;
 
-                    bus.media_type = media_types::AUDIO;
-                    bus.direction = bus_directions::OUTPUT;
-                    bus.channel_count = 2;
-                    copy_wstring("output", &mut bus.name);
-                    bus.bus_type = bus_types::MAIN;
-                    bus.flags = BusInfo::DEFAULT_ACTIVE;
+                        bus.media_type = media_types::AUDIO;
+                        bus.direction = bus_directions::OUTPUT;
+                        bus.channel_count = 2;
+                        copy_wstring("output", &mut bus.name);
+                        bus.bus_type = bus_types::MAIN;
+                        bus.flags = BusInfo::DEFAULT_ACTIVE;
 
-                    result::OK
-                }
+                        result::OK
+                    }
+                    _ => result::INVALID_ARGUMENT,
+                },
                 _ => result::INVALID_ARGUMENT,
             },
             media_types::EVENT => result::INVALID_ARGUMENT,
@@ -500,7 +506,7 @@ impl<P: Plugin> Wrapper<P> {
         Self::release(this.offset(-Self::PROCESS_CONTEXT_REQUIREMENTS_OFFSET))
     }
 
-    pub unsafe extern "system" fn get_process_context_requirements(this: *mut c_void) -> u32 {
+    pub unsafe extern "system" fn get_process_context_requirements(_this: *mut c_void) -> u32 {
         0
     }
 
