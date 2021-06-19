@@ -5,8 +5,8 @@ members = [
     "api/vst2-test",
     "api/vst3",
     "api/vst3-test",
+    "gain/*",
     "graphics",
     "plugin",
-    "plugin-test/*",
     "window",
 ]

@@ -1,11 +1,13 @@
 [package]
-name = "plugin-test"
+name = "gain-vst2"
 version = "0.1.0"
 authors = ["Micah Johnston <micah@glowcoil.com>"]
 edition = "2018"
 
 [lib]
 path = "lib.rs"
+crate-type = ["cdylib"]
 
 [dependencies]
 plugin = { path = "../../plugin" }
+gain = { path = "../core" }
