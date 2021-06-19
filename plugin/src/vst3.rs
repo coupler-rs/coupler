@@ -119,6 +119,8 @@ impl<P: Plugin> Factory<P> {
 
         let this = &*(this as *const Factory<P>);
 
+        let (plugin, processor, editor) = P::create();
+
         *obj = Box::into_raw(Box::new(Wrapper {
             component: this.component,
             audio_processor: this.audio_processor,
@@ -126,7 +128,9 @@ impl<P: Plugin> Factory<P> {
             edit_controller: this.edit_controller,
             count: AtomicU32::new(1),
             params: vec![Cell::new(0.0); P::PARAMS.len()],
-            plugin: UnsafeCell::new(P::new()),
+            plugin,
+            processor: UnsafeCell::new(processor),
+            editor: UnsafeCell::new(editor),
         })) as *mut c_void;
 
         result::OK
@@ -189,17 +193,19 @@ impl<P: Plugin> Factory<P> {
 }
 
 #[repr(C)]
-pub struct Wrapper<P> {
+pub struct Wrapper<P: Plugin> {
     pub component: *const IComponent,
     pub audio_processor: *const IAudioProcessor,
     pub process_context_requirements: *const IProcessContextRequirements,
     pub edit_controller: *const IEditController,
     pub count: AtomicU32,
     pub params: Vec<Cell<f64>>,
-    pub plugin: UnsafeCell<P>,
+    pub plugin: P,
+    pub processor: UnsafeCell<P::Processor>,
+    pub editor: UnsafeCell<P::Editor>,
 }
 
-unsafe impl<P> Sync for Wrapper<P> {}
+unsafe impl<P: Plugin> Sync for Wrapper<P> {}
 
 impl<P: Plugin> Wrapper<P> {
     const COMPONENT_OFFSET: isize = 0;

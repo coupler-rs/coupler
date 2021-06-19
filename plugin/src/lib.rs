@@ -35,10 +35,18 @@ impl<'a> Params<'a> {
     }
 }
 
-pub trait Plugin: Send + Sync {
+pub trait Plugin: Send + Sync + Sized {
     const INFO: PluginInfo;
     const PARAMS: &'static [&'static Param];
 
-    fn new() -> Self;
+    type Processor: Processor;
+    type Editor: Editor;
+
+    fn create() -> (Self, Self::Processor, Self::Editor);
+}
+
+pub trait Processor: Send + Sized {
     fn process(&mut self, params: &Params, inputs: &[&[f32]], outputs: &mut [&mut [f32]]);
 }
+
+pub trait Editor: Sized {}

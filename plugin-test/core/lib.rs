@@ -1,12 +1,10 @@
-use plugin::{Param, Params, Plugin, PluginInfo};
-
-pub struct TestPlugin {
-    gain: f32,
-}
+use plugin::{Editor, Param, Params, Plugin, PluginInfo, Processor};
 
 const GAIN: Param = Param { id: 0, name: "gain", label: "dB" };
 
-impl Plugin for TestPlugin {
+pub struct Gain {}
+
+impl Plugin for Gain {
     const INFO: PluginInfo = PluginInfo {
         name: "gain",
         vendor: "glowcoil",
@@ -18,10 +16,23 @@ impl Plugin for TestPlugin {
 
     const PARAMS: &'static [&'static Param] = &[&GAIN];
 
-    fn new() -> Self {
-        TestPlugin { gain: 0.0 }
-    }
+    type Processor = GainProcessor;
+    type Editor = GainEditor;
 
+    fn create() -> (Gain, GainProcessor, GainEditor) {
+        let gain = Gain {};
+        let gain_processor = GainProcessor { gain: 0.0 };
+        let gain_editor = GainEditor {};
+
+        (gain, gain_processor, gain_editor)
+    }
+}
+
+pub struct GainProcessor {
+    gain: f32,
+}
+
+impl Processor for GainProcessor {
     fn process(&mut self, params: &Params, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) {
         let gain = params.get(&GAIN) as f32;
         for (input, output) in inputs.iter().zip(outputs.iter_mut()) {
@@ -32,3 +43,7 @@ impl Plugin for TestPlugin {
         }
     }
 }
+
+pub struct GainEditor {}
+
+impl Editor for GainEditor {}

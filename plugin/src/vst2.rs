@@ -1,4 +1,4 @@
-use crate::{Param, Params, ParamsInner, Plugin};
+use crate::{Param, Params, ParamsInner, Plugin, Processor};
 
 use std::cell::UnsafeCell;
 use std::os::raw::c_char;
@@ -14,10 +14,12 @@ unsafe fn copy_cstring(string: &str, dst: *mut c_char, len: usize) {
 }
 
 #[repr(C)]
-struct Wrapper<P> {
+struct Wrapper<P: Plugin> {
     effect: AEffect,
     params: Vec<AtomicU64>,
-    plugin: UnsafeCell<P>,
+    plugin: P,
+    processor: UnsafeCell<P::Processor>,
+    editor: UnsafeCell<P::Editor>,
 }
 
 struct Vst2Params<'a> {
@@ -223,7 +225,7 @@ extern "C" fn process_replacing<P: Plugin>(
             slice::from_raw_parts_mut(output_ptrs[1], sample_frames as usize),
         ];
 
-        (*wrapper.plugin.get()).process(&params, input_slices, output_slices);
+        (*wrapper.processor.get()).process(&params, input_slices, output_slices);
     }
 }
 
@@ -241,7 +243,7 @@ pub fn plugin_main<P: Plugin>(_host_callback: HostCallbackProc) -> *mut AEffect 
         params.push(AtomicU64::new(0f64.to_bits()));
     }
 
-    let plugin = UnsafeCell::new(P::new());
+    let (plugin, processor, editor) = P::create();
 
     Box::into_raw(Box::new(Wrapper {
         effect: AEffect {
@@ -276,6 +278,8 @@ pub fn plugin_main<P: Plugin>(_host_callback: HostCallbackProc) -> *mut AEffect 
         },
         params,
         plugin,
+        processor: UnsafeCell::new(processor),
+        editor: UnsafeCell::new(editor),
     })) as *mut AEffect
 }
 
