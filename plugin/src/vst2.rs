@@ -252,7 +252,7 @@ pub fn plugin_main<P: Plugin>(_host_callback: HostCallbackProc) -> *mut AEffect 
             process,
             set_parameter: set_parameter::<P>,
             get_parameter: get_parameter::<P>,
-            num_programs: 0,
+            num_programs: 1,
             num_params: P::PARAMS.len() as i32,
             num_inputs: 2,
             num_outputs: 2,
