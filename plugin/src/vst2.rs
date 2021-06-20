@@ -55,9 +55,9 @@ extern "C" fn dispatcher<P: Plugin>(
             SET_PROGRAM_NAME => {}
             GET_PROGRAM_NAME => {}
             GET_PARAM_LABEL => {
-                if let Some(param) = P::PARAMS.get(index as usize) {
+                if let Some(param_info) = P::PARAMS.get(index as usize) {
                     copy_cstring(
-                        param.label,
+                        param_info.label,
                         ptr as *mut c_char,
                         string_constants::MAX_PARAM_STR_LEN,
                     );
@@ -66,16 +66,19 @@ extern "C" fn dispatcher<P: Plugin>(
             }
             GET_PARAM_DISPLAY => {
                 let wrapper = &*wrapper_ptr;
-                if let Some(param) = wrapper.params.get(index as usize) {
-                    let display = format!("{}", f64::from_bits(param.load(Ordering::Relaxed)));
+                let param = wrapper.params.get(index as usize);
+                let param_info = P::PARAMS.get(index as usize);
+                if let (Some(param), Some(param_info)) = (param, param_info) {
+                    let value = f64::from_bits(param.load(Ordering::Relaxed));
+                    let display = (param_info.to_string)(value);
                     copy_cstring(&display, ptr as *mut c_char, string_constants::MAX_PARAM_STR_LEN);
                 }
                 return 0;
             }
             GET_PARAM_NAME => {
-                if let Some(param) = P::PARAMS.get(index as usize) {
+                if let Some(param_info) = P::PARAMS.get(index as usize) {
                     copy_cstring(
-                        param.name,
+                        param_info.name,
                         ptr as *mut c_char,
                         string_constants::MAX_PARAM_STR_LEN,
                     );
@@ -99,7 +102,21 @@ extern "C" fn dispatcher<P: Plugin>(
                     return 0;
                 }
             }
-            STRING_TO_PARAMETER => {}
+            STRING_TO_PARAMETER => {
+                let wrapper = &*wrapper_ptr;
+                let param = wrapper.params.get(index as usize);
+                let param_info = P::PARAMS.get(index as usize);
+                if let (Some(param), Some(param_info)) = (param, param_info) {
+                    if !ptr.is_null() {
+                        let c_str = ffi::CStr::from_ptr(ptr as *const c_char);
+                        if let Ok(string) = c_str.to_str() {
+                            let value = (param_info.from_string)(string);
+                            param.store(value.to_bits(), Ordering::Relaxed);
+                        }
+                    }
+                    return 1;
+                }
+            }
             GET_PROGRAM_NAME_INDEXED => {}
             GET_INPUT_PROPERTIES => {}
             GET_OUTPUT_PROPERTIES => {}
@@ -181,8 +198,11 @@ extern "C" fn process(
 extern "C" fn set_parameter<P: Plugin>(effect: *mut AEffect, index: i32, parameter: f32) {
     unsafe {
         let wrapper = &*(effect as *const Wrapper<P>);
-        if let Some(param) = wrapper.params.get(index as usize) {
-            param.store((parameter as f64).to_bits(), Ordering::Relaxed);
+        let param = wrapper.params.get(index as usize);
+        let param_info = P::PARAMS.get(index as usize);
+        if let (Some(param), Some(param_info)) = (param, param_info) {
+            let value = (param_info.from_normal)(parameter as f64);
+            param.store(value.to_bits(), Ordering::Relaxed);
         }
     }
 }
@@ -190,8 +210,11 @@ extern "C" fn set_parameter<P: Plugin>(effect: *mut AEffect, index: i32, paramet
 extern "C" fn get_parameter<P: Plugin>(effect: *mut AEffect, index: i32) -> f32 {
     unsafe {
         let wrapper = &*(effect as *const Wrapper<P>);
-        if let Some(param) = wrapper.params.get(index as usize) {
-            f64::from_bits(param.load(Ordering::Relaxed)) as f32
+        let param = wrapper.params.get(index as usize);
+        let param_info = P::PARAMS.get(index as usize);
+        if let (Some(param), Some(param_info)) = (param, param_info) {
+            let value = f64::from_bits(param.load(Ordering::Relaxed));
+            (param_info.to_normal)(value) as f32
         } else {
             0.0
         }
@@ -235,8 +258,8 @@ extern "C" fn process_replacing_f64(
 
 pub fn plugin_main<P: Plugin>(_host_callback: HostCallbackProc) -> *mut AEffect {
     let mut params = Vec::with_capacity(P::PARAMS.len());
-    for _ in 0..P::PARAMS.len() {
-        params.push(AtomicU64::new(0f64.to_bits()));
+    for param_info in P::PARAMS {
+        params.push(AtomicU64::new(param_info.default.to_bits()));
     }
 
     let (plugin, processor, editor) = P::create();
