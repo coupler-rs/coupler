@@ -1,4 +1,4 @@
-use crate::{Param, Params, ParamsInner, Plugin, Processor};
+use crate::{ParamInfo, Params, ParamsInner, Plugin, Processor};
 
 use std::cell::UnsafeCell;
 use std::os::raw::c_char;
@@ -27,12 +27,12 @@ struct Vst2Params<'a> {
 }
 
 impl<'a> ParamsInner for Vst2Params<'a> {
-    fn get(&self, param: &Param) -> f64 {
-        f64::from_bits(self.params[param.id].load(Ordering::Relaxed))
+    fn get(&self, param: &ParamInfo) -> f64 {
+        f64::from_bits(self.params[param.id as usize].load(Ordering::Relaxed))
     }
 
-    fn set(&self, param: &Param, value: f64) {
-        self.params[param.id].store(value.to_bits(), Ordering::Relaxed);
+    fn set(&self, param: &ParamInfo, value: f64) {
+        self.params[param.id as usize].store(value.to_bits(), Ordering::Relaxed);
     }
 }
 

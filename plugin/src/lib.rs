@@ -10,34 +10,15 @@ pub struct PluginInfo {
     pub uid: [u32; 4],
 }
 
-pub struct Param {
-    pub id: usize,
+pub struct ParamInfo {
+    pub id: u32,
     pub name: &'static str,
     pub label: &'static str,
 }
 
-pub struct Params<'a> {
-    inner: &'a dyn ParamsInner,
-}
-
-trait ParamsInner {
-    fn get(&self, param: &Param) -> f64;
-    fn set(&self, param: &Param, value: f64);
-}
-
-impl<'a> Params<'a> {
-    pub fn get(&self, param: &Param) -> f64 {
-        self.inner.get(param)
-    }
-
-    pub fn set(&self, param: &Param, value: f64) {
-        self.inner.set(param, value);
-    }
-}
-
 pub trait Plugin: Send + Sync + Sized {
     const INFO: PluginInfo;
-    const PARAMS: &'static [&'static Param];
+    const PARAMS: &'static [ParamInfo];
 
     type Processor: Processor;
     type Editor: Editor;
@@ -50,3 +31,22 @@ pub trait Processor: Send + Sized {
 }
 
 pub trait Editor: Sized {}
+
+pub struct Params<'a> {
+    inner: &'a dyn ParamsInner,
+}
+
+trait ParamsInner {
+    fn get(&self, param: &ParamInfo) -> f64;
+    fn set(&self, param: &ParamInfo, value: f64);
+}
+
+impl<'a> Params<'a> {
+    pub fn get(&self, param: &ParamInfo) -> f64 {
+        self.inner.get(param)
+    }
+
+    pub fn set(&self, param: &ParamInfo, value: f64) {
+        self.inner.set(param, value);
+    }
+}

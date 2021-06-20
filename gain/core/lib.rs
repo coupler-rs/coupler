@@ -1,6 +1,6 @@
-use plugin::{Editor, Param, Params, Plugin, PluginInfo, Processor};
+use plugin::{Editor, ParamInfo, Params, Plugin, PluginInfo, Processor};
 
-const GAIN: Param = Param { id: 0, name: "gain", label: "dB" };
+const GAIN: ParamInfo = ParamInfo { id: 0, name: "gain", label: "dB" };
 
 pub struct Gain {}
 
@@ -14,7 +14,7 @@ impl Plugin for Gain {
         uid: [0x84B4DD04, 0x0D964565, 0x97AC3AAA, 0x87C5CCA7],
     };
 
-    const PARAMS: &'static [&'static Param] = &[&GAIN];
+    const PARAMS: &'static [ParamInfo] = &[GAIN];
 
     type Processor = GainProcessor;
     type Editor = GainEditor;
