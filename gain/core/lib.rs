@@ -1,6 +1,18 @@
 use plugin::{Editor, ParamInfo, Params, Plugin, PluginInfo, Processor};
 
-const GAIN: ParamInfo = ParamInfo { id: 0, name: "gain", label: "dB" };
+use std::str::FromStr;
+
+const GAIN: ParamInfo = ParamInfo {
+    id: 0,
+    name: "gain",
+    label: "dB",
+    steps: None,
+    default: 1.0,
+    to_normal: |x| x,
+    from_normal: |x| x,
+    to_string: |x| x.to_string(),
+    from_string: |s| f64::from_str(s).unwrap_or(0.0),
+};
 
 pub struct Gain {}
 

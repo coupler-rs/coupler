@@ -14,6 +14,12 @@ pub struct ParamInfo {
     pub id: u32,
     pub name: &'static str,
     pub label: &'static str,
+    pub steps: Option<u32>,
+    pub default: f64,
+    pub to_normal: fn(f64) -> f64,
+    pub from_normal: fn(f64) -> f64,
+    pub to_string: fn(f64) -> String,
+    pub from_string: fn(&str) -> f64,
 }
 
 pub trait Plugin: Send + Sync + Sized {
