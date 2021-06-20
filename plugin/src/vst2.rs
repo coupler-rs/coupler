@@ -30,10 +30,6 @@ impl<'a> ParamsInner for Vst2Params<'a> {
     fn get(&self, param: &ParamInfo) -> f64 {
         f64::from_bits(self.params[param.id as usize].load(Ordering::Relaxed))
     }
-
-    fn set(&self, param: &ParamInfo, value: f64) {
-        self.params[param.id as usize].store(value.to_bits(), Ordering::Relaxed);
-    }
 }
 
 extern "C" fn dispatcher<P: Plugin>(

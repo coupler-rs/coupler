@@ -38,15 +38,10 @@ pub struct Params<'a> {
 
 trait ParamsInner {
     fn get(&self, param: &ParamInfo) -> f64;
-    fn set(&self, param: &ParamInfo, value: f64);
 }
 
 impl<'a> Params<'a> {
     pub fn get(&self, param: &ParamInfo) -> f64 {
         self.inner.get(param)
-    }
-
-    pub fn set(&self, param: &ParamInfo, value: f64) {
-        self.inner.set(param, value);
     }
 }
