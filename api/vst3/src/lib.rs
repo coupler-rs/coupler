@@ -274,6 +274,9 @@ pub mod io_modes {
     pub const OFFLINE_PROCESSING: IoMode = 0;
 }
 
+pub type UnitId = i32;
+pub type ProgramListId = i32;
+
 pub type TQuarterNotes = f64;
 
 pub type SpeakerArrangement = u64;
@@ -738,7 +741,7 @@ pub struct ParameterInfo {
     pub units: String128,
     pub step_count: i32,
     pub default_normalized_value: f64,
-    pub unit_id: i32,
+    pub unit_id: UnitId,
     pub flags: i32,
 }
 
@@ -836,6 +839,90 @@ pub struct IEditController {
 
 impl IEditController {
     pub const IID: TUID = iid(0xDCD7BBE3, 0x7742448D, 0xA874AACC, 0x979C759E);
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct UnitInfo {
+    id: UnitId,
+    parent_unit_id: UnitId,
+    name: String128,
+    program_list_id: ProgramListId,
+}
+
+impl UnitInfo {
+    pub const ROOT_UNIT_ID: UnitId = 0;
+    pub const NO_PARENT_UNIT_ID: UnitId = -1;
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct ProgramListInfo {
+    id: i32,
+    name: String128,
+    program_count: i32,
+}
+
+#[repr(C)]
+pub struct IUnitInfo {
+    pub unknown: FUnknown,
+    pub get_unit_count: unsafe extern "system" fn(this: *mut c_void) -> i32,
+    pub get_unit_info: unsafe extern "system" fn(
+        this: *mut c_void,
+        unit_index: i32,
+        info: *mut UnitInfo,
+    ) -> TResult,
+    pub get_program_list_count: unsafe extern "system" fn(this: *mut c_void) -> i32,
+    pub get_program_list_info: unsafe extern "system" fn(
+        this: *mut c_void,
+        list_index: i32,
+        info: *mut ProgramListInfo,
+    ) -> TResult,
+    pub get_program_name: unsafe extern "system" fn(
+        this: *mut c_void,
+        list_id: ProgramListId,
+        program_index: i32,
+        name: *mut String128,
+    ) -> TResult,
+    pub get_program_info: unsafe extern "system" fn(
+        this: *mut c_void,
+        list_id: ProgramListId,
+        program_index: i32,
+        attribute_id: *const TChar,
+        attribute_value: *mut String128,
+    ) -> TResult,
+    pub has_program_pitch_names: unsafe extern "system" fn(
+        this: *mut c_void,
+        list_id: ProgramListId,
+        program_index: i32,
+    ) -> TResult,
+    pub get_program_pitch_name: unsafe extern "system" fn(
+        this: *mut c_void,
+        list_id: ProgramListId,
+        program_index: i32,
+        midi_pitch: i16,
+        name: *mut String128,
+    ) -> TResult,
+    pub get_selected_unit: unsafe extern "system" fn(this: *mut c_void) -> UnitId,
+    pub select_unit: unsafe extern "system" fn(this: *mut c_void, unit_id: UnitId) -> TResult,
+    pub get_unit_by_bus: unsafe extern "system" fn(
+        this: *mut c_void,
+        media_type: MediaType,
+        dir: BusDirection,
+        bus_index: i32,
+        channel: i32,
+        unit_id: *mut UnitId,
+    ) -> TResult,
+    pub set_unit_program_data: unsafe extern "system" fn(
+        this: *mut c_void,
+        list_or_unit_id: i32,
+        program_index: i32,
+        data: *mut *const IBStream,
+    ) -> TResult,
+}
+
+impl IUnitInfo {
+    pub const IID: TUID = iid(0x3D4BD6B5, 0x913A4FD2, 0xA886E768, 0xA5EB92C1);
 }
 
 #[repr(C)]
