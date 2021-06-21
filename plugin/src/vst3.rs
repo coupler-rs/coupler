@@ -34,6 +34,7 @@ pub struct Factory<P> {
     pub audio_processor: *const IAudioProcessor,
     pub process_context_requirements: *const IProcessContextRequirements,
     pub edit_controller: *const IEditController,
+    pub plug_view: *const IPlugView,
     pub phantom: PhantomData<P>,
 }
 
@@ -126,6 +127,7 @@ impl<P: Plugin> Factory<P> {
             audio_processor: this.audio_processor,
             process_context_requirements: this.process_context_requirements,
             edit_controller: this.edit_controller,
+            plug_view: this.plug_view,
             count: AtomicU32::new(1),
             params: vec![Cell::new(0.0); P::PARAMS.len()],
             plugin,
@@ -198,6 +200,7 @@ pub struct Wrapper<P: Plugin> {
     pub audio_processor: *const IAudioProcessor,
     pub process_context_requirements: *const IProcessContextRequirements,
     pub edit_controller: *const IEditController,
+    pub plug_view: *const IPlugView,
     pub count: AtomicU32,
     pub params: Vec<Cell<f64>>,
     pub plugin: P,
@@ -211,10 +214,12 @@ impl<P: Plugin> Wrapper<P> {
     const COMPONENT_OFFSET: isize = 0;
     const AUDIO_PROCESSOR_OFFSET: isize =
         Self::COMPONENT_OFFSET + mem::size_of::<*const IComponent>() as isize;
-    const PROCESS_CONTEXT_REQUIREMENTS_OFFSET: isize = Self::AUDIO_PROCESSOR_OFFSET
-        + mem::size_of::<*const IProcessContextRequirements>() as isize;
+    const PROCESS_CONTEXT_REQUIREMENTS_OFFSET: isize =
+        Self::AUDIO_PROCESSOR_OFFSET + mem::size_of::<*const IAudioProcessor>() as isize;
     const EDIT_CONTROLLER_OFFSET: isize = Self::PROCESS_CONTEXT_REQUIREMENTS_OFFSET
-        + mem::size_of::<*const IAudioProcessor>() as isize;
+        + mem::size_of::<*const IProcessContextRequirements>() as isize;
+    const PLUG_VIEW_OFFSET: isize =
+        Self::EDIT_CONTROLLER_OFFSET + mem::size_of::<*const IEditController>() as isize;
 
     unsafe fn query_interface(
         this: *mut c_void,
@@ -244,6 +249,12 @@ impl<P: Plugin> Wrapper<P> {
         if iid == IEditController::IID {
             Self::component_add_ref(this);
             *obj = this.offset(Self::EDIT_CONTROLLER_OFFSET);
+            return result::OK;
+        }
+
+        if iid == IPlugView::IID {
+            Self::component_add_ref(this);
+            *obj = this.offset(Self::PLUG_VIEW_OFFSET);
             return result::OK;
         }
 
@@ -663,6 +674,92 @@ impl<P: Plugin> Wrapper<P> {
     ) -> *mut *const IPlugView {
         ptr::null_mut()
     }
+
+    pub unsafe extern "system" fn plug_view_query_interface(
+        this: *mut c_void,
+        iid: *const TUID,
+        obj: *mut *mut c_void,
+    ) -> TResult {
+        Self::query_interface(this.offset(-Self::PLUG_VIEW_OFFSET), iid, obj)
+    }
+
+    pub unsafe extern "system" fn plug_view_add_ref(this: *mut c_void) -> u32 {
+        Self::add_ref(this.offset(-Self::PLUG_VIEW_OFFSET))
+    }
+
+    pub unsafe extern "system" fn plug_view_release(this: *mut c_void) -> u32 {
+        Self::release(this.offset(-Self::PLUG_VIEW_OFFSET))
+    }
+
+    pub unsafe extern "system" fn is_platform_type_supported(
+        this: *mut c_void,
+        platform_type: *const c_char,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn attached(
+        this: *mut c_void,
+        platform_type: *const c_char,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn removed(this: *mut c_void) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn on_wheel(this: *mut c_void, distance: f32) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn on_key_down(
+        this: *mut c_void,
+        key: i16,
+        key_code: i16,
+        modifiers: i16,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn on_key_up(
+        this: *mut c_void,
+        key: i16,
+        key_code: i16,
+        modifiers: i16,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn get_size(this: *mut c_void, size: *mut ViewRect) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn on_size(this: *mut c_void, new_size: *const ViewRect) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn on_focus(this: *mut c_void, state: TBool) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn set_frame(
+        this: *mut c_void,
+        frame: *mut *const IPlugFrame,
+    ) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn can_resize(this: *mut c_void) -> TResult {
+        result::OK
+    }
+
+    pub unsafe extern "system" fn check_size_constraint(
+        this: *mut c_void,
+        rect: *mut ViewRect,
+    ) -> TResult {
+        result::OK
+    }
 }
 
 #[macro_export]
@@ -768,12 +865,33 @@ macro_rules! vst3 {
                 create_view: Wrapper::<$plugin>::create_view,
             };
 
+            static PLUG_VIEW_VTABLE: IPlugView = IPlugView {
+                unknown: FUnknown {
+                    query_interface: Wrapper::<$plugin>::plug_view_query_interface,
+                    add_ref: Wrapper::<$plugin>::plug_view_add_ref,
+                    release: Wrapper::<$plugin>::plug_view_release,
+                },
+                is_platform_type_supported: Wrapper::<$plugin>::is_platform_type_supported,
+                attached: Wrapper::<$plugin>::attached,
+                removed: Wrapper::<$plugin>::removed,
+                on_wheel: Wrapper::<$plugin>::on_wheel,
+                on_key_down: Wrapper::<$plugin>::on_key_down,
+                on_key_up: Wrapper::<$plugin>::on_key_up,
+                get_size: Wrapper::<$plugin>::get_size,
+                on_size: Wrapper::<$plugin>::on_size,
+                on_focus: Wrapper::<$plugin>::on_focus,
+                set_frame: Wrapper::<$plugin>::set_frame,
+                can_resize: Wrapper::<$plugin>::can_resize,
+                check_size_constraint: Wrapper::<$plugin>::check_size_constraint,
+            };
+
             static PLUGIN_FACTORY: Factory<$plugin> = Factory {
                 plugin_factory_3: &PLUGIN_FACTORY_3_VTABLE,
                 component: &COMPONENT_VTABLE,
                 audio_processor: &AUDIO_PROCESSOR_VTABLE,
                 process_context_requirements: &PROCESS_CONTEXT_REQUIREMENTS_VTABLE,
                 edit_controller: &EDIT_CONTROLLER_VTABLE,
+                plug_view: &PLUG_VIEW_VTABLE,
                 phantom: PhantomData,
             };
 
