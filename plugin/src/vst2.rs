@@ -1,9 +1,11 @@
-use crate::{ParamInfo, Params, ParamsInner, Plugin, Processor};
+use crate::{Editor, ParamInfo, Params, ParamsInner, ParentWindow, Plugin, Processor};
 
 use std::cell::UnsafeCell;
 use std::os::raw::c_char;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::{ffi, ptr, slice};
+
+use raw_window_handle::RawWindowHandle;
 
 pub use vst2 as vst2_api;
 use vst2::*;
@@ -16,6 +18,7 @@ unsafe fn copy_cstring(string: &str, dst: *mut c_char, len: usize) {
 #[repr(C)]
 struct Wrapper<P: Plugin> {
     effect: AEffect,
+    rect: Rect,
     params: Vec<AtomicU64>,
     plugin: P,
     processor: UnsafeCell<P::Processor>,
@@ -88,10 +91,52 @@ extern "C" fn dispatcher<P: Plugin>(
             SET_SAMPLE_RATE => {}
             SET_BLOCK_SIZE => {}
             MAINS_CHANGED => {}
-            EDIT_GET_RECT => {}
-            EDIT_OPEN => {}
-            EDIT_CLOSE => {}
-            EDIT_IDLE => {}
+            EDIT_GET_RECT => {
+                let wrapper = &*wrapper_ptr;
+                ptr::write(ptr as *mut *const Rect, &wrapper.rect);
+                return 1;
+            }
+            EDIT_OPEN => {
+                let wrapper = &*wrapper_ptr;
+                let editor = &mut *wrapper.editor.get();
+
+                #[cfg(target_os = "macos")]
+                let parent = {
+                    use raw_window_handle::macos::MacOSHandle;
+                    RawWindowHandle::MacOS(MacOSHandle {
+                        ns_view: ptr as *mut ::std::ffi::c_void,
+                        ..MacOSHandle::empty()
+                    })
+                };
+
+                #[cfg(target_os = "windows")]
+                let parent = {
+                    use raw_window_handle::windows::WindowsHandle;
+                    RawWindowHandle::Windows(WindowsHandle { hwnd: ptr, ..WindowsHandle::empty() })
+                };
+
+                #[cfg(target_os = "linux")]
+                let parent = {
+                    use raw_window_handle::unix::XcbHandle;
+                    RawWindowHandle::Xcb(XcbHandle { window: ptr as u32, ..XcbHandle::empty() })
+                };
+
+                editor.open(Some(ParentWindow(parent)));
+
+                return 1;
+            }
+            EDIT_CLOSE => {
+                let wrapper = &*wrapper_ptr;
+                let editor = &mut *wrapper.editor.get();
+                editor.close();
+                return 1;
+            }
+            EDIT_IDLE => {
+                let wrapper = &*wrapper_ptr;
+                let editor = &mut *wrapper.editor.get();
+                editor.poll();
+                return 1;
+            }
             GET_CHUNK => {}
             SET_CHUNK => {}
             PROCESS_EVENTS => {}
@@ -300,6 +345,7 @@ pub fn plugin_main<P: Plugin>(_host_callback: HostCallbackProc) -> *mut AEffect 
             process_replacing_f64,
             _future: [0; 56],
         },
+        rect: Rect { top: 0, left: 0, bottom: 0, right: 0 },
         params,
         plugin,
         processor: UnsafeCell::new(processor),
