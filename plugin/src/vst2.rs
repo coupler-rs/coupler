@@ -264,6 +264,11 @@ pub fn plugin_main<P: Plugin>(_host_callback: HostCallbackProc) -> *mut AEffect 
 
     let (plugin, processor, editor) = P::create();
 
+    let mut flags = effect_flags::CAN_REPLACING;
+    if P::INFO.has_editor {
+        flags |= effect_flags::HAS_EDITOR;
+    }
+
     Box::into_raw(Box::new(Wrapper {
         effect: AEffect {
             magic: AEffect::MAGIC,
@@ -275,7 +280,7 @@ pub fn plugin_main<P: Plugin>(_host_callback: HostCallbackProc) -> *mut AEffect 
             num_params: P::PARAMS.len() as i32,
             num_inputs: 2,
             num_outputs: 2,
-            flags: effect_flags::CAN_REPLACING,
+            flags,
             _reserved_1: 0,
             _reserved_2: 0,
             initial_delay: 0,

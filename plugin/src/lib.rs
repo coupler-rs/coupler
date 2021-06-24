@@ -8,6 +8,7 @@ pub struct PluginInfo {
     pub email: &'static str,
     pub unique_id: [u8; 4],
     pub uid: [u32; 4],
+    pub has_editor: bool,
 }
 
 pub struct ParamInfo {
