@@ -169,9 +169,10 @@ impl Application {
 #[derive(Debug)]
 pub enum WindowError {
     ApplicationClosed,
+    WindowClosed,
     WindowCreation(u8),
     MapWindow(u8),
-    InvalidWindowId,
+    InvalidWindowHandle,
 }
 
 impl fmt::Display for WindowError {
@@ -333,7 +334,7 @@ impl Window {
 
                 if !error.is_null() {
                     libc::free(error as *mut ffi::c_void);
-                    return Err(WindowError::InvalidWindowId);
+                    return Err(WindowError::WindowClosed);
                 }
             }
 
