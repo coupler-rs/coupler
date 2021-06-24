@@ -37,7 +37,7 @@ pub trait Plugin: Send + Sync + Sized {
 }
 
 pub trait Processor: Send + Sized {
-    fn process(&mut self, params: &Params, inputs: &[&[f32]], outputs: &mut [&mut [f32]]);
+    fn process(&mut self, params: &Params, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) {}
 }
 
 pub trait Editor: Sized {
