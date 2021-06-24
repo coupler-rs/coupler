@@ -1,4 +1,4 @@
-use crate::{Rect, WindowHandler, WindowOptions};
+use crate::{Parent, Rect, WindowHandler, WindowOptions};
 
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -204,12 +204,30 @@ impl Window {
                 return Err(WindowError::ApplicationClosed);
             }
 
+            let parent_id = if let Parent::Parent(parent) = options.parent {
+                let parent_id = match parent.raw_window_handle() {
+                    RawWindowHandle::Xcb(handle) => handle.window,
+                    RawWindowHandle::Xlib(handle) => handle.window as u32,
+                    _ => {
+                        return Err(WindowError::InvalidWindowHandle);
+                    }
+                };
+
+                if parent_id == 0 {
+                    return Err(WindowError::InvalidWindowHandle);
+                }
+
+                parent_id
+            } else {
+                (*application.application.inner.screen).root
+            };
+
             let window_id = xcb::xcb_generate_id(application.application.inner.connection);
             let cookie = xcb::xcb_create_window_checked(
                 application.application.inner.connection,
                 xcb::XCB_COPY_FROM_PARENT as u8,
                 window_id,
-                (*application.application.inner.screen).root,
+                parent_id,
                 options.rect.x as i16,
                 options.rect.y as i16,
                 options.rect.w as u16,
