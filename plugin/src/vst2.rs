@@ -132,10 +132,13 @@ extern "C" fn dispatcher<P: Plugin>(
                 return 1;
             }
             EDIT_IDLE => {
-                let wrapper = &*wrapper_ptr;
-                let editor = &mut *wrapper.editor.get();
-                editor.poll();
-                return 1;
+                #[cfg(target = "linux")]
+                {
+                    let wrapper = &*wrapper_ptr;
+                    let editor = &mut *wrapper.editor.get();
+                    editor.poll();
+                    return 1;
+                }
             }
             GET_CHUNK => {}
             SET_CHUNK => {}
