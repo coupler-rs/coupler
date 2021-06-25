@@ -22,7 +22,7 @@ unsafe fn copy_cstring(string: &str, dst: *mut c_char, len: usize) {
 #[repr(C)]
 struct Wrapper<P: Plugin> {
     effect: AEffect,
-    rect: Rect,
+    rect: UnsafeCell<Rect>,
     params: Vec<AtomicU64>,
     plugin: P,
     processor: UnsafeCell<P::Processor>,
@@ -97,7 +97,12 @@ extern "C" fn dispatcher<P: Plugin>(
             MAINS_CHANGED => {}
             EDIT_GET_RECT => {
                 let wrapper = &*wrapper_ptr;
-                ptr::write(ptr as *mut *const Rect, &wrapper.rect);
+                let editor = &*wrapper.editor.get();
+                let (width, height) = editor.size();
+                let rect = &mut *wrapper.rect.get();
+                rect.right = width.round() as i16;
+                rect.bottom = height.round() as i16;
+                ptr::write(ptr as *mut *const Rect, wrapper.rect.get());
                 return 1;
             }
             EDIT_OPEN => {
@@ -352,7 +357,7 @@ pub fn plugin_main<P: Plugin>(_host_callback: HostCallbackProc) -> *mut AEffect 
             process_replacing_f64,
             _future: [0; 56],
         },
-        rect: Rect { top: 0, left: 0, bottom: 0, right: 0 },
+        rect: UnsafeCell::new(Rect { top: 0, left: 0, bottom: 0, right: 0 }),
         params,
         plugin,
         processor: UnsafeCell::new(processor),
