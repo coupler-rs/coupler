@@ -1,4 +1,6 @@
-use plugin::{Editor, ParamInfo, Params, Plugin, PluginInfo, Processor};
+use plugin::{Editor, ParamInfo, Params, ParentWindow, Plugin, PluginInfo, Processor};
+use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
+use window::{Application, Parent, Rect, Window, WindowOptions};
 
 use std::str::FromStr;
 
@@ -35,7 +37,7 @@ impl Plugin for Gain {
     fn create() -> (Gain, GainProcessor, GainEditor) {
         let gain = Gain {};
         let gain_processor = GainProcessor { gain: 0.0 };
-        let gain_editor = GainEditor {};
+        let gain_editor = GainEditor { application: None, window: None };
 
         (gain, gain_processor, gain_editor)
     }
@@ -57,6 +59,60 @@ impl Processor for GainProcessor {
     }
 }
 
-pub struct GainEditor {}
+pub struct GainEditor {
+    application: Option<Application>,
+    window: Option<Window>,
+}
 
-impl Editor for GainEditor {}
+impl Editor for GainEditor {
+    fn size(&self) -> (f64, f64) {
+        (512.0, 512.0)
+    }
+
+    fn open(&mut self, parent: Option<&ParentWindow>) {
+        let parent =
+            if let Some(parent) = parent { Parent::Parent(parent) } else { Parent::Detached };
+
+        let application = Application::open().unwrap();
+        let window = Window::open(
+            &application,
+            WindowOptions {
+                rect: Rect { x: 0.0, y: 0.0, w: 512.0, h: 512.0 },
+                parent,
+                ..WindowOptions::default()
+            },
+        )
+        .unwrap();
+
+        self.application = Some(application);
+        self.window = Some(window);
+    }
+
+    fn close(&mut self) {
+        if let Some(window) = self.window.take() {
+            window.close();
+        }
+
+        if let Some(application) = self.application.take() {
+            application.close();
+        }
+    }
+
+    fn poll(&mut self) {
+        if let Some(ref application) = self.application {
+            application.poll();
+        }
+    }
+
+    fn raw_window_handle(&self) -> Option<RawWindowHandle> {
+        if let Some(ref window) = self.window {
+            Some(window.raw_window_handle())
+        } else {
+            None
+        }
+    }
+
+    fn file_descriptor(&self) -> Option<i32> {
+        None
+    }
+}

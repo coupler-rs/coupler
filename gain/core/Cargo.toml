@@ -9,3 +9,5 @@ path = "lib.rs"
 
 [dependencies]
 plugin = { path = "../../plugin" }
+window = { path = "../../window" }
+raw-window-handle = "0.3.3"
