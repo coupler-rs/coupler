@@ -22,6 +22,14 @@ use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 #[derive(Debug)]
 pub struct ApplicationError(platform::ApplicationError);
 
+impl fmt::Display for ApplicationError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl Error for ApplicationError {}
+
 #[derive(Clone)]
 pub struct Application {
     application: platform::Application,
