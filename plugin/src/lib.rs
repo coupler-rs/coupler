@@ -44,7 +44,7 @@ pub trait Editor: Sized {
     fn size(&self) -> (f64, f64) {
         (0.0, 0.0)
     }
-    fn open(&mut self, parent: Option<ParentWindow>) {}
+    fn open(&mut self, parent: Option<&ParentWindow>) {}
     fn close(&mut self) {}
     fn poll(&mut self) {}
     fn raw_window_handle(&self) -> Option<RawWindowHandle> {

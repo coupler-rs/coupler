@@ -121,7 +121,7 @@ extern "C" fn dispatcher<P: Plugin>(
                     RawWindowHandle::Xcb(XcbHandle { window: ptr as u32, ..XcbHandle::empty() })
                 };
 
-                editor.open(Some(ParentWindow(parent)));
+                editor.open(Some(&ParentWindow(parent)));
 
                 return 1;
             }
