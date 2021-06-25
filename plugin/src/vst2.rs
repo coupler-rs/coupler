@@ -137,8 +137,8 @@ extern "C" fn dispatcher<P: Plugin>(
                     let wrapper = &*wrapper_ptr;
                     let editor = &mut *wrapper.editor.get();
                     editor.poll();
-                    return 1;
                 }
+                return 1;
             }
             GET_CHUNK => {}
             SET_CHUNK => {}

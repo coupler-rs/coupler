@@ -116,6 +116,33 @@ impl Application {
             }
         }
     }
+
+    pub fn poll(&self) {
+        unsafe {
+            let app = appkit::NSApp();
+            let until_date = msg_send![class!(NSDate), now];
+            while self.inner.open.get() {
+                let pool = foundation::NSAutoreleasePool::new(base::nil);
+
+                let event = appkit::NSApplication::nextEventMatchingMask_untilDate_inMode_dequeue_(
+                    app,
+                    appkit::NSEventMask::NSAnyEventMask.bits(),
+                    until_date,
+                    foundation::NSDefaultRunLoopMode,
+                    base::YES,
+                );
+
+                if event.is_null() {
+                    let () = msg_send![pool, drain];
+                    break;
+                } else {
+                    appkit::NSApplication::sendEvent_(app, event);
+                }
+
+                let () = msg_send![pool, drain];
+            }
+        }
+    }
 }
 
 #[derive(Debug)]

@@ -151,6 +151,26 @@ impl Application {
     pub fn stop(&self) {
         self.inner.running.set(self.inner.running.get().saturating_sub(1));
     }
+
+    pub fn poll(&self) {
+        unsafe {
+            while self.inner.open.get() {
+                let mut msg: winuser::MSG = mem::zeroed();
+
+                let result =
+                    winuser::PeekMessageW(&mut msg, ptr::null_mut(), 0, 0, winuser::PM_REMOVE);
+                if result < 0 {
+                    break;
+                } else if result == 0 {
+                    // ignore WM_QUIT messages
+                    continue;
+                }
+
+                winuser::TranslateMessage(&msg);
+                winuser::DispatchMessageW(&msg);
+            }
+        }
+    }
 }
 
 #[derive(Debug)]

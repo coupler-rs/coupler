@@ -62,6 +62,10 @@ impl Application {
     pub fn stop(&self) {
         self.application.stop();
     }
+
+    pub fn poll(&self) {
+        self.application.poll();
+    }
 }
 
 pub enum Parent<'p> {

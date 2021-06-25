@@ -136,22 +136,7 @@ impl Application {
                         return Err(ApplicationError::GetEvent(error));
                     }
 
-                    match ((*event).response_type & !0x80) as u32 {
-                        xcb::XCB_CLIENT_MESSAGE => {
-                            let event = event as *mut xcb_sys::xcb_client_message_event_t;
-                            if (*event).data.data32[0] == self.inner.wm_delete_window {
-                                let windows = self.inner.windows.take();
-                                let window = windows.get(&(*event).window).cloned();
-                                self.inner.windows.set(windows);
-                                if let Some(window) = window {
-                                    window.window.state.handler.request_close(&window);
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-
-                    libc::free(event as *mut ffi::c_void);
+                    self.handle_event(event);
                 }
             }
 
@@ -163,6 +148,39 @@ impl Application {
         unsafe {
             self.inner.running.set(self.inner.running.get().saturating_sub(1));
         }
+    }
+
+    pub fn poll(&self) {
+        unsafe {
+            while self.inner.open.get() {
+                let event = xcb::xcb_poll_for_event(self.inner.connection);
+
+                if event.is_null() {
+                    break;
+                }
+
+                self.handle_event(event);
+            }
+        }
+    }
+
+    unsafe fn handle_event(&self, event: *mut xcb::xcb_generic_event_t) {
+        match ((*event).response_type & !0x80) as u32 {
+            xcb::XCB_CLIENT_MESSAGE => {
+                let event = event as *mut xcb_sys::xcb_client_message_event_t;
+                if (*event).data.data32[0] == self.inner.wm_delete_window {
+                    let windows = self.inner.windows.take();
+                    let window = windows.get(&(*event).window).cloned();
+                    self.inner.windows.set(windows);
+                    if let Some(window) = window {
+                        window.window.state.handler.request_close(&window);
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        libc::free(event as *mut ffi::c_void);
     }
 }
 
