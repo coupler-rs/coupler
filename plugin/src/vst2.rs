@@ -12,7 +12,11 @@ use vst2::*;
 
 unsafe fn copy_cstring(string: &str, dst: *mut c_char, len: usize) {
     let name = ffi::CString::new(string).unwrap_or_else(|_| ffi::CString::default());
-    ptr::copy_nonoverlapping(name.as_ptr(), dst as *mut c_char, name.as_bytes().len().min(len));
+    ptr::copy_nonoverlapping(
+        name.as_ptr(),
+        dst as *mut c_char,
+        name.as_bytes_with_nul().len().min(len),
+    );
 }
 
 #[repr(C)]
