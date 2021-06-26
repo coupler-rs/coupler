@@ -1,6 +1,6 @@
 use crate::{Editor, ParentWindow, Plugin};
 
-use std::cell::{Cell, UnsafeCell};
+use std::cell::UnsafeCell;
 use std::ffi::c_void;
 use std::marker::PhantomData;
 use std::os::raw::{c_char, c_int};
@@ -133,11 +133,15 @@ impl<P: Plugin> Factory<P> {
             plug_view: wrapper.plug_view,
             event_handler: wrapper.event_handler,
             count: AtomicU32::new(1),
-            plug_frame: UnsafeCell::new(ptr::null_mut()),
-            params: vec![Cell::new(0.0); P::PARAMS.len()],
             plugin,
-            processor: UnsafeCell::new(processor),
-            editor: UnsafeCell::new(editor),
+            processor_state: UnsafeCell::new(ProcessorState {
+                processor,
+            }),
+            editor_state: UnsafeCell::new(EditorState {
+                plug_frame: ptr::null_mut(),
+                params: vec![0.0; P::PARAMS.len()],
+                editor,
+            }),
         })) as *mut c_void;
 
         result::OK
@@ -208,11 +212,19 @@ pub struct Wrapper<P: Plugin> {
     plug_view: *const IPlugView,
     event_handler: *const IEventHandler,
     count: AtomicU32,
-    plug_frame: UnsafeCell<*mut *const IPlugFrame>,
-    params: Vec<Cell<f64>>,
     plugin: P,
-    processor: UnsafeCell<P::Processor>,
-    editor: UnsafeCell<P::Editor>,
+    processor_state: UnsafeCell<ProcessorState<P>>,
+    editor_state: UnsafeCell<EditorState<P>>,
+}
+
+struct ProcessorState<P: Plugin> {
+    processor: P::Processor,
+}
+
+struct EditorState<P: Plugin> {
+    plug_frame: *mut *const IPlugFrame,
+    params: Vec<f64>,
+    editor: P::Editor,
 }
 
 unsafe impl<P: Plugin> Sync for Wrapper<P> {}
@@ -567,11 +579,11 @@ impl<P: Plugin> Wrapper<P> {
 
     pub unsafe extern "system" fn edit_controller_terminate(this: *mut c_void) -> TResult {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+        let editor_state = &mut *wrapper.editor_state.get();
 
-        let plug_frame = *wrapper.plug_frame.get();
-        if !plug_frame.is_null() {
-            ((*(*plug_frame)).unknown.release)(plug_frame as *mut c_void);
-            *wrapper.plug_frame.get() = ptr::null_mut();
+        if !editor_state.plug_frame.is_null() {
+            ((*(*editor_state.plug_frame)).unknown.release)(editor_state.plug_frame as *mut c_void);
+            editor_state.plug_frame = ptr::null_mut();
         }
 
         result::OK
@@ -661,9 +673,10 @@ impl<P: Plugin> Wrapper<P> {
 
     pub unsafe extern "system" fn get_param_normalized(this: *mut c_void, id: u32) -> f64 {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+        let editor_state = &*wrapper.editor_state.get();
 
-        if let Some(param) = wrapper.params.get(id as usize) {
-            param.get()
+        if let Some(param) = editor_state.params.get(id as usize) {
+            *param
         } else {
             0.0
         }
@@ -675,9 +688,10 @@ impl<P: Plugin> Wrapper<P> {
         value: f64,
     ) -> TResult {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+        let editor_state = &mut *wrapper.editor_state.get();
 
-        if let Some(param) = wrapper.params.get(id as usize) {
-            param.set(value);
+        if let Some(param) = editor_state.params.get_mut(id as usize) {
+            *param = value;
             result::OK
         } else {
             result::INVALID_ARGUMENT
@@ -758,7 +772,7 @@ impl<P: Plugin> Wrapper<P> {
         }
 
         let wrapper = &*(this.offset(-Self::PLUG_VIEW_OFFSET) as *const Wrapper<P>);
-        let editor = &mut *wrapper.editor.get();
+        let editor_state = &mut *wrapper.editor_state.get();
 
         #[cfg(target_os = "macos")]
         let parent = {
@@ -778,10 +792,10 @@ impl<P: Plugin> Wrapper<P> {
             RawWindowHandle::Xcb(XcbHandle { window: parent as u32, ..XcbHandle::empty() })
         };
 
-        editor.open(Some(&ParentWindow(parent)));
+        editor_state.editor.open(Some(&ParentWindow(parent)));
 
         #[cfg(target_os = "linux")]
-        if let Some(file_descriptor) = editor.file_descriptor() {
+        if let Some(file_descriptor) = editor_state.editor.file_descriptor() {
             let plug_frame = *wrapper.plug_frame.get();
             if !plug_frame.is_null() {
                 let mut obj = ptr::null_mut();
@@ -811,9 +825,9 @@ impl<P: Plugin> Wrapper<P> {
 
     pub unsafe extern "system" fn removed(this: *mut c_void) -> TResult {
         let wrapper = &*(this.offset(-Self::PLUG_VIEW_OFFSET) as *const Wrapper<P>);
-        let editor = &mut *wrapper.editor.get();
+        let editor_state = &mut *wrapper.editor_state.get();
 
-        editor.close();
+        editor_state.editor.close();
 
         #[cfg(target_os = "linux")]
         {
@@ -865,9 +879,9 @@ impl<P: Plugin> Wrapper<P> {
 
     pub unsafe extern "system" fn get_size(this: *mut c_void, size: *mut ViewRect) -> TResult {
         let wrapper = &*(this.offset(-Self::PLUG_VIEW_OFFSET) as *const Wrapper<P>);
-        let editor = &mut *wrapper.editor.get();
+        let editor_state = &*wrapper.editor_state.get();
 
-        let (width, height) = editor.size();
+        let (width, height) = editor_state.editor.size();
 
         let size = &mut *size;
         size.left = 0;
@@ -891,8 +905,9 @@ impl<P: Plugin> Wrapper<P> {
         frame: *mut *const IPlugFrame,
     ) -> TResult {
         let wrapper = &*(this.offset(-Self::PLUG_VIEW_OFFSET) as *const Wrapper<P>);
+        let editor_state = &mut *wrapper.editor_state.get();
 
-        *wrapper.plug_frame.get() = frame;
+        editor_state.plug_frame = frame;
 
         result::OK
     }
@@ -926,9 +941,9 @@ impl<P: Plugin> Wrapper<P> {
 
     pub unsafe extern "system" fn on_fd_is_set(this: *mut c_void, _fd: c_int) {
         let wrapper = &*(this.offset(-Self::EVENT_HANDLER_OFFSET) as *const Wrapper<P>);
-        let editor = &mut *wrapper.editor.get();
+        let editor_state = &mut *wrapper.editor_state.get();
 
-        editor.poll();
+        editor_state.editor.poll();
     }
 }
 
