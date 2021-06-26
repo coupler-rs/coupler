@@ -131,6 +131,11 @@ impl<P: Plugin> Factory<P> {
 
         let factory = &*(this as *const Factory<P>);
 
+        let mut params = Vec::with_capacity(P::PARAMS.len());
+        for param_info in P::PARAMS {
+            params.push(param_info.default);
+        }
+
         let (plugin, processor, editor) = P::create();
 
         *obj = Box::into_raw(Box::new(Wrapper {
@@ -625,15 +630,15 @@ impl<P: Plugin> Wrapper<P> {
         param_index: i32,
         info: *mut ParameterInfo,
     ) -> TResult {
-        if let Some(param) = P::PARAMS.get(param_index as usize) {
+        if let Some(param_info) = P::PARAMS.get(param_index as usize) {
             let info = &mut *info;
 
             info.id = param_index as u32;
-            copy_wstring(param.name, &mut info.title);
-            copy_wstring(param.name, &mut info.short_title);
-            copy_wstring(param.label, &mut info.units);
-            info.step_count = 0;
-            info.default_normalized_value = 0.0;
+            copy_wstring(param_info.name, &mut info.title);
+            copy_wstring(param_info.name, &mut info.short_title);
+            copy_wstring(param_info.label, &mut info.units);
+            info.step_count = param_info.steps.unwrap_or(0) as i32;
+            info.default_normalized_value = (param_info.to_normal)(param_info.default);
             info.unit_id = 0;
             info.flags = ParameterInfo::CAN_AUTOMATE;
 
