@@ -129,17 +129,17 @@ impl<P: Plugin> Factory<P> {
             return result::INVALID_ARGUMENT;
         }
 
-        let wrapper = &*(this as *const Factory<P>);
+        let factory = &*(this as *const Factory<P>);
 
         let (plugin, processor, editor) = P::create();
 
         *obj = Box::into_raw(Box::new(Wrapper {
-            component: wrapper.component,
-            audio_processor: wrapper.audio_processor,
-            process_context_requirements: wrapper.process_context_requirements,
-            edit_controller: wrapper.edit_controller,
-            plug_view: wrapper.plug_view,
-            event_handler: wrapper.event_handler,
+            component: factory.component,
+            audio_processor: factory.audio_processor,
+            process_context_requirements: factory.process_context_requirements,
+            edit_controller: factory.edit_controller,
+            plug_view: factory.plug_view,
+            event_handler: factory.event_handler,
             count: AtomicU32::new(1),
             plugin,
             processor_state: UnsafeCell::new(ProcessorState { processor }),
