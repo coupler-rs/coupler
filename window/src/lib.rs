@@ -66,6 +66,10 @@ impl Application {
     pub fn poll(&self) {
         self.application.poll();
     }
+
+    pub fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
+        self.application.file_descriptor()
+    }
 }
 
 pub enum Parent<'p> {

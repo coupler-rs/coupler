@@ -182,6 +182,16 @@ impl Application {
 
         libc::free(event as *mut ffi::c_void);
     }
+
+    pub fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
+        unsafe {
+            if self.inner.open.get() {
+                Some(xcb::xcb_get_file_descriptor(self.inner.connection))
+            } else {
+                None
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
