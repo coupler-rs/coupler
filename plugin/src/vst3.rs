@@ -199,7 +199,7 @@ impl<P: Plugin> Factory<P> {
         _this: *mut c_void,
         _context: *mut *const FUnknown,
     ) -> TResult {
-        result::OK
+        result::NOT_IMPLEMENTED
     }
 }
 
@@ -593,21 +593,21 @@ impl<P: Plugin> Wrapper<P> {
         _this: *mut c_void,
         _state: *mut *const IBStream,
     ) -> TResult {
-        result::OK
+        result::NOT_IMPLEMENTED
     }
 
     pub unsafe extern "system" fn edit_controller_set_state(
         _this: *mut c_void,
         _state: *mut *const IBStream,
     ) -> TResult {
-        result::OK
+        result::NOT_IMPLEMENTED
     }
 
     pub unsafe extern "system" fn edit_controller_get_state(
         _this: *mut c_void,
         _state: *mut *const IBStream,
     ) -> TResult {
-        result::OK
+        result::NOT_IMPLEMENTED
     }
 
     pub unsafe extern "system" fn get_parameter_count(_this: *mut c_void) -> i32 {
@@ -643,7 +643,7 @@ impl<P: Plugin> Wrapper<P> {
         _value_normalized: f64,
         _string: *mut String128,
     ) -> TResult {
-        result::OK
+        result::NOT_IMPLEMENTED
     }
 
     pub unsafe extern "system" fn get_param_value_by_string(
@@ -652,7 +652,7 @@ impl<P: Plugin> Wrapper<P> {
         _string: *const TChar,
         _value_normalized: *mut f64,
     ) -> TResult {
-        result::OK
+        result::NOT_IMPLEMENTED
     }
 
     pub unsafe extern "system" fn normalized_param_to_plain(
@@ -702,7 +702,7 @@ impl<P: Plugin> Wrapper<P> {
         _this: *mut c_void,
         _handler: *mut *const IComponentHandler,
     ) -> TResult {
-        result::OK
+        result::NOT_IMPLEMENTED
     }
 
     pub unsafe extern "system" fn create_view(
@@ -897,7 +897,7 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn on_focus(_this: *mut c_void, _state: TBool) -> TResult {
-        result::OK
+        result::NOT_IMPLEMENTED
     }
 
     pub unsafe extern "system" fn set_frame(
