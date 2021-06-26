@@ -198,16 +198,16 @@ impl<P: Plugin> Factory<P> {
 
 #[repr(C)]
 pub struct Wrapper<P: Plugin> {
-    pub component: *const IComponent,
-    pub audio_processor: *const IAudioProcessor,
-    pub process_context_requirements: *const IProcessContextRequirements,
-    pub edit_controller: *const IEditController,
-    pub plug_view: *const IPlugView,
-    pub count: AtomicU32,
-    pub params: Vec<Cell<f64>>,
-    pub plugin: P,
-    pub processor: UnsafeCell<P::Processor>,
-    pub editor: UnsafeCell<P::Editor>,
+    component: *const IComponent,
+    audio_processor: *const IAudioProcessor,
+    process_context_requirements: *const IProcessContextRequirements,
+    edit_controller: *const IEditController,
+    plug_view: *const IPlugView,
+    count: AtomicU32,
+    params: Vec<Cell<f64>>,
+    plugin: P,
+    processor: UnsafeCell<P::Processor>,
+    editor: UnsafeCell<P::Editor>,
 }
 
 unsafe impl<P: Plugin> Sync for Wrapper<P> {}
