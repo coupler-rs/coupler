@@ -118,16 +118,16 @@ impl<P: Plugin> Factory<P> {
             return result::INVALID_ARGUMENT;
         }
 
-        let this = &*(this as *const Factory<P>);
+        let wrapper = &*(this as *const Factory<P>);
 
         let (plugin, processor, editor) = P::create();
 
         *obj = Box::into_raw(Box::new(Wrapper {
-            component: this.component,
-            audio_processor: this.audio_processor,
-            process_context_requirements: this.process_context_requirements,
-            edit_controller: this.edit_controller,
-            plug_view: this.plug_view,
+            component: wrapper.component,
+            audio_processor: wrapper.audio_processor,
+            process_context_requirements: wrapper.process_context_requirements,
+            edit_controller: wrapper.edit_controller,
+            plug_view: wrapper.plug_view,
             count: AtomicU32::new(1),
             params: vec![Cell::new(0.0); P::PARAMS.len()],
             plugin,
@@ -637,9 +637,9 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn get_param_normalized(this: *mut c_void, id: u32) -> f64 {
-        let this = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
-        if let Some(param) = this.params.get(id as usize) {
+        if let Some(param) = wrapper.params.get(id as usize) {
             param.get()
         } else {
             0.0
@@ -651,9 +651,9 @@ impl<P: Plugin> Wrapper<P> {
         id: u32,
         value: f64,
     ) -> TResult {
-        let this = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
-        if let Some(param) = this.params.get(id as usize) {
+        if let Some(param) = wrapper.params.get(id as usize) {
             param.set(value);
             result::OK
         } else {
