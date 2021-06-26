@@ -1,5 +1,5 @@
 use std::ffi::c_void;
-use std::os::raw::c_char;
+use std::os::raw::{c_char, c_int};
 
 pub type TUID = [u8; 16];
 
@@ -953,8 +953,11 @@ pub struct IPlugView {
     pub unknown: FUnknown,
     pub is_platform_type_supported:
         unsafe extern "system" fn(this: *mut c_void, platform_type: *const c_char) -> TResult,
-    pub attached:
-        unsafe extern "system" fn(this: *mut c_void, parent: *mut c_void, platform_type: *const c_char) -> TResult,
+    pub attached: unsafe extern "system" fn(
+        this: *mut c_void,
+        parent: *mut c_void,
+        platform_type: *const c_char,
+    ) -> TResult,
     pub removed: unsafe extern "system" fn(this: *mut c_void) -> TResult,
     pub on_wheel: unsafe extern "system" fn(this: *mut c_void, distance: f32) -> TResult,
     pub on_key_down: unsafe extern "system" fn(
@@ -984,6 +987,17 @@ impl IPlugView {
 }
 
 #[repr(C)]
+pub struct IPlugViewContentScaleSupport {
+    pub unknown: FUnknown,
+    pub set_content_scale_factor:
+        unsafe extern "system" fn(this: *mut c_void, factor: f32) -> TResult,
+}
+
+impl IPlugViewContentScaleSupport {
+    pub const IID: TUID = iid(0x65ED9690, 0x8AC44525, 0x8AADEF7A, 0x72EA703F);
+}
+
+#[repr(C)]
 pub struct IPlugFrame {
     pub unknown: FUnknown,
     pub resize_view: unsafe extern "system" fn(
@@ -998,12 +1012,44 @@ impl IPlugFrame {
 }
 
 #[repr(C)]
-pub struct IPlugViewContentScaleSupport {
+pub struct IEventHandler {
     pub unknown: FUnknown,
-    pub set_content_scale_factor:
-        unsafe extern "system" fn(this: *mut c_void, factor: f32) -> TResult,
+    pub on_fd_is_set: unsafe extern "system" fn(this: *mut c_void, fd: c_int),
 }
 
-impl IPlugViewContentScaleSupport {
-    pub const IID: TUID = iid(0x65ED9690, 0x8AC44525, 0x8AADEF7A, 0x72EA703F);
+impl IEventHandler {
+    pub const IID: TUID = iid(0x561E65C9, 0x13A0496F, 0x813A2C35, 0x654D7983);
+}
+
+#[repr(C)]
+pub struct ITimerHandler {
+    pub unknown: FUnknown,
+    pub on_timer: unsafe extern "system" fn(this: *mut c_void),
+}
+
+impl ITimerHandler {
+    pub const IID: TUID = iid(0x10BDD94F, 0x41424774, 0x821FAD8F, 0xECA72CA9);
+}
+
+#[repr(C)]
+pub struct IRunLoop {
+    pub unknown: FUnknown,
+    pub register_event_handler: unsafe extern "system" fn(
+        this: *mut c_void,
+        handler: *mut *const IEventHandler,
+        fd: c_int,
+    ) -> TResult,
+    pub unregister_event_handler:
+        unsafe extern "system" fn(this: *mut c_void, handler: *mut *const IEventHandler) -> TResult,
+    pub register_timer: unsafe extern "system" fn(
+        this: *mut c_void,
+        handler: *mut *const IEventHandler,
+        milliseconds: u64,
+    ) -> TResult,
+    pub unregister_timer:
+        unsafe extern "system" fn(this: *mut c_void, handler: *mut *const IEventHandler) -> TResult,
+}
+
+impl IRunLoop {
+    pub const IID: TUID = iid(0x18C35366, 0x97764F1A, 0x9C5B8385, 0x7A871389);
 }
