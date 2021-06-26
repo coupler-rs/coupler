@@ -141,7 +141,7 @@ extern "C" fn dispatcher<P: Plugin>(
                 return 1;
             }
             EDIT_IDLE => {
-                #[cfg(target = "linux")]
+                #[cfg(target_os = "linux")]
                 {
                     let wrapper = &*wrapper_ptr;
                     let editor = &mut *wrapper.editor.get();
