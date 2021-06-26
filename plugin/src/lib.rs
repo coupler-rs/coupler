@@ -25,6 +25,7 @@ pub struct ParamInfo {
     pub from_string: fn(&str) -> f64,
 }
 
+#[allow(unused_variables)]
 pub trait Plugin: Send + Sync + Sized {
     const INFO: PluginInfo;
     const PARAMS: &'static [ParamInfo];
@@ -36,10 +37,12 @@ pub trait Plugin: Send + Sync + Sized {
     fn destroy(&mut self, processor: &mut Self::Processor, editor: &mut Self::Editor) {}
 }
 
+#[allow(unused_variables)]
 pub trait Processor: Send + Sized {
     fn process(&mut self, params: &Params, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) {}
 }
 
+#[allow(unused_variables)]
 pub trait Editor: Sized {
     fn size(&self) -> (f64, f64) {
         (0.0, 0.0)

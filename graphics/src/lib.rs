@@ -4,14 +4,13 @@ pub use geom::*;
 
 struct TileMap {
     width: usize,
-    height: usize,
     tiles: Vec<Option<usize>>,
     data: Vec<f32>,
 }
 
 impl TileMap {
     fn with_size(width: usize, height: usize) -> TileMap {
-        TileMap { width, height, tiles: vec![None; width * height], data: Vec::new() }
+        TileMap { width, tiles: vec![None; width * height], data: Vec::new() }
     }
 }
 

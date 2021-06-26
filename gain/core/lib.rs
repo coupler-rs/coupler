@@ -90,11 +90,11 @@ impl Editor for GainEditor {
 
     fn close(&mut self) {
         if let Some(window) = self.window.take() {
-            window.close();
+            let _ = window.close();
         }
 
         if let Some(application) = self.application.take() {
-            application.close();
+            let _ = application.close();
         }
     }
 

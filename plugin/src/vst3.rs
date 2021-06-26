@@ -1,4 +1,4 @@
-use crate::{ParentWindow, Plugin, Editor};
+use crate::{Editor, ParentWindow, Plugin};
 
 use std::cell::{Cell, UnsafeCell};
 use std::ffi::c_void;
@@ -719,7 +719,7 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn is_platform_type_supported(
-        this: *mut c_void,
+        _this: *mut c_void,
         platform_type: *const c_char,
     ) -> TResult {
         #[cfg(target_os = "windows")]
@@ -757,10 +757,7 @@ impl<P: Plugin> Wrapper<P> {
         #[cfg(target_os = "macos")]
         let parent = {
             use raw_window_handle::macos::MacOSHandle;
-            RawWindowHandle::MacOS(MacOSHandle {
-                ns_view: parent,
-                ..MacOSHandle::empty()
-            })
+            RawWindowHandle::MacOS(MacOSHandle { ns_view: parent, ..MacOSHandle::empty() })
         };
 
         #[cfg(target_os = "windows")]
@@ -838,24 +835,24 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn on_wheel(this: *mut c_void, distance: f32) -> TResult {
+    pub unsafe extern "system" fn on_wheel(_this: *mut c_void, _distance: f32) -> TResult {
         result::NOT_IMPLEMENTED
     }
 
     pub unsafe extern "system" fn on_key_down(
-        this: *mut c_void,
-        key: i16,
-        key_code: i16,
-        modifiers: i16,
+        _this: *mut c_void,
+        _key: i16,
+        _key_code: i16,
+        _modifiers: i16,
     ) -> TResult {
         result::NOT_IMPLEMENTED
     }
 
     pub unsafe extern "system" fn on_key_up(
-        this: *mut c_void,
-        key: i16,
-        key_code: i16,
-        modifiers: i16,
+        _this: *mut c_void,
+        _key: i16,
+        _key_code: i16,
+        _modifiers: i16,
     ) -> TResult {
         result::NOT_IMPLEMENTED
     }
@@ -875,11 +872,11 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn on_size(this: *mut c_void, new_size: *const ViewRect) -> TResult {
+    pub unsafe extern "system" fn on_size(_this: *mut c_void, _new_size: *const ViewRect) -> TResult {
         result::NOT_IMPLEMENTED
     }
 
-    pub unsafe extern "system" fn on_focus(this: *mut c_void, state: TBool) -> TResult {
+    pub unsafe extern "system" fn on_focus(_this: *mut c_void, _state: TBool) -> TResult {
         result::OK
     }
 
@@ -894,13 +891,13 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn can_resize(this: *mut c_void) -> TResult {
+    pub unsafe extern "system" fn can_resize(_this: *mut c_void) -> TResult {
         result::FALSE
     }
 
     pub unsafe extern "system" fn check_size_constraint(
-        this: *mut c_void,
-        rect: *mut ViewRect,
+        _this: *mut c_void,
+        _rect: *mut ViewRect,
     ) -> TResult {
         result::NOT_IMPLEMENTED
     }
@@ -921,7 +918,7 @@ impl<P: Plugin> Wrapper<P> {
         Self::release(this.offset(-Self::EVENT_HANDLER_OFFSET))
     }
 
-    pub unsafe extern "system" fn on_fd_is_set(this: *mut c_void, fd: c_int) {
+    pub unsafe extern "system" fn on_fd_is_set(this: *mut c_void, _fd: c_int) {
         let wrapper = &*(this.offset(-Self::EVENT_HANDLER_OFFSET) as *const Wrapper<P>);
         let editor = &mut *wrapper.editor.get();
 
