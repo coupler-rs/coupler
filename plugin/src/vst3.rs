@@ -267,6 +267,12 @@ impl<P: Plugin> Wrapper<P> {
             return result::OK;
         }
 
+        if iid == IEventHandler::IID {
+            Self::component_add_ref(this);
+            *obj = this.offset(Self::EVENT_HANDLER_OFFSET);
+            return result::OK;
+        }
+
         result::NO_INTERFACE
     }
 
