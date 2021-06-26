@@ -1,4 +1,4 @@
-use plugin::{Editor, ParamInfo, Params, ParentWindow, Plugin, PluginInfo, Processor};
+use plugin::{Editor, ParamInfo, Params, ParentWindow, Plugin, PluginInfo};
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 use window::{Application, Parent, Rect, Window, WindowOptions};
 
@@ -16,7 +16,9 @@ const GAIN: ParamInfo = ParamInfo {
     from_string: |s| f64::from_str(s).unwrap_or(0.0),
 };
 
-pub struct Gain {}
+pub struct Gain {
+    gain: f32,
+}
 
 impl Plugin for Gain {
     const INFO: PluginInfo = PluginInfo {
@@ -31,23 +33,15 @@ impl Plugin for Gain {
 
     const PARAMS: &'static [ParamInfo] = &[GAIN];
 
-    type Processor = GainProcessor;
     type Editor = GainEditor;
 
-    fn create() -> (Gain, GainProcessor, GainEditor) {
-        let gain = Gain {};
-        let gain_processor = GainProcessor { gain: 0.0 };
+    fn create() -> (Gain, GainEditor) {
+        let gain = Gain { gain: 0.0 };
         let gain_editor = GainEditor { application: None, window: None };
 
-        (gain, gain_processor, gain_editor)
+        (gain, gain_editor)
     }
-}
 
-pub struct GainProcessor {
-    gain: f32,
-}
-
-impl Processor for GainProcessor {
     fn process(&mut self, params: &Params, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) {
         let gain = params.get(&GAIN) as f32;
         for (input, output) in inputs.iter().zip(outputs.iter_mut()) {

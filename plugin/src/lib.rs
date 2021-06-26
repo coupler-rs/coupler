@@ -26,19 +26,14 @@ pub struct ParamInfo {
 }
 
 #[allow(unused_variables)]
-pub trait Plugin: Send + Sync + Sized {
+pub trait Plugin: Send + Sized {
     const INFO: PluginInfo;
     const PARAMS: &'static [ParamInfo];
 
-    type Processor: Processor;
     type Editor: Editor;
 
-    fn create() -> (Self, Self::Processor, Self::Editor);
-    fn destroy(&mut self, processor: &mut Self::Processor, editor: &mut Self::Editor) {}
-}
-
-#[allow(unused_variables)]
-pub trait Processor: Send + Sized {
+    fn create() -> (Self, Self::Editor);
+    fn destroy(&mut self, editor: &mut Self::Editor) {}
     fn process(&mut self, params: &Params, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) {}
 }
 

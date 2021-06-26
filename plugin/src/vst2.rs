@@ -1,4 +1,4 @@
-use crate::{Editor, ParamInfo, Params, ParamsInner, ParentWindow, Plugin, Processor};
+use crate::{Editor, ParamInfo, Params, ParamsInner, ParentWindow, Plugin};
 
 use std::cell::UnsafeCell;
 use std::os::raw::c_char;
@@ -24,8 +24,7 @@ struct Wrapper<P: Plugin> {
     effect: AEffect,
     rect: UnsafeCell<Rect>,
     params: Vec<AtomicU64>,
-    plugin: P,
-    processor: UnsafeCell<P::Processor>,
+    plugin: UnsafeCell<P>,
     editor: UnsafeCell<P::Editor>,
 }
 
@@ -301,7 +300,7 @@ extern "C" fn process_replacing<P: Plugin>(
             slice::from_raw_parts_mut(output_ptrs[1], sample_frames as usize),
         ];
 
-        (*wrapper.processor.get()).process(&params, input_slices, output_slices);
+        (*wrapper.plugin.get()).process(&params, input_slices, output_slices);
     }
 }
 
@@ -319,7 +318,7 @@ pub fn plugin_main<P: Plugin>(_host_callback: HostCallbackProc) -> *mut AEffect 
         params.push(AtomicU64::new(param_info.default.to_bits()));
     }
 
-    let (plugin, processor, editor) = P::create();
+    let (plugin, editor) = P::create();
 
     let mut flags = effect_flags::CAN_REPLACING;
     if P::INFO.has_editor {
@@ -359,8 +358,7 @@ pub fn plugin_main<P: Plugin>(_host_callback: HostCallbackProc) -> *mut AEffect 
         },
         rect: UnsafeCell::new(Rect { top: 0, left: 0, bottom: 0, right: 0 }),
         params,
-        plugin,
-        processor: UnsafeCell::new(processor),
+        plugin: UnsafeCell::new(plugin),
         editor: UnsafeCell::new(editor),
     })) as *mut AEffect
 }

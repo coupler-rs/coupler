@@ -136,7 +136,7 @@ impl<P: Plugin> Factory<P> {
             params.push(param_info.default);
         }
 
-        let (plugin, processor, editor) = P::create();
+        let (plugin, editor) = P::create();
 
         *obj = Box::into_raw(Box::new(Wrapper {
             component: factory.component,
@@ -146,8 +146,7 @@ impl<P: Plugin> Factory<P> {
             plug_view: factory.plug_view,
             event_handler: factory.event_handler,
             count: AtomicU32::new(1),
-            plugin,
-            processor_state: UnsafeCell::new(ProcessorState { processor }),
+            plugin_state: UnsafeCell::new(PluginState { plugin }),
             editor_state: UnsafeCell::new(EditorState {
                 plug_frame: ptr::null_mut(),
                 params: vec![0.0; P::PARAMS.len()],
@@ -223,13 +222,12 @@ pub struct Wrapper<P: Plugin> {
     plug_view: *const IPlugView,
     event_handler: *const IEventHandler,
     count: AtomicU32,
-    plugin: P,
-    processor_state: UnsafeCell<ProcessorState<P>>,
+    plugin_state: UnsafeCell<PluginState<P>>,
     editor_state: UnsafeCell<EditorState<P>>,
 }
 
-struct ProcessorState<P: Plugin> {
-    processor: P::Processor,
+struct PluginState<P: Plugin> {
+    plugin: P,
 }
 
 struct EditorState<P: Plugin> {
@@ -835,11 +833,10 @@ impl<P: Plugin> Wrapper<P> {
 
         #[cfg(target_os = "linux")]
         if let Some(file_descriptor) = editor_state.editor.file_descriptor() {
-            let plug_frame = *wrapper.plug_frame.get();
-            if !plug_frame.is_null() {
+            if !editor_state.plug_frame.is_null() {
                 let mut obj = ptr::null_mut();
-                let result = ((*(*plug_frame)).unknown.query_interface)(
-                    plug_frame as *mut c_void,
+                let result = ((*(*editor_state.plug_frame)).unknown.query_interface)(
+                    editor_state.plug_frame as *mut c_void,
                     &IRunLoop::IID,
                     &mut obj,
                 );
@@ -870,11 +867,10 @@ impl<P: Plugin> Wrapper<P> {
 
         #[cfg(target_os = "linux")]
         {
-            let plug_frame = *wrapper.plug_frame.get();
-            if !plug_frame.is_null() {
+            if !editor_state.plug_frame.is_null() {
                 let mut obj = ptr::null_mut();
-                let result = ((*(*plug_frame)).unknown.query_interface)(
-                    plug_frame as *mut c_void,
+                let result = ((*(*editor_state.plug_frame)).unknown.query_interface)(
+                    editor_state.plug_frame as *mut c_void,
                     &IRunLoop::IID,
                     &mut obj,
                 );
