@@ -1,4 +1,4 @@
-use crate::Plugin;
+use crate::{ParentWindow, Plugin, Editor};
 
 use std::cell::{Cell, UnsafeCell};
 use std::ffi::c_void;
@@ -7,6 +7,8 @@ use std::os::raw::c_char;
 use std::sync::atomic;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::{ffi, mem, ptr};
+
+use raw_window_handle::RawWindowHandle;
 
 #[cfg(target_os = "macos")]
 pub use core_foundation;
@@ -669,9 +671,19 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn create_view(
-        _this: *mut c_void,
-        _name: *const c_char,
+        this: *mut c_void,
+        name: *const c_char,
     ) -> *mut *const IPlugView {
+        if !P::INFO.has_editor {
+            return ptr::null_mut();
+        }
+
+        if ffi::CStr::from_ptr(name) == ffi::CStr::from_ptr(view_types::EDITOR) {
+            Self::add_ref(this.offset(-Self::EDIT_CONTROLLER_OFFSET));
+            return this.offset(-Self::EDIT_CONTROLLER_OFFSET + Self::PLUG_VIEW_OFFSET)
+                as *mut *const IPlugView;
+        }
+
         ptr::null_mut()
     }
 
@@ -695,7 +707,24 @@ impl<P: Plugin> Wrapper<P> {
         this: *mut c_void,
         platform_type: *const c_char,
     ) -> TResult {
-        result::OK
+        #[cfg(target_os = "windows")]
+        if ffi::CStr::from_ptr(platform_type) == ffi::CStr::from_ptr(platform_types::HWND) {
+            return result::TRUE;
+        }
+
+        #[cfg(target_os = "macos")]
+        if ffi::CStr::from_ptr(platform_type) == ffi::CStr::from_ptr(platform_types::NS_VIEW) {
+            return result::TRUE;
+        }
+
+        #[cfg(target_os = "linux")]
+        if ffi::CStr::from_ptr(platform_type)
+            == ffi::CStr::from_ptr(platform_types::X11_EMBED_WINDOW_ID)
+        {
+            return result::TRUE;
+        }
+
+        result::FALSE
     }
 
     pub unsafe extern "system" fn attached(
@@ -703,15 +732,50 @@ impl<P: Plugin> Wrapper<P> {
         parent: *mut c_void,
         platform_type: *const c_char,
     ) -> TResult {
+        if Self::is_platform_type_supported(this, platform_type) != result::TRUE {
+            return result::NOT_IMPLEMENTED;
+        }
+
+        let wrapper = &*(this.offset(-Self::PLUG_VIEW_OFFSET) as *const Wrapper<P>);
+        let editor = &mut *wrapper.editor.get();
+
+        #[cfg(target_os = "macos")]
+        let parent = {
+            use raw_window_handle::macos::MacOSHandle;
+            RawWindowHandle::MacOS(MacOSHandle {
+                ns_view: parent,
+                ..MacOSHandle::empty()
+            })
+        };
+
+        #[cfg(target_os = "windows")]
+        let parent = {
+            use raw_window_handle::windows::WindowsHandle;
+            RawWindowHandle::Windows(WindowsHandle { hwnd: parent, ..WindowsHandle::empty() })
+        };
+
+        #[cfg(target_os = "linux")]
+        let parent = {
+            use raw_window_handle::unix::XcbHandle;
+            RawWindowHandle::Xcb(XcbHandle { window: parent as u32, ..XcbHandle::empty() })
+        };
+
+        editor.open(Some(&ParentWindow(parent)));
+
         result::OK
     }
 
     pub unsafe extern "system" fn removed(this: *mut c_void) -> TResult {
+        let wrapper = &*(this.offset(-Self::PLUG_VIEW_OFFSET) as *const Wrapper<P>);
+        let editor = &mut *wrapper.editor.get();
+
+        editor.close();
+
         result::OK
     }
 
     pub unsafe extern "system" fn on_wheel(this: *mut c_void, distance: f32) -> TResult {
-        result::OK
+        result::NOT_IMPLEMENTED
     }
 
     pub unsafe extern "system" fn on_key_down(
@@ -720,7 +784,7 @@ impl<P: Plugin> Wrapper<P> {
         key_code: i16,
         modifiers: i16,
     ) -> TResult {
-        result::OK
+        result::NOT_IMPLEMENTED
     }
 
     pub unsafe extern "system" fn on_key_up(
@@ -729,15 +793,26 @@ impl<P: Plugin> Wrapper<P> {
         key_code: i16,
         modifiers: i16,
     ) -> TResult {
-        result::OK
+        result::NOT_IMPLEMENTED
     }
 
     pub unsafe extern "system" fn get_size(this: *mut c_void, size: *mut ViewRect) -> TResult {
+        let wrapper = &*(this.offset(-Self::PLUG_VIEW_OFFSET) as *const Wrapper<P>);
+        let editor = &mut *wrapper.editor.get();
+
+        let (width, height) = editor.size();
+
+        let size = &mut *size;
+        size.left = 0;
+        size.top = 0;
+        size.right = width.round() as i32;
+        size.bottom = height.round() as i32;
+
         result::OK
     }
 
     pub unsafe extern "system" fn on_size(this: *mut c_void, new_size: *const ViewRect) -> TResult {
-        result::OK
+        result::NOT_IMPLEMENTED
     }
 
     pub unsafe extern "system" fn on_focus(this: *mut c_void, state: TBool) -> TResult {
@@ -748,18 +823,18 @@ impl<P: Plugin> Wrapper<P> {
         this: *mut c_void,
         frame: *mut *const IPlugFrame,
     ) -> TResult {
-        result::OK
+        result::NOT_IMPLEMENTED
     }
 
     pub unsafe extern "system" fn can_resize(this: *mut c_void) -> TResult {
-        result::OK
+        result::FALSE
     }
 
     pub unsafe extern "system" fn check_size_constraint(
         this: *mut c_void,
         rect: *mut ViewRect,
     ) -> TResult {
-        result::OK
+        result::NOT_IMPLEMENTED
     }
 }
 
