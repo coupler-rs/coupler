@@ -954,7 +954,7 @@ pub struct IPlugView {
     pub is_platform_type_supported:
         unsafe extern "system" fn(this: *mut c_void, platform_type: *const c_char) -> TResult,
     pub attached:
-        unsafe extern "system" fn(this: *mut c_void, platform_type: *const c_char) -> TResult,
+        unsafe extern "system" fn(this: *mut c_void, parent: *mut c_void, platform_type: *const c_char) -> TResult,
     pub removed: unsafe extern "system" fn(this: *mut c_void) -> TResult,
     pub on_wheel: unsafe extern "system" fn(this: *mut c_void, distance: f32) -> TResult,
     pub on_key_down: unsafe extern "system" fn(

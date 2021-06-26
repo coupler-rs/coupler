@@ -700,6 +700,7 @@ impl<P: Plugin> Wrapper<P> {
 
     pub unsafe extern "system" fn attached(
         this: *mut c_void,
+        parent: *mut c_void,
         platform_type: *const c_char,
     ) -> TResult {
         result::OK
