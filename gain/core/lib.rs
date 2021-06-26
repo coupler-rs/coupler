@@ -112,7 +112,11 @@ impl Editor for GainEditor {
         }
     }
 
-    fn file_descriptor(&self) -> Option<i32> {
-        None
+    fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
+        if let Some(ref application) = self.application {
+            application.file_descriptor()
+        } else {
+            None
+        }
     }
 }

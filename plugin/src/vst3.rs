@@ -3,7 +3,7 @@ use crate::{ParentWindow, Plugin, Editor};
 use std::cell::{Cell, UnsafeCell};
 use std::ffi::c_void;
 use std::marker::PhantomData;
-use std::os::raw::c_char;
+use std::os::raw::{c_char, c_int};
 use std::sync::atomic;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::{ffi, mem, ptr};
@@ -37,6 +37,7 @@ pub struct Factory<P> {
     pub process_context_requirements: *const IProcessContextRequirements,
     pub edit_controller: *const IEditController,
     pub plug_view: *const IPlugView,
+    pub event_handler: *const IEventHandler,
     pub phantom: PhantomData<P>,
 }
 
@@ -130,7 +131,9 @@ impl<P: Plugin> Factory<P> {
             process_context_requirements: wrapper.process_context_requirements,
             edit_controller: wrapper.edit_controller,
             plug_view: wrapper.plug_view,
+            event_handler: wrapper.event_handler,
             count: AtomicU32::new(1),
+            plug_frame: UnsafeCell::new(ptr::null_mut()),
             params: vec![Cell::new(0.0); P::PARAMS.len()],
             plugin,
             processor: UnsafeCell::new(processor),
@@ -203,7 +206,9 @@ pub struct Wrapper<P: Plugin> {
     process_context_requirements: *const IProcessContextRequirements,
     edit_controller: *const IEditController,
     plug_view: *const IPlugView,
+    event_handler: *const IEventHandler,
     count: AtomicU32,
+    plug_frame: UnsafeCell<*mut *const IPlugFrame>,
     params: Vec<Cell<f64>>,
     plugin: P,
     processor: UnsafeCell<P::Processor>,
@@ -222,6 +227,8 @@ impl<P: Plugin> Wrapper<P> {
         + mem::size_of::<*const IProcessContextRequirements>() as isize;
     const PLUG_VIEW_OFFSET: isize =
         Self::EDIT_CONTROLLER_OFFSET + mem::size_of::<*const IEditController>() as isize;
+    const EVENT_HANDLER_OFFSET: isize =
+        Self::PLUG_VIEW_OFFSET + mem::size_of::<*const IPlugView>() as isize;
 
     unsafe fn query_interface(
         this: *mut c_void,
@@ -552,7 +559,15 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn edit_controller_terminate(_this: *mut c_void) -> TResult {
+    pub unsafe extern "system" fn edit_controller_terminate(this: *mut c_void) -> TResult {
+        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+
+        let plug_frame = *wrapper.plug_frame.get();
+        if !plug_frame.is_null() {
+            ((*(*plug_frame)).unknown.release)(plug_frame as *mut c_void);
+            *wrapper.plug_frame.get() = ptr::null_mut();
+        }
+
         result::OK
     }
 
@@ -762,6 +777,32 @@ impl<P: Plugin> Wrapper<P> {
 
         editor.open(Some(&ParentWindow(parent)));
 
+        #[cfg(target_os = "linux")]
+        if let Some(file_descriptor) = editor.file_descriptor() {
+            let plug_frame = *wrapper.plug_frame.get();
+            if !plug_frame.is_null() {
+                let mut obj = ptr::null_mut();
+                let result = ((*(*plug_frame)).unknown.query_interface)(
+                    plug_frame as *mut c_void,
+                    &IRunLoop::IID,
+                    &mut obj,
+                );
+                if result == result::OK {
+                    Self::add_ref(this.offset(-Self::PLUG_VIEW_OFFSET));
+
+                    let run_loop = obj as *mut *const IRunLoop;
+                    let event_handler = this
+                        .offset(-Self::PLUG_VIEW_OFFSET + Self::EVENT_HANDLER_OFFSET)
+                        as *mut *const IEventHandler;
+                    ((*(*run_loop)).register_event_handler)(
+                        run_loop as *mut c_void,
+                        event_handler,
+                        file_descriptor,
+                    );
+                }
+            }
+        }
+
         result::OK
     }
 
@@ -770,6 +811,29 @@ impl<P: Plugin> Wrapper<P> {
         let editor = &mut *wrapper.editor.get();
 
         editor.close();
+
+        #[cfg(target_os = "linux")]
+        {
+            let plug_frame = *wrapper.plug_frame.get();
+            if !plug_frame.is_null() {
+                let mut obj = ptr::null_mut();
+                let result = ((*(*plug_frame)).unknown.query_interface)(
+                    plug_frame as *mut c_void,
+                    &IRunLoop::IID,
+                    &mut obj,
+                );
+                if result == result::OK {
+                    let run_loop = obj as *mut *const IRunLoop;
+                    let event_handler = this
+                        .offset(-Self::PLUG_VIEW_OFFSET + Self::EVENT_HANDLER_OFFSET)
+                        as *mut *const IEventHandler;
+                    ((*(*run_loop)).unregister_event_handler)(
+                        run_loop as *mut c_void,
+                        event_handler,
+                    );
+                }
+            }
+        }
 
         result::OK
     }
@@ -823,7 +887,11 @@ impl<P: Plugin> Wrapper<P> {
         this: *mut c_void,
         frame: *mut *const IPlugFrame,
     ) -> TResult {
-        result::NOT_IMPLEMENTED
+        let wrapper = &*(this.offset(-Self::PLUG_VIEW_OFFSET) as *const Wrapper<P>);
+
+        *wrapper.plug_frame.get() = frame;
+
+        result::OK
     }
 
     pub unsafe extern "system" fn can_resize(this: *mut c_void) -> TResult {
@@ -835,6 +903,29 @@ impl<P: Plugin> Wrapper<P> {
         rect: *mut ViewRect,
     ) -> TResult {
         result::NOT_IMPLEMENTED
+    }
+
+    pub unsafe extern "system" fn event_handler_query_interface(
+        this: *mut c_void,
+        iid: *const TUID,
+        obj: *mut *mut c_void,
+    ) -> TResult {
+        Self::query_interface(this.offset(-Self::EVENT_HANDLER_OFFSET), iid, obj)
+    }
+
+    pub unsafe extern "system" fn event_handler_add_ref(this: *mut c_void) -> u32 {
+        Self::add_ref(this.offset(-Self::EVENT_HANDLER_OFFSET))
+    }
+
+    pub unsafe extern "system" fn event_handler_release(this: *mut c_void) -> u32 {
+        Self::release(this.offset(-Self::EVENT_HANDLER_OFFSET))
+    }
+
+    pub unsafe extern "system" fn on_fd_is_set(this: *mut c_void, fd: c_int) {
+        let wrapper = &*(this.offset(-Self::EVENT_HANDLER_OFFSET) as *const Wrapper<P>);
+        let editor = &mut *wrapper.editor.get();
+
+        editor.poll();
     }
 }
 
@@ -961,6 +1052,15 @@ macro_rules! vst3 {
                 check_size_constraint: Wrapper::<$plugin>::check_size_constraint,
             };
 
+            static EVENT_HANDLER_VTABLE: IEventHandler = IEventHandler {
+                unknown: FUnknown {
+                    query_interface: Wrapper::<$plugin>::event_handler_query_interface,
+                    add_ref: Wrapper::<$plugin>::event_handler_add_ref,
+                    release: Wrapper::<$plugin>::event_handler_release,
+                },
+                on_fd_is_set: Wrapper::<$plugin>::on_fd_is_set,
+            };
+
             static PLUGIN_FACTORY: Factory<$plugin> = Factory {
                 plugin_factory_3: &PLUGIN_FACTORY_3_VTABLE,
                 component: &COMPONENT_VTABLE,
@@ -968,6 +1068,7 @@ macro_rules! vst3 {
                 process_context_requirements: &PROCESS_CONTEXT_REQUIREMENTS_VTABLE,
                 edit_controller: &EDIT_CONTROLLER_VTABLE,
                 plug_view: &PLUG_VIEW_VTABLE,
+                event_handler: &EVENT_HANDLER_VTABLE,
                 phantom: PhantomData,
             };
 

@@ -50,7 +50,7 @@ pub trait Editor: Sized {
     fn raw_window_handle(&self) -> Option<RawWindowHandle> {
         None
     }
-    fn file_descriptor(&self) -> Option<i32> {
+    fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
         None
     }
 }
