@@ -795,6 +795,11 @@ impl IComponentHandler2 {
     pub const IID: TUID = iid(0xF040B4B3, 0xA36045EC, 0xABCDC045, 0xB4D5A2CC);
 }
 
+pub mod view_types {
+    use std::os::raw::c_char;
+    pub const EDITOR: *const c_char = b"editor\0".as_ptr() as *const c_char;
+}
+
 #[repr(C)]
 pub struct IEditController {
     pub plugin_base: IPluginBase,
