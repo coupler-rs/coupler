@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 use std::os::raw::{c_char, c_int};
 use std::sync::atomic;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::{ffi, mem, ptr};
+use std::{ffi, mem, ptr, slice};
 
 use raw_window_handle::RawWindowHandle;
 
@@ -27,6 +27,14 @@ fn copy_wstring(src: &str, dst: &mut [i16]) {
     for (src, dst) in src.encode_utf16().zip(dst.iter_mut()) {
         *dst = src as i16;
     }
+}
+
+unsafe fn len_wstring(string: *const i16) -> usize {
+    let mut len = 0;
+    while *string.offset(len) != 0 {
+        len += 1;
+    }
+    len as usize
 }
 
 #[repr(C)]
@@ -134,9 +142,7 @@ impl<P: Plugin> Factory<P> {
             event_handler: wrapper.event_handler,
             count: AtomicU32::new(1),
             plugin,
-            processor_state: UnsafeCell::new(ProcessorState {
-                processor,
-            }),
+            processor_state: UnsafeCell::new(ProcessorState { processor }),
             editor_state: UnsafeCell::new(EditorState {
                 plug_frame: ptr::null_mut(),
                 params: vec![0.0; P::PARAMS.len()],
@@ -639,44 +645,70 @@ impl<P: Plugin> Wrapper<P> {
 
     pub unsafe extern "system" fn get_param_string_by_value(
         _this: *mut c_void,
-        _id: u32,
-        _value_normalized: f64,
-        _string: *mut String128,
+        id: u32,
+        value_normalized: f64,
+        string: *mut String128,
     ) -> TResult {
-        result::NOT_IMPLEMENTED
+        if let Some(param_info) = P::PARAMS.get(id as usize) {
+            let display = (param_info.to_string)((param_info.from_normal)(value_normalized));
+            copy_wstring(&display, &mut *string);
+            result::OK
+        } else {
+            result::INVALID_ARGUMENT
+        }
     }
 
     pub unsafe extern "system" fn get_param_value_by_string(
         _this: *mut c_void,
-        _id: u32,
-        _string: *const TChar,
-        _value_normalized: *mut f64,
+        id: u32,
+        string: *const TChar,
+        value_normalized: *mut f64,
     ) -> TResult {
-        result::NOT_IMPLEMENTED
+        let len = len_wstring(string);
+        let string = String::from_utf16(slice::from_raw_parts(string as *const u16, len));
+
+        let param_info = P::PARAMS.get(id as usize);
+
+        if let (Ok(string), Some(param_info)) = (string, param_info) {
+            *value_normalized = (param_info.from_string)(&string);
+            result::OK
+        } else {
+            result::INVALID_ARGUMENT
+        }
     }
 
     pub unsafe extern "system" fn normalized_param_to_plain(
         _this: *mut c_void,
-        _id: u32,
+        id: u32,
         value_normalized: f64,
     ) -> f64 {
-        value_normalized
+        if let Some(param_info) = P::PARAMS.get(id as usize) {
+            (param_info.from_normal)(value_normalized)
+        } else {
+            0.0
+        }
     }
 
     pub unsafe extern "system" fn plain_param_to_normalized(
         _this: *mut c_void,
-        _id: u32,
+        id: u32,
         plain_value: f64,
     ) -> f64 {
-        plain_value
+        if let Some(param_info) = P::PARAMS.get(id as usize) {
+            (param_info.to_normal)(plain_value)
+        } else {
+            0.0
+        }
     }
 
     pub unsafe extern "system" fn get_param_normalized(this: *mut c_void, id: u32) -> f64 {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &*wrapper.editor_state.get();
 
-        if let Some(param) = editor_state.params.get(id as usize) {
-            *param
+        let param = editor_state.params.get(id as usize);
+        let param_info = P::PARAMS.get(id as usize);
+        if let (Some(param), Some(param_info)) = (param, param_info) {
+            (param_info.to_normal)(*param)
         } else {
             0.0
         }
@@ -690,8 +722,10 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
-        if let Some(param) = editor_state.params.get_mut(id as usize) {
-            *param = value;
+        let param = editor_state.params.get_mut(id as usize);
+        let param_info = P::PARAMS.get(id as usize);
+        if let (Some(param), Some(param_info)) = (param, param_info) {
+            *param = (param_info.from_normal)(value);
             result::OK
         } else {
             result::INVALID_ARGUMENT
@@ -892,7 +926,10 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn on_size(_this: *mut c_void, _new_size: *const ViewRect) -> TResult {
+    pub unsafe extern "system" fn on_size(
+        _this: *mut c_void,
+        _new_size: *const ViewRect,
+    ) -> TResult {
         result::NOT_IMPLEMENTED
     }
 
