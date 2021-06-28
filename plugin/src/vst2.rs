@@ -30,6 +30,7 @@ struct Wrapper<P: Plugin> {
 }
 
 struct PluginState<P: Plugin> {
+    points: Vec<ParamPoint>,
     plugin: P,
 }
 
@@ -110,12 +111,17 @@ impl EditorContext for Vst2EditorContext {
 }
 
 struct Vst2ParamValues<'a> {
-    params: &'a [AtomicU64],
+    points: &'a [ParamPoint],
 }
 
 impl<'a> ParamValues for Vst2ParamValues<'a> {
     fn get(&self, param_info: &ParamInfo) -> &[ParamPoint] {
-        &[]
+        let index = param_info.id as usize * 2;
+        if let Some(points) = &self.points.get(index..index + 1) {
+            points
+        } else {
+            &[]
+        }
     }
 }
 
@@ -381,7 +387,13 @@ extern "C" fn process_replacing<P: Plugin>(
         let wrapper = &*(effect as *const Wrapper<P>);
         let plugin_state = &mut *wrapper.plugin_state.get();
 
-        let param_values = Vst2ParamValues { params: &wrapper.params };
+        for (i, param) in wrapper.params.iter().enumerate() {
+            let index = i * 2;
+            let value = f64::from_bits(param.load(Ordering::Relaxed));
+            plugin_state.points[index] = ParamPoint { offset: 0, value };
+            plugin_state.points[index] = ParamPoint { offset: sample_frames as usize, value };
+        }
+        let param_values = Vst2ParamValues { points: &plugin_state.points };
 
         let input_ptrs = slice::from_raw_parts(inputs, 2);
         let input_slices = &[
@@ -460,7 +472,10 @@ pub fn plugin_main<P: Plugin>(host_callback: HostCallbackProc) -> *mut AEffect {
             _future: [0; 56],
         },
         params,
-        plugin_state: UnsafeCell::new(PluginState { plugin }),
+        plugin_state: UnsafeCell::new(PluginState {
+            points: vec![ParamPoint { offset: 0, value: 0.0 }; P::PARAMS.len()],
+            plugin,
+        }),
         editor_state: UnsafeCell::new(EditorState {
             rect: Rect { top: 0, left: 0, bottom: 0, right: 0 },
             context: editor_context,
