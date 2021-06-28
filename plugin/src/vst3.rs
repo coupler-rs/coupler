@@ -729,6 +729,7 @@ impl<P: Plugin> Wrapper<P> {
         let param_info = P::PARAMS.get(id as usize);
         if let (Some(param), Some(param_info)) = (param, param_info) {
             *param = (param_info.from_normal)(value);
+            editor_state.editor.param_change(param_info, value);
             result::OK
         } else {
             result::INVALID_ARGUMENT

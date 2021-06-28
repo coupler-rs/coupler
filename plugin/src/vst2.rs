@@ -254,11 +254,14 @@ extern "C" fn process(
 extern "C" fn set_parameter<P: Plugin>(effect: *mut AEffect, index: i32, parameter: f32) {
     unsafe {
         let wrapper = &*(effect as *const Wrapper<P>);
+        let editor = &mut *wrapper.editor.get();
+
         let param = wrapper.params.get(index as usize);
         let param_info = P::PARAMS.get(index as usize);
         if let (Some(param), Some(param_info)) = (param, param_info) {
             let value = (param_info.from_normal)(parameter as f64);
             param.store(value.to_bits(), Ordering::Relaxed);
+            editor.param_change(param_info, value);
         }
     }
 }
