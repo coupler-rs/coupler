@@ -1,7 +1,9 @@
-use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
-
 pub mod vst2;
 pub mod vst3;
+
+use std::rc::Rc;
+
+use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
 pub struct PluginInfo {
     pub name: &'static str,
@@ -32,9 +34,10 @@ pub trait Plugin: Send + Sized {
 
     type Editor: Editor;
 
-    fn create() -> (Self, Self::Editor);
+    fn create(editor_context: Rc<dyn EditorContext>) -> (Self, Self::Editor);
     fn destroy(&mut self, editor: &mut Self::Editor) {}
-    fn process(&mut self, params: &Params, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) {}
+    fn process(&mut self, params: &dyn ParamValues, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) {
+    }
 }
 
 #[allow(unused_variables)]
@@ -51,21 +54,18 @@ pub trait Editor: Sized {
     fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
         None
     }
-    fn param_change(&mut self, param: &ParamInfo, value: f64) {}
+    fn param_change(&mut self, param_info: &ParamInfo, value: f64) {}
 }
 
-pub struct Params<'a> {
-    inner: &'a dyn ParamsInner,
+pub trait EditorContext {
+    fn get(&self, param_info: &ParamInfo) -> f64;
+    fn set(&self, param_info: &ParamInfo, value: f64);
+    fn begin_edit(&self, param_info: &ParamInfo);
+    fn end_edit(&self, param_info: &ParamInfo);
 }
 
-trait ParamsInner {
-    fn get(&self, param: &ParamInfo) -> f64;
-}
-
-impl<'a> Params<'a> {
-    pub fn get(&self, param: &ParamInfo) -> f64 {
-        self.inner.get(param)
-    }
+pub trait ParamValues {
+    fn get(&self, param_info: &ParamInfo) -> f64;
 }
 
 pub struct ParentWindow(RawWindowHandle);

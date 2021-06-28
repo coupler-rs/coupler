@@ -1,7 +1,8 @@
-use plugin::{Editor, ParamInfo, Params, ParentWindow, Plugin, PluginInfo};
+use plugin::{Editor, EditorContext, ParamInfo, ParamValues, ParentWindow, Plugin, PluginInfo};
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 use window::{Application, Parent, Rect, Window, WindowOptions};
 
+use std::rc::Rc;
 use std::str::FromStr;
 
 const GAIN: ParamInfo = ParamInfo {
@@ -35,14 +36,14 @@ impl Plugin for Gain {
 
     type Editor = GainEditor;
 
-    fn create() -> (Gain, GainEditor) {
+    fn create(_editor_context: Rc<dyn EditorContext>) -> (Gain, GainEditor) {
         let gain = Gain { gain: 0.0 };
         let gain_editor = GainEditor { application: None, window: None };
 
         (gain, gain_editor)
     }
 
-    fn process(&mut self, params: &Params, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) {
+    fn process(&mut self, params: &dyn ParamValues, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) {
         let gain = params.get(&GAIN) as f32;
         for (input, output) in inputs.iter().zip(outputs.iter_mut()) {
             for (input_sample, output_sample) in input.iter().zip(output.iter_mut()) {

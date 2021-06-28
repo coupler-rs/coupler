@@ -1,9 +1,10 @@
-use crate::{Editor, ParentWindow, Plugin};
+use crate::{Editor, EditorContext, ParamInfo, ParentWindow, Plugin};
 
-use std::cell::UnsafeCell;
+use std::cell::{Cell, UnsafeCell};
 use std::ffi::c_void;
 use std::marker::PhantomData;
 use std::os::raw::{c_char, c_int};
+use std::rc::Rc;
 use std::sync::atomic;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::{ffi, mem, ptr, slice};
@@ -133,10 +134,12 @@ impl<P: Plugin> Factory<P> {
 
         let mut params = Vec::with_capacity(P::PARAMS.len());
         for param_info in P::PARAMS {
-            params.push(param_info.default);
+            params.push(Cell::new(param_info.default));
         }
 
-        let (plugin, editor) = P::create();
+        let editor_context = Rc::new(Vst3EditorContext { params });
+
+        let (plugin, editor) = P::create(editor_context.clone());
 
         *obj = Box::into_raw(Box::new(Wrapper {
             component: factory.component,
@@ -149,7 +152,7 @@ impl<P: Plugin> Factory<P> {
             plugin_state: UnsafeCell::new(PluginState { plugin }),
             editor_state: UnsafeCell::new(EditorState {
                 plug_frame: ptr::null_mut(),
-                params: vec![0.0; P::PARAMS.len()],
+                context: editor_context,
                 editor,
             }),
         })) as *mut c_void;
@@ -213,6 +216,22 @@ impl<P: Plugin> Factory<P> {
     }
 }
 
+struct Vst3EditorContext {
+    params: Vec<Cell<f64>>,
+}
+
+impl EditorContext for Vst3EditorContext {
+    fn get(&self, param_info: &ParamInfo) -> f64 {
+        0.0
+    }
+
+    fn set(&self, param_info: &ParamInfo, value: f64) {}
+
+    fn begin_edit(&self, param_info: &ParamInfo) {}
+
+    fn end_edit(&self, param_info: &ParamInfo) {}
+}
+
 #[repr(C)]
 pub struct Wrapper<P: Plugin> {
     component: *const IComponent,
@@ -232,7 +251,7 @@ struct PluginState<P: Plugin> {
 
 struct EditorState<P: Plugin> {
     plug_frame: *mut *const IPlugFrame,
-    params: Vec<f64>,
+    context: Rc<Vst3EditorContext>,
     editor: P::Editor,
 }
 
@@ -708,10 +727,10 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &*wrapper.editor_state.get();
 
-        let param = editor_state.params.get(id as usize);
+        let param = editor_state.context.params.get(id as usize);
         let param_info = P::PARAMS.get(id as usize);
         if let (Some(param), Some(param_info)) = (param, param_info) {
-            (param_info.to_normal)(*param)
+            (param_info.to_normal)(param.get())
         } else {
             0.0
         }
@@ -725,10 +744,10 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
-        let param = editor_state.params.get_mut(id as usize);
+        let param = editor_state.context.params.get(id as usize);
         let param_info = P::PARAMS.get(id as usize);
         if let (Some(param), Some(param_info)) = (param, param_info) {
-            *param = (param_info.from_normal)(value);
+            param.set((param_info.from_normal)(value));
             editor_state.editor.param_change(param_info, value);
             result::OK
         } else {

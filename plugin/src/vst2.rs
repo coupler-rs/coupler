@@ -1,7 +1,8 @@
-use crate::{Editor, ParamInfo, Params, ParamsInner, ParentWindow, Plugin};
+use crate::{Editor, EditorContext, ParamInfo, ParamValues, ParentWindow, Plugin};
 
 use std::cell::UnsafeCell;
 use std::os::raw::c_char;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::{ffi, ptr, slice};
 
@@ -28,13 +29,27 @@ struct Wrapper<P: Plugin> {
     editor: UnsafeCell<P::Editor>,
 }
 
-struct Vst2Params<'a> {
+struct Vst2EditorContext {}
+
+impl EditorContext for Vst2EditorContext {
+    fn get(&self, param_info: &ParamInfo) -> f64 {
+        0.0
+    }
+
+    fn set(&self, param_info: &ParamInfo, value: f64) {}
+
+    fn begin_edit(&self, param_info: &ParamInfo) {}
+
+    fn end_edit(&self, param_info: &ParamInfo) {}
+}
+
+struct Vst2ParamValues<'a> {
     params: &'a [AtomicU64],
 }
 
-impl<'a> ParamsInner for Vst2Params<'a> {
-    fn get(&self, param: &ParamInfo) -> f64 {
-        f64::from_bits(self.params[param.id as usize].load(Ordering::Relaxed))
+impl<'a> ParamValues for Vst2ParamValues<'a> {
+    fn get(&self, param_info: &ParamInfo) -> f64 {
+        f64::from_bits(self.params[param_info.id as usize].load(Ordering::Relaxed))
     }
 }
 
@@ -289,7 +304,7 @@ extern "C" fn process_replacing<P: Plugin>(
     unsafe {
         let wrapper = &*(effect as *const Wrapper<P>);
 
-        let params = Params { inner: &Vst2Params { params: &wrapper.params } };
+        let param_values = Vst2ParamValues { params: &wrapper.params };
 
         let input_ptrs = slice::from_raw_parts(inputs, 2);
         let input_slices = &[
@@ -303,7 +318,7 @@ extern "C" fn process_replacing<P: Plugin>(
             slice::from_raw_parts_mut(output_ptrs[1], sample_frames as usize),
         ];
 
-        (*wrapper.plugin.get()).process(&params, input_slices, output_slices);
+        (*wrapper.plugin.get()).process(&param_values, input_slices, output_slices);
     }
 }
 
@@ -321,7 +336,9 @@ pub fn plugin_main<P: Plugin>(_host_callback: HostCallbackProc) -> *mut AEffect 
         params.push(AtomicU64::new(param_info.default.to_bits()));
     }
 
-    let (plugin, editor) = P::create();
+    let editor_context = Rc::new(Vst2EditorContext {});
+
+    let (plugin, editor) = P::create(editor_context);
 
     let mut flags = effect_flags::CAN_REPLACING;
     if P::INFO.has_editor {
