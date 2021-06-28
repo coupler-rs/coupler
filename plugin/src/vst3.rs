@@ -137,7 +137,11 @@ impl<P: Plugin> Factory<P> {
             params.push(Cell::new(param_info.default));
         }
 
-        let editor_context = Rc::new(Vst3EditorContext { params });
+        let editor_context = Rc::new(Vst3EditorContext {
+            alive: Cell::new(true),
+            component_handler: Cell::new(ptr::null_mut()),
+            params,
+        });
 
         let (plugin, editor) = P::create(editor_context.clone());
 
@@ -217,19 +221,64 @@ impl<P: Plugin> Factory<P> {
 }
 
 struct Vst3EditorContext {
+    alive: Cell<bool>,
+    component_handler: Cell<*mut *const IComponentHandler>,
     params: Vec<Cell<f64>>,
 }
 
 impl EditorContext for Vst3EditorContext {
     fn get(&self, param_info: &ParamInfo) -> f64 {
-        0.0
+        if let Some(param) = self.params.get(param_info.id as usize) {
+            param.get()
+        } else {
+            0.0
+        }
     }
 
-    fn set(&self, param_info: &ParamInfo, value: f64) {}
+    fn set(&self, param_info: &ParamInfo, value: f64) {
+        if let Some(param) = self.params.get(param_info.id as usize) {
+            param.set(value);
 
-    fn begin_edit(&self, param_info: &ParamInfo) {}
+            let component_handler = self.component_handler.get();
+            if self.alive.get() && !component_handler.is_null() {
+                unsafe {
+                    ((*(*component_handler)).perform_edit)(
+                        component_handler as *mut c_void,
+                        param_info.id,
+                        (param_info.to_normal)(value),
+                    );
+                }
+            }
+        }
+    }
 
-    fn end_edit(&self, param_info: &ParamInfo) {}
+    fn begin_edit(&self, param_info: &ParamInfo) {
+        if let Some(_param) = self.params.get(param_info.id as usize) {
+            let component_handler = self.component_handler.get();
+            if self.alive.get() && !component_handler.is_null() {
+                unsafe {
+                    ((*(*component_handler)).begin_edit)(
+                        component_handler as *mut c_void,
+                        param_info.id,
+                    );
+                }
+            }
+        }
+    }
+
+    fn end_edit(&self, param_info: &ParamInfo) {
+        if let Some(_param) = self.params.get(param_info.id as usize) {
+            let component_handler = self.component_handler.get();
+            if self.alive.get() && !component_handler.is_null() {
+                unsafe {
+                    ((*(*component_handler)).end_edit)(
+                        component_handler as *mut c_void,
+                        param_info.id,
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[repr(C)]
@@ -609,6 +658,13 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
+        editor_state.context.alive.set(false);
+        let component_handler = editor_state.context.component_handler.get();
+        if !component_handler.is_null() {
+            ((*(*component_handler)).unknown.release)(component_handler as *mut c_void);
+            editor_state.context.component_handler.set(ptr::null_mut());
+        }
+
         if !editor_state.plug_frame.is_null() {
             ((*(*editor_state.plug_frame)).unknown.release)(editor_state.plug_frame as *mut c_void);
             editor_state.plug_frame = ptr::null_mut();
@@ -756,10 +812,15 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn set_component_handler(
-        _this: *mut c_void,
-        _handler: *mut *const IComponentHandler,
+        this: *mut c_void,
+        handler: *mut *const IComponentHandler,
     ) -> TResult {
-        result::NOT_IMPLEMENTED
+        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+        let editor_state = &*wrapper.editor_state.get();
+
+        editor_state.context.component_handler.set(handler);
+
+        result::OK
     }
 
     pub unsafe extern "system" fn create_view(
