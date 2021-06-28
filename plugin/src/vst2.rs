@@ -23,10 +23,18 @@ unsafe fn copy_cstring(string: &str, dst: *mut c_char, len: usize) {
 #[repr(C)]
 struct Wrapper<P: Plugin> {
     effect: AEffect,
-    rect: UnsafeCell<Rect>,
     params: Vec<AtomicU64>,
-    plugin: UnsafeCell<P>,
-    editor: UnsafeCell<P::Editor>,
+    plugin_state: UnsafeCell<PluginState<P>>,
+    editor_state: UnsafeCell<EditorState<P>>,
+}
+
+struct PluginState<P: Plugin> {
+    plugin: P,
+}
+
+struct EditorState<P: Plugin> {
+    rect: Rect,
+    editor: P::Editor,
 }
 
 struct Vst2EditorContext {}
@@ -111,17 +119,19 @@ extern "C" fn dispatcher<P: Plugin>(
             MAINS_CHANGED => {}
             EDIT_GET_RECT => {
                 let wrapper = &*wrapper_ptr;
-                let editor = &*wrapper.editor.get();
-                let (width, height) = editor.size();
-                let rect = &mut *wrapper.rect.get();
+                let editor_state = &mut *wrapper.editor_state.get();
+
+                let (width, height) = editor_state.editor.size();
+                let rect = &mut editor_state.rect;
                 rect.right = width.round() as i16;
                 rect.bottom = height.round() as i16;
-                ptr::write(ptr as *mut *const Rect, wrapper.rect.get());
+                ptr::write(ptr as *mut *const Rect, &mut editor_state.rect);
+
                 return 1;
             }
             EDIT_OPEN => {
                 let wrapper = &*wrapper_ptr;
-                let editor = &mut *wrapper.editor.get();
+                let editor_state = &mut *wrapper.editor_state.get();
 
                 #[cfg(target_os = "macos")]
                 let parent = {
@@ -144,22 +154,25 @@ extern "C" fn dispatcher<P: Plugin>(
                     RawWindowHandle::Xcb(XcbHandle { window: ptr as u32, ..XcbHandle::empty() })
                 };
 
-                editor.open(Some(&ParentWindow(parent)));
+                editor_state.editor.open(Some(&ParentWindow(parent)));
 
                 return 1;
             }
             EDIT_CLOSE => {
                 let wrapper = &*wrapper_ptr;
-                let editor = &mut *wrapper.editor.get();
-                editor.close();
+                let editor_state = &mut *wrapper.editor_state.get();
+
+                editor_state.editor.close();
+
                 return 1;
             }
             EDIT_IDLE => {
                 #[cfg(target_os = "linux")]
                 {
                     let wrapper = &*wrapper_ptr;
-                    let editor = &mut *wrapper.editor.get();
-                    editor.poll();
+                    let editor_state = &mut *wrapper.editor_state.get();
+
+                    editor_state.editor.poll();
                 }
                 return 1;
             }
@@ -269,14 +282,14 @@ extern "C" fn process(
 extern "C" fn set_parameter<P: Plugin>(effect: *mut AEffect, index: i32, parameter: f32) {
     unsafe {
         let wrapper = &*(effect as *const Wrapper<P>);
-        let editor = &mut *wrapper.editor.get();
+        let editor_state = &mut *wrapper.editor_state.get();
 
         let param = wrapper.params.get(index as usize);
         let param_info = P::PARAMS.get(index as usize);
         if let (Some(param), Some(param_info)) = (param, param_info) {
             let value = (param_info.from_normal)(parameter as f64);
             param.store(value.to_bits(), Ordering::Relaxed);
-            editor.param_change(param_info, value);
+            editor_state.editor.param_change(param_info, value);
         }
     }
 }
@@ -303,6 +316,7 @@ extern "C" fn process_replacing<P: Plugin>(
 ) {
     unsafe {
         let wrapper = &*(effect as *const Wrapper<P>);
+        let plugin_state = &mut *wrapper.plugin_state.get();
 
         let param_values = Vst2ParamValues { params: &wrapper.params };
 
@@ -318,7 +332,7 @@ extern "C" fn process_replacing<P: Plugin>(
             slice::from_raw_parts_mut(output_ptrs[1], sample_frames as usize),
         ];
 
-        (*wrapper.plugin.get()).process(&param_values, input_slices, output_slices);
+        plugin_state.plugin.process(&param_values, input_slices, output_slices);
     }
 }
 
@@ -376,10 +390,12 @@ pub fn plugin_main<P: Plugin>(_host_callback: HostCallbackProc) -> *mut AEffect 
             process_replacing_f64,
             _future: [0; 56],
         },
-        rect: UnsafeCell::new(Rect { top: 0, left: 0, bottom: 0, right: 0 }),
         params,
-        plugin: UnsafeCell::new(plugin),
-        editor: UnsafeCell::new(editor),
+        plugin_state: UnsafeCell::new(PluginState { plugin }),
+        editor_state: UnsafeCell::new(EditorState {
+            rect: Rect { top: 0, left: 0, bottom: 0, right: 0 },
+            editor,
+        }),
     })) as *mut AEffect
 }
 
