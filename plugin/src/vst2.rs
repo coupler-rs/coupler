@@ -1,9 +1,10 @@
 use crate::{Editor, EditorContext, ParamInfo, ParamValues, ParentWindow, Plugin};
 
-use std::cell::UnsafeCell;
+use std::cell::{Cell, UnsafeCell};
 use std::os::raw::c_char;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::{ffi, ptr, slice};
 
 use raw_window_handle::RawWindowHandle;
@@ -23,7 +24,7 @@ unsafe fn copy_cstring(string: &str, dst: *mut c_char, len: usize) {
 #[repr(C)]
 struct Wrapper<P: Plugin> {
     effect: AEffect,
-    params: Vec<AtomicU64>,
+    params: Arc<Vec<AtomicU64>>,
     plugin_state: UnsafeCell<PluginState<P>>,
     editor_state: UnsafeCell<EditorState<P>>,
 }
@@ -34,21 +35,78 @@ struct PluginState<P: Plugin> {
 
 struct EditorState<P: Plugin> {
     rect: Rect,
+    context: Rc<Vst2EditorContext>,
     editor: P::Editor,
 }
 
-struct Vst2EditorContext {}
+struct Vst2EditorContext {
+    alive: Cell<bool>,
+    host_callback: HostCallbackProc,
+    effect: Cell<*mut AEffect>,
+    params: Arc<Vec<AtomicU64>>,
+}
 
 impl EditorContext for Vst2EditorContext {
     fn get(&self, param_info: &ParamInfo) -> f64 {
-        0.0
+        if let Some(param) = self.params.get(param_info.id as usize) {
+            f64::from_bits(param.load(Ordering::Relaxed))
+        } else {
+            0.0
+        }
     }
 
-    fn set(&self, param_info: &ParamInfo, value: f64) {}
+    fn set(&self, param_info: &ParamInfo, value: f64) {
+        if let Some(param) = self.params.get(param_info.id as usize) {
+            param.store(value.to_bits(), Ordering::Relaxed);
 
-    fn begin_edit(&self, param_info: &ParamInfo) {}
+            if self.alive.get() {
+                unsafe {
+                    (self.host_callback)(
+                        self.effect.get(),
+                        host_opcodes::AUTOMATE,
+                        param_info.id as i32,
+                        0,
+                        ptr::null_mut(),
+                        value as f32,
+                    );
+                }
+            }
+        }
+    }
 
-    fn end_edit(&self, param_info: &ParamInfo) {}
+    fn begin_edit(&self, param_info: &ParamInfo) {
+        if let Some(_param) = self.params.get(param_info.id as usize) {
+            if self.alive.get() {
+                unsafe {
+                    (self.host_callback)(
+                        self.effect.get(),
+                        host_opcodes::BEGIN_EDIT,
+                        param_info.id as i32,
+                        0,
+                        ptr::null_mut(),
+                        0.0,
+                    );
+                }
+            }
+        }
+    }
+
+    fn end_edit(&self, param_info: &ParamInfo) {
+        if let Some(_param) = self.params.get(param_info.id as usize) {
+            if self.alive.get() {
+                unsafe {
+                    (self.host_callback)(
+                        self.effect.get(),
+                        host_opcodes::END_EDIT,
+                        param_info.id as i32,
+                        0,
+                        ptr::null_mut(),
+                        0.0,
+                    );
+                }
+            }
+        }
+    }
 }
 
 struct Vst2ParamValues<'a> {
@@ -77,6 +135,11 @@ extern "C" fn dispatcher<P: Plugin>(
         match opcode {
             OPEN => {}
             CLOSE => {
+                {
+                    let wrapper = &*wrapper_ptr;
+                    let editor_state = &mut *wrapper.editor_state.get();
+                    editor_state.context.alive.set(false);
+                }
                 drop(Box::from_raw(wrapper_ptr));
             }
             SET_PROGRAM => {}
@@ -344,22 +407,28 @@ extern "C" fn process_replacing_f64(
 ) {
 }
 
-pub fn plugin_main<P: Plugin>(_host_callback: HostCallbackProc) -> *mut AEffect {
+pub fn plugin_main<P: Plugin>(host_callback: HostCallbackProc) -> *mut AEffect {
     let mut params = Vec::with_capacity(P::PARAMS.len());
     for param_info in P::PARAMS {
         params.push(AtomicU64::new(param_info.default.to_bits()));
     }
+    let params = Arc::new(params);
 
-    let editor_context = Rc::new(Vst2EditorContext {});
+    let editor_context = Rc::new(Vst2EditorContext {
+        alive: Cell::new(true),
+        host_callback,
+        effect: Cell::new(ptr::null_mut()),
+        params: params.clone(),
+    });
 
-    let (plugin, editor) = P::create(editor_context);
+    let (plugin, editor) = P::create(editor_context.clone());
 
     let mut flags = effect_flags::CAN_REPLACING;
     if P::INFO.has_editor {
         flags |= effect_flags::HAS_EDITOR;
     }
 
-    Box::into_raw(Box::new(Wrapper {
+    let effect = Box::new(Wrapper {
         effect: AEffect {
             magic: AEffect::MAGIC,
             dispatcher: dispatcher::<P>,
@@ -394,9 +463,15 @@ pub fn plugin_main<P: Plugin>(_host_callback: HostCallbackProc) -> *mut AEffect 
         plugin_state: UnsafeCell::new(PluginState { plugin }),
         editor_state: UnsafeCell::new(EditorState {
             rect: Rect { top: 0, left: 0, bottom: 0, right: 0 },
+            context: editor_context,
             editor,
         }),
-    })) as *mut AEffect
+    });
+
+    let editor_state = unsafe { &*effect.editor_state.get() };
+    editor_state.context.effect.set(&*effect as *const Wrapper<P> as *mut AEffect);
+
+    Box::into_raw(effect) as *mut AEffect
 }
 
 #[macro_export]
