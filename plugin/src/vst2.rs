@@ -1,4 +1,4 @@
-use crate::{Editor, EditorContext, ParamInfo, ParamValues, ParentWindow, Plugin};
+use crate::{Editor, EditorContext, ParamInfo, ParamPoint, ParamValues, ParentWindow, Plugin};
 
 use std::cell::{Cell, UnsafeCell};
 use std::os::raw::c_char;
@@ -114,8 +114,8 @@ struct Vst2ParamValues<'a> {
 }
 
 impl<'a> ParamValues for Vst2ParamValues<'a> {
-    fn get(&self, param_info: &ParamInfo) -> f64 {
-        f64::from_bits(self.params[param_info.id as usize].load(Ordering::Relaxed))
+    fn get(&self, param_info: &ParamInfo) -> &[ParamPoint] {
+        &[]
     }
 }
 

@@ -65,7 +65,13 @@ pub trait EditorContext {
 }
 
 pub trait ParamValues {
-    fn get(&self, param_info: &ParamInfo) -> f64;
+    fn get(&self, param_info: &ParamInfo) -> &[ParamPoint];
+}
+
+#[derive(Copy, Clone)]
+pub struct ParamPoint {
+    pub offset: usize,
+    pub value: f64,
 }
 
 pub struct ParentWindow(RawWindowHandle);

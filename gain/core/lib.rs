@@ -44,7 +44,7 @@ impl Plugin for Gain {
     }
 
     fn process(&mut self, params: &dyn ParamValues, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) {
-        let gain = params.get(&GAIN) as f32;
+        let gain = params.get(&GAIN)[0].value as f32;
         for (input, output) in inputs.iter().zip(outputs.iter_mut()) {
             for (input_sample, output_sample) in input.iter().zip(output.iter_mut()) {
                 self.gain = 0.9995 * self.gain + 0.0005 * gain;
