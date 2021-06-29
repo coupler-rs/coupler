@@ -1,4 +1,4 @@
-use crate::{Editor, EditorContext, ParamInfo, ParentWindow, Plugin};
+use crate::{Editor, EditorContext, ParamInfo, ParamValues, ParentWindow, Plugin};
 
 use std::cell::{Cell, UnsafeCell};
 use std::ffi::c_void;
@@ -613,7 +613,9 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::AUDIO_PROCESSOR_OFFSET) as *const Wrapper<P>);
         let plugin_state = &mut *wrapper.plugin_state.get();
 
-        let param_changes = (*data).input_parameter_changes;
+        let process_data = &*data;
+
+        let param_changes = process_data.input_parameter_changes;
         if !param_changes.is_null() {
             let param_count =
                 ((*(*param_changes)).get_parameter_count)(param_changes as *mut c_void);
@@ -650,6 +652,44 @@ impl<P: Plugin> Wrapper<P> {
                 plugin_state.params[param_id as usize] = value;
             }
         }
+
+        if process_data.num_inputs != 1 || process_data.num_outputs != 1 {
+            return result::OK;
+        }
+
+        let input_bus = &*process_data.inputs;
+        let output_bus = &*process_data.outputs;
+
+        if input_bus.num_channels != 2 || output_bus.num_channels != 2 {
+            return result::OK;
+        }
+
+        let input_ptrs = slice::from_raw_parts(input_bus.channel_buffers, input_bus.num_channels as usize);
+        let output_ptrs = slice::from_raw_parts(output_bus.channel_buffers, output_bus.num_channels as usize);
+
+        if input_ptrs[0].is_null()
+            || input_ptrs[1].is_null()
+            || output_ptrs[0].is_null()
+            || output_ptrs[1].is_null()
+        {
+            return result::OK;
+        }
+
+        let input_slices = &[
+            slice::from_raw_parts(input_ptrs[0] as *const f32, process_data.num_samples as usize),
+            slice::from_raw_parts(input_ptrs[1] as *const f32, process_data.num_samples as usize),
+        ];
+
+        let output_slices = &mut [
+            slice::from_raw_parts_mut(output_ptrs[0] as *mut f32, process_data.num_samples as usize),
+            slice::from_raw_parts_mut(output_ptrs[1] as *mut f32, process_data.num_samples as usize),
+        ];
+
+        plugin_state.plugin.process(
+            &ParamValues { values: &plugin_state.params },
+            input_slices,
+            output_slices,
+        );
 
         result::OK
     }
