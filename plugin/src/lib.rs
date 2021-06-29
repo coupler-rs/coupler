@@ -54,7 +54,6 @@ pub trait Editor: Sized {
     fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
         None
     }
-    fn param_change(&mut self, param_info: &ParamInfo, value: f64) {}
 }
 
 pub trait EditorContext {
