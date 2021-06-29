@@ -1,6 +1,7 @@
 pub mod vst2;
 pub mod vst3;
 
+use std::ops::Range;
 use std::rc::Rc;
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
@@ -36,8 +37,7 @@ pub trait Plugin: Send + Sized {
 
     fn create(editor_context: Rc<dyn EditorContext>) -> (Self, Self::Editor);
     fn destroy(&mut self, editor: &mut Self::Editor) {}
-    fn process(&mut self, params: &dyn ParamValues, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) {
-    }
+    fn process(&mut self, params: &ParamValues, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) {}
 }
 
 #[allow(unused_variables)]
@@ -64,14 +64,25 @@ pub trait EditorContext {
     fn end_edit(&self, param_info: &ParamInfo);
 }
 
-pub trait ParamValues {
-    fn get(&self, param_info: &ParamInfo) -> &[ParamPoint];
+pub struct ParamValues {
+    ranges: Vec<Range<usize>>,
+    points: Vec<ParamPoint>,
 }
 
 #[derive(Copy, Clone)]
 pub struct ParamPoint {
     pub offset: usize,
     pub value: f64,
+}
+
+impl ParamValues {
+    pub fn get(&self, param_info: &ParamInfo) -> &[ParamPoint] {
+        if let Some(range) = self.ranges.get(param_info.id as usize) {
+            self.points.get(range.clone()).unwrap_or(&[])
+        } else {
+            &[]
+        }
+    }
 }
 
 pub struct ParentWindow(RawWindowHandle);

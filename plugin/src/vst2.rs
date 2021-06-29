@@ -1,6 +1,7 @@
 use crate::{Editor, EditorContext, ParamInfo, ParamPoint, ParamValues, ParentWindow, Plugin};
 
 use std::cell::{Cell, UnsafeCell};
+use std::ops::Range;
 use std::os::raw::c_char;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -30,7 +31,7 @@ struct Wrapper<P: Plugin> {
 }
 
 struct PluginState<P: Plugin> {
-    points: Vec<ParamPoint>,
+    param_values: ParamValues,
     plugin: P,
 }
 
@@ -106,21 +107,6 @@ impl EditorContext for Vst2EditorContext {
                     );
                 }
             }
-        }
-    }
-}
-
-struct Vst2ParamValues<'a> {
-    points: &'a [ParamPoint],
-}
-
-impl<'a> ParamValues for Vst2ParamValues<'a> {
-    fn get(&self, param_info: &ParamInfo) -> &[ParamPoint] {
-        let index = param_info.id as usize * 2;
-        if let Some(points) = &self.points.get(index..index + 1) {
-            points
-        } else {
-            &[]
         }
     }
 }
@@ -388,12 +374,11 @@ extern "C" fn process_replacing<P: Plugin>(
         let plugin_state = &mut *wrapper.plugin_state.get();
 
         for (i, param) in wrapper.params.iter().enumerate() {
-            let index = i * 2;
             let value = f64::from_bits(param.load(Ordering::Relaxed));
-            plugin_state.points[index] = ParamPoint { offset: 0, value };
-            plugin_state.points[index] = ParamPoint { offset: sample_frames as usize, value };
+            plugin_state.param_values.points[i * 2] = ParamPoint { offset: 0, value };
+            plugin_state.param_values.points[i * 2 + 1] =
+                ParamPoint { offset: sample_frames as usize - 1, value };
         }
-        let param_values = Vst2ParamValues { points: &plugin_state.points };
 
         let input_ptrs = slice::from_raw_parts(inputs, 2);
         let input_slices = &[
@@ -407,7 +392,7 @@ extern "C" fn process_replacing<P: Plugin>(
             slice::from_raw_parts_mut(output_ptrs[1], sample_frames as usize),
         ];
 
-        plugin_state.plugin.process(&param_values, input_slices, output_slices);
+        plugin_state.plugin.process(&plugin_state.param_values, input_slices, output_slices);
     }
 }
 
@@ -434,6 +419,13 @@ pub fn plugin_main<P: Plugin>(host_callback: HostCallbackProc) -> *mut AEffect {
     });
 
     let (plugin, editor) = P::create(editor_context.clone());
+
+    let mut param_ranges = Vec::with_capacity(P::PARAMS.len());
+    for i in 0..P::PARAMS.len() {
+        param_ranges.push(i * 2..i * 2 + 1);
+    }
+    let param_points = vec![ParamPoint { offset: 0, value: 0.0 }; P::PARAMS.len()];
+    let param_values = ParamValues { ranges: param_ranges, points: param_points };
 
     let mut flags = effect_flags::CAN_REPLACING;
     if P::INFO.has_editor {
@@ -472,10 +464,7 @@ pub fn plugin_main<P: Plugin>(host_callback: HostCallbackProc) -> *mut AEffect {
             _future: [0; 56],
         },
         params,
-        plugin_state: UnsafeCell::new(PluginState {
-            points: vec![ParamPoint { offset: 0, value: 0.0 }; P::PARAMS.len()],
-            plugin,
-        }),
+        plugin_state: UnsafeCell::new(PluginState { param_values, plugin }),
         editor_state: UnsafeCell::new(EditorState {
             rect: Rect { top: 0, left: 0, bottom: 0, right: 0 },
             context: editor_context,
