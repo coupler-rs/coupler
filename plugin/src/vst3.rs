@@ -684,14 +684,14 @@ impl<P: Plugin> Wrapper<P> {
         _this: *mut c_void,
         _state: *mut *const IBStream,
     ) -> TResult {
-        result::NOT_IMPLEMENTED
+        result::OK
     }
 
     pub unsafe extern "system" fn edit_controller_get_state(
         _this: *mut c_void,
         _state: *mut *const IBStream,
     ) -> TResult {
-        result::NOT_IMPLEMENTED
+        result::OK
     }
 
     pub unsafe extern "system" fn get_parameter_count(_this: *mut c_void) -> i32 {
