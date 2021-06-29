@@ -1,7 +1,6 @@
-use crate::{Editor, EditorContext, ParamInfo, ParamPoint, ParamValues, ParentWindow, Plugin};
+use crate::{Editor, EditorContext, ParamInfo, ParamValues, ParentWindow, Plugin};
 
 use std::cell::{Cell, UnsafeCell};
-use std::ops::Range;
 use std::os::raw::c_char;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -31,7 +30,7 @@ struct Wrapper<P: Plugin> {
 }
 
 struct PluginState<P: Plugin> {
-    param_values: ParamValues,
+    params: Vec<f64>,
     plugin: P,
 }
 
@@ -371,10 +370,7 @@ extern "C" fn process_replacing<P: Plugin>(
         let plugin_state = &mut *wrapper.plugin_state.get();
 
         for (i, param) in wrapper.params.iter().enumerate() {
-            let value = f64::from_bits(param.load(Ordering::Relaxed));
-            plugin_state.param_values.points[i * 2] = ParamPoint { offset: 0, value };
-            plugin_state.param_values.points[i * 2 + 1] =
-                ParamPoint { offset: sample_frames as usize - 1, value };
+            plugin_state.params[i] = f64::from_bits(param.load(Ordering::Relaxed));
         }
 
         let input_ptrs = slice::from_raw_parts(inputs, 2);
@@ -389,7 +385,11 @@ extern "C" fn process_replacing<P: Plugin>(
             slice::from_raw_parts_mut(output_ptrs[1], sample_frames as usize),
         ];
 
-        plugin_state.plugin.process(&plugin_state.param_values, input_slices, output_slices);
+        plugin_state.plugin.process(
+            &ParamValues { values: &plugin_state.params },
+            input_slices,
+            output_slices,
+        );
     }
 }
 
@@ -416,13 +416,6 @@ pub fn plugin_main<P: Plugin>(host_callback: HostCallbackProc) -> *mut AEffect {
     });
 
     let (plugin, editor) = P::create(editor_context.clone());
-
-    let mut param_ranges = Vec::with_capacity(P::PARAMS.len());
-    for i in 0..P::PARAMS.len() {
-        param_ranges.push(i * 2..i * 2 + 1);
-    }
-    let param_points = vec![ParamPoint { offset: 0, value: 0.0 }; P::PARAMS.len()];
-    let param_values = ParamValues { ranges: param_ranges, points: param_points };
 
     let mut flags = effect_flags::CAN_REPLACING;
     if P::INFO.has_editor {
@@ -461,7 +454,7 @@ pub fn plugin_main<P: Plugin>(host_callback: HostCallbackProc) -> *mut AEffect {
             _future: [0; 56],
         },
         params,
-        plugin_state: UnsafeCell::new(PluginState { param_values, plugin }),
+        plugin_state: UnsafeCell::new(PluginState { params: vec![0.0; P::PARAMS.len()], plugin }),
         editor_state: UnsafeCell::new(EditorState {
             rect: Rect { top: 0, left: 0, bottom: 0, right: 0 },
             context: editor_context,

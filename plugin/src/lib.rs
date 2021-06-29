@@ -1,7 +1,6 @@
 pub mod vst2;
 pub mod vst3;
 
-use std::ops::Range;
 use std::rc::Rc;
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
@@ -63,24 +62,13 @@ pub trait EditorContext {
     fn end_edit(&self, param_info: &ParamInfo);
 }
 
-pub struct ParamValues {
-    ranges: Vec<Range<usize>>,
-    points: Vec<ParamPoint>,
+pub struct ParamValues<'a> {
+    values: &'a [f64],
 }
 
-#[derive(Copy, Clone)]
-pub struct ParamPoint {
-    pub offset: usize,
-    pub value: f64,
-}
-
-impl ParamValues {
-    pub fn get(&self, param_info: &ParamInfo) -> &[ParamPoint] {
-        if let Some(range) = self.ranges.get(param_info.id as usize) {
-            self.points.get(range.clone()).unwrap_or(&[])
-        } else {
-            &[]
-        }
+impl<'a> ParamValues<'a> {
+    pub fn get(&self, param_info: &ParamInfo) -> f64 {
+        self.values[param_info.id as usize]
     }
 }
 

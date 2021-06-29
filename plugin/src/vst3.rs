@@ -132,15 +132,20 @@ impl<P: Plugin> Factory<P> {
 
         let factory = &*(this as *const Factory<P>);
 
-        let mut params = Vec::with_capacity(P::PARAMS.len());
+        let mut plugin_params = Vec::with_capacity(P::PARAMS.len());
         for param_info in P::PARAMS {
-            params.push(Cell::new(param_info.default));
+            plugin_params.push(param_info.default);
+        }
+
+        let mut editor_params = Vec::with_capacity(P::PARAMS.len());
+        for param_info in P::PARAMS {
+            editor_params.push(Cell::new(param_info.default));
         }
 
         let editor_context = Rc::new(Vst3EditorContext {
             alive: Cell::new(true),
             component_handler: Cell::new(ptr::null_mut()),
-            params,
+            params: editor_params,
         });
 
         let (plugin, editor) = P::create(editor_context.clone());
@@ -153,7 +158,7 @@ impl<P: Plugin> Factory<P> {
             plug_view: factory.plug_view,
             event_handler: factory.event_handler,
             count: AtomicU32::new(1),
-            plugin_state: UnsafeCell::new(PluginState { plugin }),
+            plugin_state: UnsafeCell::new(PluginState { params: plugin_params, plugin }),
             editor_state: UnsafeCell::new(EditorState {
                 plug_frame: ptr::null_mut(),
                 context: editor_context,
@@ -295,6 +300,7 @@ pub struct Wrapper<P: Plugin> {
 }
 
 struct PluginState<P: Plugin> {
+    params: Vec<f64>,
     plugin: P,
 }
 
@@ -603,7 +609,48 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn process(_this: *mut c_void, _data: *mut ProcessData) -> TResult {
+    pub unsafe extern "system" fn process(this: *mut c_void, data: *mut ProcessData) -> TResult {
+        let wrapper = &*(this.offset(-Self::AUDIO_PROCESSOR_OFFSET) as *const Wrapper<P>);
+        let plugin_state = &mut *wrapper.plugin_state.get();
+
+        let param_changes = (*data).input_parameter_changes;
+        if !param_changes.is_null() {
+            let param_count =
+                ((*(*param_changes)).get_parameter_count)(param_changes as *mut c_void);
+            for param_index in 0..param_count {
+                let param_data = ((*(*param_changes)).get_parameter_data)(
+                    param_changes as *mut c_void,
+                    param_index,
+                );
+
+                if param_data.is_null() {
+                    continue;
+                }
+
+                let param_id = ((*(*param_data)).get_parameter_id)(param_data as *mut c_void);
+                let point_count = ((*(*param_data)).get_point_count)(param_data as *mut c_void);
+
+                if point_count <= 0 {
+                    continue;
+                }
+
+                let mut offset = 0;
+                let mut value = 0.0;
+                let result = ((*(*param_data)).get_point)(
+                    param_data as *mut c_void,
+                    point_count - 1,
+                    &mut offset,
+                    &mut value,
+                );
+
+                if result != result::OK {
+                    continue;
+                }
+
+                plugin_state.params[param_id as usize] = value;
+            }
+        }
+
         result::OK
     }
 
