@@ -13,7 +13,7 @@ fn main() {
                 let t = node.transform();
                 let transform =
                     Transform::new(Mat2x2::new(t.a, t.c, t.b, t.d), Vec2::new(t.e, t.f))
-                        .then(Transform::scale(2.0));
+                        .then(Transform::scale(1.0));
 
                 let mut path = Path::builder();
                 for segment in p.data.0.iter() {
@@ -54,7 +54,7 @@ fn main() {
                     if let usvg::Paint::Color(color) = stroke.paint {
                         let color =
                             Color::rgba(color.red, color.green, color.blue, stroke.opacity.to_u8());
-                        canvas.fill(&path.stroke(stroke.width.value() * 2.0), color);
+                        canvas.fill(&path.stroke(stroke.width.value() * 1.0), color);
                     }
                 }
             }
