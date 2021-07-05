@@ -382,7 +382,29 @@ impl Window {
 
     pub fn request_display_rect(&self, rect: Rect) {}
 
-    pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {}
+    pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {
+        unsafe {
+            let width = width.min(framebuffer.len());
+            let height = height.min(framebuffer.len() / width);
+
+            xcb::xcb_put_image(
+                self.state.application.application.inner.connection,
+                xcb::XCB_IMAGE_FORMAT_Z_PIXMAP as u8,
+                self.state.window_id,
+                self.state.gcontext_id,
+                width as u16,
+                height as u16,
+                0,
+                0,
+                0,
+                24,
+                (width * height * 4) as u32,
+                framebuffer.as_ptr() as *const u8,
+            );
+
+            xcb::xcb_flush(self.state.application.application.inner.connection);
+        }
+    }
 
     pub fn close(&self) -> Result<(), WindowError> {
         unsafe {
