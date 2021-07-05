@@ -166,6 +166,22 @@ impl Application {
 
     unsafe fn handle_event(&self, event: *mut xcb::xcb_generic_event_t) {
         match ((*event).response_type & !0x80) as u32 {
+            xcb::XCB_EXPOSE => {
+                let event = &*(event as *mut xcb_sys::xcb_expose_event_t);
+                if let Some(window) = self.inner.windows.borrow().get(&event.window) {
+                    window.window.state.expose_rects.borrow_mut().push(xcb::xcb_rectangle_t {
+                        x: event.x as i16,
+                        y: event.y as i16,
+                        width: event.width,
+                        height: event.height,
+                    });
+
+                    if event.count == 0 {
+                        let rects = window.window.state.expose_rects.take();
+                        window.window.state.handler.display(window);
+                    }
+                }
+            }
             xcb::XCB_CLIENT_MESSAGE => {
                 let event = &*(event as *mut xcb_sys::xcb_client_message_event_t);
                 if event.data.data32[0] == self.inner.wm_delete_window {
@@ -217,6 +233,7 @@ pub struct Window {
 struct WindowState {
     open: Cell<bool>,
     window_id: u32,
+    expose_rects: RefCell<Vec<xcb::xcb_rectangle_t>>,
     application: crate::Application,
     handler: Box<dyn WindowHandler>,
 }
@@ -250,6 +267,8 @@ impl Window {
             };
 
             let window_id = xcb::xcb_generate_id(application.application.inner.connection);
+            let value_mask = xcb::XCB_CW_EVENT_MASK;
+            let value_list = &[xcb::XCB_EVENT_MASK_EXPOSURE];
             let cookie = xcb::xcb_create_window_checked(
                 application.application.inner.connection,
                 xcb::XCB_COPY_FROM_PARENT as u8,
@@ -262,9 +281,8 @@ impl Window {
                 0,
                 xcb::XCB_WINDOW_CLASS_INPUT_OUTPUT as u16,
                 (*application.application.inner.screen).root_visual,
-                0,
-                ptr::null(),
-                // value_mask,
+                value_mask,
+                value_list.as_ptr() as *const ffi::c_void,
             );
 
             let error = xcb::xcb_request_check(application.application.inner.connection, cookie);
@@ -301,6 +319,7 @@ impl Window {
                     state: Rc::new(WindowState {
                         open: Cell::new(true),
                         window_id,
+                        expose_rects: RefCell::new(Vec::new()),
                         application: application.clone(),
                         handler: options.handler,
                     }),
