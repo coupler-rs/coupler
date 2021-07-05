@@ -2,18 +2,6 @@ mod geom;
 
 pub use geom::*;
 
-struct TileMap {
-    width: usize,
-    tiles: Vec<Option<usize>>,
-    data: Vec<f32>,
-}
-
-impl TileMap {
-    fn with_size(width: usize, height: usize) -> TileMap {
-        TileMap { width, tiles: vec![None; width * height], data: Vec::new() }
-    }
-}
-
 #[derive(Copy, Clone)]
 pub struct Color(u32);
 
@@ -43,11 +31,25 @@ pub struct Canvas {
     width: usize,
     height: usize,
     data: Vec<u32>,
+    coverage: Vec<f32>,
+    tiles_width: usize,
+    tiles: Vec<bool>,
 }
 
 impl Canvas {
     pub fn with_size(width: usize, height: usize) -> Canvas {
-        Canvas { width, height, data: vec![0xFFFFFFFF; width * height] }
+        let tiles_width = (width + 8) >> 3;
+        let tiles_height = height;
+        let tiles = vec![false; tiles_width * tiles_height];
+
+        Canvas {
+            width,
+            height,
+            data: vec![0xFFFFFFFF; width * height + 1],
+            coverage: vec![0.0; width * height + 1],
+            tiles_width,
+            tiles,
+        }
     }
 
     pub fn width(&self) -> usize {
@@ -59,7 +61,7 @@ impl Canvas {
     }
 
     pub fn data(&self) -> &[u32] {
-        &self.data
+        &self.data[0..self.width * self.height]
     }
 
     pub fn fill(&mut self, path: &Path, color: Color) {
@@ -77,13 +79,11 @@ impl Canvas {
         }
 
         let left = (min.x.floor() as isize).max(0).min(self.width as isize) as usize;
-        let right = (max.x.floor() as isize + 2).max(0).min(self.width as isize) as usize;
+        let right = (max.x.floor() as isize + 8).max(0).min(self.width as isize) as usize;
         let top = (min.y.floor() as isize).max(0).min(self.height as isize) as usize;
         let bottom = (max.y.floor() as isize + 1).max(0).min(self.height as isize) as usize;
         let width = right - left;
         let height = bottom - top;
-
-        let mut tiles = TileMap::with_size((width + 8) >> 3, (height + 8) >> 3);
 
         let mut first = Vec2::new(0.0, 0.0);
         let mut last = Vec2::new(0.0, 0.0);
@@ -122,7 +122,7 @@ impl Canvas {
                 p2 = first;
             }
 
-            if p1 != p2 {
+            if p1.y != p2.y {
                 let x_dir = (p2.x - p1.x).signum() as isize;
                 let y_dir = (p2.y - p1.y).signum() as isize;
                 let dtdx = 1.0 / (p2.x - p1.x);
@@ -146,41 +146,30 @@ impl Canvas {
                 let x_step = dtdx.abs();
                 let y_step = dtdy.abs();
 
+                let mut prev = p1;
+
                 loop {
-                    let t0 = row_t0.max(col_t0);
                     let t1 = row_t1.min(col_t1);
-                    let p0 = (1.0 - t0) * p1 + t0 * p2;
-                    let p1 = (1.0 - t1) * p1 + t1 * p2;
-                    let height = (p1.y - p0.y) as f32;
+                    let next = (1.0 - t1) * p1 + t1 * p2;
+                    let height = (next.y - prev.y) as f32;
                     let right_edge = (x + 1) as f64;
-                    let area = 0.5 * height * ((right_edge - p0.x) + (right_edge - p1.x)) as f32;
+                    let area = 0.5 * height * ((right_edge - prev.x) + (right_edge - next.x)) as f32;
 
-                    if x >= left as isize
-                        && x < right as isize
-                        && y >= top as isize
-                        && y < bottom as isize
+                    if x >= 0 as isize
+                        && x < self.width as isize
+                        && y >= 0 as isize
+                        && y < self.height as isize
                     {
-                        #[inline(always)]
-                        fn add(tile_map: &mut TileMap, x: usize, y: usize, delta: f32) {
-                            let tile_x = x >> 3;
-                            let tile_y = y >> 3;
-                            let tile = &mut tile_map.tiles[tile_y * tile_map.width + tile_x];
-                            let index = if let Some(index) = tile {
-                                *index
-                            } else {
-                                let len = tile_map.data.len();
-                                tile_map.data.resize(len + 64, 0.0);
-                                *tile = Some(len);
-                                len
-                            };
-                            let tile_data = &mut tile_map.data[index..index + 64];
-                            tile_data[((y & 0x7) << 3) | (x & 0x7)] += delta;
-                        }
+                        let tile_x = x as usize >> 3;
+                        let tile_y = y as usize;
+                        self.tiles[tile_y * self.tiles_width + tile_x] = true;
+                        self.coverage[(y as usize * self.width) + x as usize] += area;
 
-                        let x = x as usize - left;
-                        let y = y as usize - top;
-                        add(&mut tiles, x, y, area);
-                        add(&mut tiles, x + 1, y, height - area);
+                        let tile_x = (x + 1) as usize >> 3;
+                        let tile_y = y as usize;
+                        self.tiles[tile_y * self.tiles_width + tile_x] = true;
+                        self.coverage[(y as usize * self.width) + (x + 1) as usize] +=
+                            height - area;
                     }
 
                     if row_t1 < col_t1 {
@@ -196,6 +185,8 @@ impl Canvas {
                     if row_t0 == 1.0 || col_t0 == 1.0 {
                         break;
                     }
+
+                    prev = next;
                 }
             }
 
@@ -204,18 +195,31 @@ impl Canvas {
             }
         }
 
-        for row in 0..height {
+        for row in top..bottom {
             let mut accum = 0.0;
             let mut coverage = 0;
-            for tile_col in 0..tiles.width {
-                let columns = if tile_col == tiles.width - 1 { width % 8 } else { 8 };
-                if let Some(index) = tiles.tiles[(row >> 3) * tiles.width + tile_col] {
-                    let tile_data = &mut tiles.data[index..index + 64];
-                    for col in 0..columns {
-                        accum += tile_data[((row & 0x7) << 3) | col];
 
-                        let pixel =
-                            &mut self.data[(top + row) * self.width + left + (tile_col << 3) + col];
+            let tile_row = row;
+
+            let mut tile_span_start = left >> 3;
+            while tile_span_start < (right >> 3) + 1 {
+                let current = self.tiles[tile_row * self.tiles_width + tile_span_start];
+                self.tiles[tile_row * self.tiles_width + tile_span_start] = false;
+                let mut tile_span_end = tile_span_start + 1;
+                while tile_span_end < self.tiles_width && self.tiles[tile_row * self.tiles_width + tile_span_end] == current {
+                    self.tiles[tile_row * self.tiles_width + tile_span_end] = false;
+                    tile_span_end += 1;
+                }
+
+                let span_start = tile_span_start << 3;
+                let span_end = (tile_span_end << 3).min(self.width);
+
+                if current {
+                    for col in span_start..span_end {
+                        accum += self.coverage[row * self.width + col];
+                        self.coverage[row * self.width + col] = 0.0;
+
+                        let pixel = self.data[row * self.width + col];
 
                         coverage = (accum.abs() * 255.0 + 0.5).min(255.0) as u32;
 
@@ -226,46 +230,45 @@ impl Canvas {
 
                         let inv_a = 255 - a;
 
-                        a += (inv_a * ((*pixel >> 24) & 0xFF) + 127) / 255;
-                        r += (inv_a * ((*pixel >> 16) & 0xFF) + 127) / 255;
-                        g += (inv_a * ((*pixel >> 8) & 0xFF) + 127) / 255;
-                        b += (inv_a * ((*pixel >> 0) & 0xFF) + 127) / 255;
+                        a += (inv_a * ((pixel >> 24) & 0xFF) + 127) / 255;
+                        r += (inv_a * ((pixel >> 16) & 0xFF) + 127) / 255;
+                        g += (inv_a * ((pixel >> 8) & 0xFF) + 127) / 255;
+                        b += (inv_a * ((pixel >> 0) & 0xFF) + 127) / 255;
 
-                        self.data[(top + row) * self.width + left + (tile_col << 3) + col] =
+                        self.data[row * self.width + col] =
                             (a << 24) | (r << 16) | (g << 8) | (b << 0);
                     }
-                } else {
-                    if coverage == 255 {
-                        for col in 0..columns {
-                            let r = (coverage * color.r() as u32 + 127) / 255;
-                            let g = (coverage * color.g() as u32 + 127) / 255;
-                            let b = (coverage * color.b() as u32 + 127) / 255;
-                            let a = (coverage * color.a() as u32 + 127) / 255;
-                            self.data[(top + row) * self.width + left + (tile_col << 3) + col] =
-                                (a << 24) | (r << 16) | (g << 8) | (b << 0);
-                        }
-                    } else if coverage != 0 {
-                        for col in 0..columns {
-                            let pixel = &mut self.data
-                                [(top + row) * self.width + left + (tile_col << 3) + col];
+                } else if coverage == 255 {
+                    for col in span_start..span_end {
+                        let r = (coverage * color.r() as u32 + 127) / 255;
+                        let g = (coverage * color.g() as u32 + 127) / 255;
+                        let b = (coverage * color.b() as u32 + 127) / 255;
+                        let a = (coverage * color.a() as u32 + 127) / 255;
+                        self.data[row * self.width + col] =
+                            (a << 24) | (r << 16) | (g << 8) | (b << 0);
+                    }
+                } else if coverage != 0 {
+                    for col in span_start..span_end {
+                        let pixel = self.data[row * self.width + col];
 
-                            let mut r = (coverage * color.r() as u32 + 127) / 255;
-                            let mut g = (coverage * color.g() as u32 + 127) / 255;
-                            let mut b = (coverage * color.b() as u32 + 127) / 255;
-                            let mut a = (coverage * color.a() as u32 + 127) / 255;
+                        let mut r = (coverage * color.r() as u32 + 127) / 255;
+                        let mut g = (coverage * color.g() as u32 + 127) / 255;
+                        let mut b = (coverage * color.b() as u32 + 127) / 255;
+                        let mut a = (coverage * color.a() as u32 + 127) / 255;
 
-                            let inv_a = 255 - a;
+                        let inv_a = 255 - a;
 
-                            a += (inv_a * ((*pixel >> 24) & 0xFF) + 127) / 255;
-                            r += (inv_a * ((*pixel >> 16) & 0xFF) + 127) / 255;
-                            g += (inv_a * ((*pixel >> 8) & 0xFF) + 127) / 255;
-                            b += (inv_a * ((*pixel >> 0) & 0xFF) + 127) / 255;
+                        a += (inv_a * ((pixel >> 24) & 0xFF) + 127) / 255;
+                        r += (inv_a * ((pixel >> 16) & 0xFF) + 127) / 255;
+                        g += (inv_a * ((pixel >> 8) & 0xFF) + 127) / 255;
+                        b += (inv_a * ((pixel >> 0) & 0xFF) + 127) / 255;
 
-                            self.data[(top + row) * self.width + left + (tile_col << 3) + col] =
-                                (a << 24) | (r << 16) | (g << 8) | (b << 0);
-                        }
+                        self.data[row * self.width + col] =
+                            (a << 24) | (r << 16) | (g << 8) | (b << 0);
                     }
                 }
+
+                tile_span_start = tile_span_end;
             }
         }
     }
