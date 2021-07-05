@@ -1,6 +1,6 @@
 use crate::{Parent, Rect, WindowHandler, WindowOptions};
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::error::Error;
 use std::marker::PhantomData;
@@ -57,7 +57,7 @@ struct ApplicationInner {
     screen: *mut xcb::xcb_screen_t,
     wm_protocols: xcb::xcb_atom_t,
     wm_delete_window: xcb::xcb_atom_t,
-    windows: Cell<HashMap<u32, crate::Window>>,
+    windows: RefCell<HashMap<u32, crate::Window>>,
 }
 
 impl Application {
@@ -93,7 +93,7 @@ impl Application {
                     screen,
                     wm_protocols,
                     wm_delete_window,
-                    windows: Cell::new(HashMap::new()),
+                    windows: RefCell::new(HashMap::new()),
                 }),
             })
         }
@@ -167,11 +167,9 @@ impl Application {
     unsafe fn handle_event(&self, event: *mut xcb::xcb_generic_event_t) {
         match ((*event).response_type & !0x80) as u32 {
             xcb::XCB_CLIENT_MESSAGE => {
-                let event = event as *mut xcb_sys::xcb_client_message_event_t;
-                if (*event).data.data32[0] == self.inner.wm_delete_window {
-                    let windows = self.inner.windows.take();
-                    let window = windows.get(&(*event).window).cloned();
-                    self.inner.windows.set(windows);
+                let event = &*(event as *mut xcb_sys::xcb_client_message_event_t);
+                if event.data.data32[0] == self.inner.wm_delete_window {
+                    let window = self.inner.windows.borrow().get(&event.window).cloned();
                     if let Some(window) = window {
                         window.window.state.handler.request_close(&window);
                     }
@@ -310,9 +308,7 @@ impl Window {
                 phantom: PhantomData,
             };
 
-            let mut application_windows = application.application.inner.windows.take();
-            application_windows.insert(window_id, window.clone());
-            application.application.inner.windows.set(application_windows);
+            application.application.inner.windows.borrow_mut().insert(window_id, window.clone());
 
             window.window.state.handler.create(&window);
 
@@ -343,10 +339,8 @@ impl Window {
             if self.state.open.get() {
                 self.state.open.set(false);
 
-                let mut application_windows =
-                    self.state.application.application.inner.windows.take();
-                application_windows.remove(&self.state.window_id);
-                self.state.application.application.inner.windows.set(application_windows);
+                let application = &self.state.application;
+                application.application.inner.windows.borrow_mut().remove(&self.state.window_id);
 
                 let window = crate::Window { window: self.clone(), phantom: PhantomData };
                 window.window.state.handler.destroy(&window);
