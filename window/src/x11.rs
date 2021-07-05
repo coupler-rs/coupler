@@ -178,7 +178,27 @@ impl Application {
 
                     if event.count == 0 {
                         let rects = window.window.state.expose_rects.take();
+                        xcb::xcb_set_clip_rectangles(
+                            self.inner.connection,
+                            xcb::XCB_CLIP_ORDERING_UNSORTED as u8,
+                            window.window.state.gcontext_id,
+                            0,
+                            0,
+                            rects.len() as u32,
+                            rects.as_ptr(),
+                        );
+
                         window.window.state.handler.display(window);
+
+                        xcb::xcb_set_clip_rectangles(
+                            self.inner.connection,
+                            xcb::XCB_CLIP_ORDERING_UNSORTED as u8,
+                            window.window.state.gcontext_id,
+                            0,
+                            0,
+                            0,
+                            ptr::null(),
+                        );
                     }
                 }
             }
