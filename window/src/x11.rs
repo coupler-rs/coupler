@@ -232,7 +232,8 @@ pub struct Window {
 
 struct WindowState {
     open: Cell<bool>,
-    window_id: u32,
+    window_id: xcb::xcb_window_t,
+    gcontext_id: xcb::xcb_gcontext_t,
     expose_rects: RefCell<Vec<xcb::xcb_rectangle_t>>,
     application: crate::Application,
     handler: Box<dyn WindowHandler>,
@@ -292,6 +293,15 @@ impl Window {
                 return Err(WindowError::WindowCreation(error_code));
             }
 
+            let gcontext_id = xcb::xcb_generate_id(application.application.inner.connection);
+            xcb::xcb_create_gc_checked(
+                application.application.inner.connection,
+                gcontext_id,
+                window_id,
+                0,
+                ptr::null(),
+            );
+
             let atoms = &[application.application.inner.wm_delete_window];
             xcb::xcb_icccm_set_wm_protocols(
                 application.application.inner.connection,
@@ -319,6 +329,7 @@ impl Window {
                     state: Rc::new(WindowState {
                         open: Cell::new(true),
                         window_id,
+                        gcontext_id,
                         expose_rects: RefCell::new(Vec::new()),
                         application: application.clone(),
                         handler: options.handler,
@@ -363,6 +374,11 @@ impl Window {
 
                 let window = crate::Window { window: self.clone(), phantom: PhantomData };
                 window.window.state.handler.destroy(&window);
+
+                xcb::xcb_free_gc(
+                    self.state.application.application.inner.connection,
+                    self.state.gcontext_id,
+                );
 
                 let cookie = xcb::xcb_destroy_window_checked(
                     self.state.application.application.inner.connection,
