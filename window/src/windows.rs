@@ -1,4 +1,4 @@
-use crate::{MouseButton, Parent, Rect, WindowHandler, WindowOptions};
+use crate::{MouseButton, Parent, Point, Rect, WindowHandler, WindowOptions};
 
 use std::cell::Cell;
 use std::collections::HashSet;
@@ -10,8 +10,8 @@ use std::{ffi, fmt, mem, ptr};
 
 use raw_window_handle::{windows::WindowsHandle, HasRawWindowHandle, RawWindowHandle};
 use winapi::{
-    shared::minwindef, shared::ntdef, shared::windef, um::errhandlingapi, um::wingdi, um::winnt,
-    um::winuser,
+    shared::minwindef, shared::ntdef, shared::windef, shared::windowsx, um::errhandlingapi,
+    um::wingdi, um::winnt, um::winuser,
 };
 
 fn to_wstring(str: &str) -> Vec<ntdef::WCHAR> {
@@ -490,6 +490,15 @@ unsafe extern "system" fn wnd_proc(
                         return 0;
                     }
                 }
+            }
+            winuser::WM_MOUSEMOVE => {
+                let point = Point {
+                    x: windowsx::GET_X_LPARAM(lparam) as f64,
+                    y: windowsx::GET_Y_LPARAM(lparam) as f64,
+                };
+                window.window.state.handler.mouse_move(&window, point);
+
+                return 0;
             }
             winuser::WM_TIMER => {
                 if wparam == TIMER_ID {

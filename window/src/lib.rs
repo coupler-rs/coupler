@@ -79,6 +79,12 @@ pub enum Parent<'p> {
 }
 
 #[derive(Copy, Clone, Debug)]
+pub struct Point {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Copy, Clone, Debug)]
 pub struct Rect {
     pub x: f64,
     pub y: f64,
@@ -100,6 +106,7 @@ pub trait WindowHandler {
     fn create(&self, window: &Window) {}
     fn frame(&self, window: &Window) {}
     fn display(&self, window: &Window) {}
+    fn mouse_move(&self, window: &Window, position: Point) {}
     fn mouse_down(&self, window: &Window, button: MouseButton) -> bool {
         false
     }

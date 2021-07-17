@@ -1,4 +1,4 @@
-use window::{Application, MouseButton, Rect, Window, WindowHandler, WindowOptions};
+use window::{Application, MouseButton, Point, Rect, Window, WindowHandler, WindowOptions};
 
 struct Handler;
 
@@ -14,6 +14,10 @@ impl WindowHandler for Handler {
     fn display(&self, window: &Window) {
         println!("display");
         window.update_contents(&[0xFF00FF; 1920 * 1920], 1920, 1920);
+    }
+
+    fn mouse_move(&self, _window: &Window, position: Point) {
+        println!("mouse move: {:?}", position);
     }
 
     fn mouse_down(&self, _window: &Window, button: MouseButton) -> bool {
