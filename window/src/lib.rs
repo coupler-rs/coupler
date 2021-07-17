@@ -113,6 +113,9 @@ pub trait WindowHandler {
     fn mouse_up(&self, window: &Window, button: MouseButton) -> bool {
         false
     }
+    fn scroll(&self, window: &Window, dx: f64, dy: f64) -> bool {
+        false
+    }
     fn request_close(&self, window: &Window) {}
     fn destroy(&self, window: &Window) {}
 }

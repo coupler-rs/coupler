@@ -500,6 +500,19 @@ unsafe extern "system" fn wnd_proc(
 
                 return 0;
             }
+            winuser::WM_MOUSEWHEEL | winuser::WM_MOUSEHWHEEL => {
+                let delta = winuser::GET_WHEEL_DELTA_WPARAM(wparam) as f64 / 120.0;
+                let (dx, dy) = match msg {
+                    winuser::WM_MOUSEWHEEL => (0.0, delta),
+                    winuser::WM_MOUSEHWHEEL => (delta, 0.0),
+                    _ => unreachable!(),
+                };
+                let result = window.window.state.handler.scroll(&window, dx, dy);
+
+                if result {
+                    return 0;
+                }
+            }
             winuser::WM_TIMER => {
                 if wparam == TIMER_ID {
                     window.window.state.handler.frame(&window);

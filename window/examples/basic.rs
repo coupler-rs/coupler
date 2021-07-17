@@ -30,6 +30,11 @@ impl WindowHandler for Handler {
         false
     }
 
+    fn scroll(&self, _window: &Window, dx: f64, dy: f64) -> bool {
+        println!("scroll: {}, {}", dx, dy);
+        false
+    }
+
     fn request_close(&self, window: &Window) {
         window.close().unwrap();
     }
