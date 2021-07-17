@@ -86,11 +86,26 @@ pub struct Rect {
     pub h: f64,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum MouseButton {
+    Left,
+    Middle,
+    Right,
+    Back,
+    Forward,
+}
+
 #[allow(unused_variables)]
 pub trait WindowHandler {
     fn create(&self, window: &Window) {}
     fn frame(&self, window: &Window) {}
     fn display(&self, window: &Window) {}
+    fn mouse_down(&self, window: &Window, button: MouseButton) -> bool {
+        false
+    }
+    fn mouse_up(&self, window: &Window, button: MouseButton) -> bool {
+        false
+    }
     fn request_close(&self, window: &Window) {}
     fn destroy(&self, window: &Window) {}
 }

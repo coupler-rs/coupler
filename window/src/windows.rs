@@ -1,4 +1,4 @@
-use crate::{Parent, Rect, WindowHandler, WindowOptions};
+use crate::{MouseButton, Parent, Rect, WindowHandler, WindowOptions};
 
 use std::cell::Cell;
 use std::collections::HashSet;
@@ -202,6 +202,7 @@ struct WindowState {
     open: Cell<bool>,
     hwnd: Cell<windef::HWND>,
     hdc: Cell<Option<windef::HDC>>,
+    mouse_down_count: Cell<usize>,
     application: crate::Application,
     handler: Box<dyn WindowHandler>,
 }
@@ -257,6 +258,7 @@ impl Window {
                 open: Cell::new(false),
                 hwnd: Cell::new(ptr::null_mut()),
                 hdc: Cell::new(None),
+                mouse_down_count: Cell::new(0),
                 application: application.clone(),
                 handler: options.handler,
             });
@@ -430,6 +432,64 @@ unsafe extern "system" fn wnd_proc(
 
                 window.window.state.handler.create(&window);
                 return 0;
+            }
+            winuser::WM_LBUTTONDOWN
+            | winuser::WM_LBUTTONUP
+            | winuser::WM_MBUTTONDOWN
+            | winuser::WM_MBUTTONUP
+            | winuser::WM_RBUTTONDOWN
+            | winuser::WM_RBUTTONUP
+            | winuser::WM_XBUTTONDOWN
+            | winuser::WM_XBUTTONUP => {
+                let button = match msg {
+                    winuser::WM_LBUTTONDOWN | winuser::WM_LBUTTONUP => Some(MouseButton::Left),
+                    winuser::WM_MBUTTONDOWN | winuser::WM_MBUTTONUP => Some(MouseButton::Middle),
+                    winuser::WM_RBUTTONDOWN | winuser::WM_RBUTTONUP => Some(MouseButton::Right),
+                    winuser::WM_XBUTTONDOWN | winuser::WM_XBUTTONUP => {
+                        match winuser::GET_XBUTTON_WPARAM(wparam) {
+                            winuser::XBUTTON1 => Some(MouseButton::Back),
+                            winuser::XBUTTON2 => Some(MouseButton::Forward),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                };
+
+                if let Some(button) = button {
+                    let result = match msg {
+                        winuser::WM_LBUTTONDOWN
+                        | winuser::WM_MBUTTONDOWN
+                        | winuser::WM_RBUTTONDOWN
+                        | winuser::WM_XBUTTONDOWN => {
+                            let mouse_down_count =
+                                window.window.state.mouse_down_count.get().saturating_add(1);
+                            window.window.state.mouse_down_count.set(mouse_down_count);
+                            if mouse_down_count == 1 {
+                                winuser::SetCapture(window.window.state.hwnd.get());
+                            }
+
+                            window.window.state.handler.mouse_down(&window, button)
+                        }
+                        winuser::WM_LBUTTONUP
+                        | winuser::WM_MBUTTONUP
+                        | winuser::WM_RBUTTONUP
+                        | winuser::WM_XBUTTONUP => {
+                            let mouse_down_count =
+                                window.window.state.mouse_down_count.get().saturating_sub(1);
+                            window.window.state.mouse_down_count.set(mouse_down_count);
+                            if mouse_down_count == 0 {
+                                winuser::ReleaseCapture();
+                            }
+
+                            window.window.state.handler.mouse_up(&window, button)
+                        }
+                        _ => false,
+                    };
+
+                    if result {
+                        return 0;
+                    }
+                }
             }
             winuser::WM_TIMER => {
                 if wparam == TIMER_ID {
