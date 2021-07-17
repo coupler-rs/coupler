@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::marker::PhantomData;
 use std::rc::Rc;
-use std::{ffi, fmt, os, ptr};
+use std::{ffi, fmt, mem, os, ptr, slice};
 
 use raw_window_handle::{unix::XlibHandle, HasRawWindowHandle, RawWindowHandle};
 use xcb_sys as xcb;
@@ -57,6 +57,7 @@ struct ApplicationInner {
     screen: *mut xcb::xcb_screen_t,
     wm_protocols: xcb::xcb_atom_t,
     wm_delete_window: xcb::xcb_atom_t,
+    shm: bool,
     windows: RefCell<HashMap<u32, crate::Window>>,
 }
 
@@ -85,6 +86,14 @@ impl Application {
             let wm_protocols = intern_atom_reply(connection, wm_protocols_cookie);
             let wm_delete_window = intern_atom_reply(connection, wm_delete_window_cookie);
 
+            let shm_cookie = xcb::xcb_shm_query_version(connection);
+            let shm_version =
+                xcb::xcb_shm_query_version_reply(connection, shm_cookie, ptr::null_mut());
+            let shm = !shm_version.is_null();
+            if shm {
+                libc::free(shm_version as *mut ffi::c_void);
+            }
+
             Ok(Application {
                 inner: Rc::new(ApplicationInner {
                     open: Cell::new(true),
@@ -93,6 +102,7 @@ impl Application {
                     screen,
                     wm_protocols,
                     wm_delete_window,
+                    shm,
                     windows: RefCell::new(HashMap::new()),
                 }),
             })
@@ -254,9 +264,18 @@ struct WindowState {
     open: Cell<bool>,
     window_id: xcb::xcb_window_t,
     gcontext_id: xcb::xcb_gcontext_t,
+    shm_state: RefCell<Option<ShmState>>,
     expose_rects: RefCell<Vec<xcb::xcb_rectangle_t>>,
     application: crate::Application,
     handler: Box<dyn WindowHandler>,
+}
+
+struct ShmState {
+    shm_id: os::raw::c_int,
+    shm_seg_id: xcb::xcb_shm_seg_t,
+    shm_ptr: *mut ffi::c_void,
+    width: usize,
+    height: usize,
 }
 
 impl Window {
@@ -322,6 +341,9 @@ impl Window {
                 ptr::null(),
             );
 
+            let shm_state =
+                Self::init_shm(application, options.rect.w as usize, options.rect.h as usize);
+
             let atoms = &[application.application.inner.wm_delete_window];
             xcb::xcb_icccm_set_wm_protocols(
                 application.application.inner.connection,
@@ -350,6 +372,7 @@ impl Window {
                         open: Cell::new(true),
                         window_id,
                         gcontext_id,
+                        shm_state: RefCell::new(shm_state),
                         expose_rects: RefCell::new(Vec::new()),
                         application: application.clone(),
                         handler: options.handler,
@@ -378,6 +401,50 @@ impl Window {
         }
     }
 
+    fn init_shm(application: &crate::Application, width: usize, height: usize) -> Option<ShmState> {
+        unsafe {
+            if !application.application.inner.shm {
+                return None;
+            }
+
+            let shm_id =
+                libc::shmget(libc::IPC_PRIVATE, width * height * 4, libc::IPC_CREAT | 0o600);
+            if shm_id == -1 {
+                return None;
+            }
+
+            let shm_ptr = libc::shmat(shm_id, ptr::null(), 0);
+            if shm_ptr == usize::MAX as *mut ffi::c_void {
+                libc::shmctl(shm_id, libc::IPC_RMID, ptr::null_mut());
+                return None;
+            }
+
+            let shm_seg_id = xcb::xcb_generate_id(application.application.inner.connection);
+            let cookie = xcb::xcb_shm_attach_checked(
+                application.application.inner.connection,
+                shm_seg_id,
+                shm_id as u32,
+                0,
+            );
+            let error = xcb::xcb_request_check(application.application.inner.connection, cookie);
+            if !error.is_null() {
+                libc::free(error as *mut ffi::c_void);
+                libc::shmctl(shm_id, libc::IPC_RMID, ptr::null_mut());
+                return None;
+            }
+
+            Some(ShmState { shm_id, shm_seg_id, shm_ptr, width, height })
+        }
+    }
+
+    fn deinit_shm(application: &crate::Application, shm_state: ShmState) {
+        unsafe {
+            xcb::xcb_shm_detach(application.application.inner.connection, shm_state.shm_seg_id);
+            libc::shmdt(shm_state.shm_ptr);
+            libc::shmctl(shm_state.shm_id, libc::IPC_RMID, ptr::null_mut());
+        }
+    }
+
     pub fn request_display(&self) {}
 
     pub fn request_display_rect(&self, rect: Rect) {}
@@ -387,20 +454,57 @@ impl Window {
             let width = width.min(framebuffer.len());
             let height = height.min(framebuffer.len() / width);
 
-            xcb::xcb_put_image(
-                self.state.application.application.inner.connection,
-                xcb::XCB_IMAGE_FORMAT_Z_PIXMAP as u8,
-                self.state.window_id,
-                self.state.gcontext_id,
-                width as u16,
-                height as u16,
-                0,
-                0,
-                0,
-                24,
-                (width * height * 4) as u32,
-                framebuffer.as_ptr() as *const u8,
-            );
+            if let Some(ref shm_state) = *self.state.shm_state.borrow() {
+                // this is safe because shm_ptr is page-aligned and thus u32-aligned
+                let data = slice::from_raw_parts_mut(
+                    shm_state.shm_ptr as *mut u32,
+                    shm_state.width * shm_state.height * std::mem::size_of::<u32>(),
+                );
+
+                let copy_width = width.min(shm_state.width);
+                let copy_height = height.min(shm_state.height);
+                for row in 0..copy_height {
+                    let src = &framebuffer[row * width..row * width + copy_width];
+                    let dst = &mut data[row * shm_state.width..row * shm_state.width + copy_width];
+                    dst.copy_from_slice(src);
+                }
+
+                let cookie = xcb::xcb_shm_put_image(
+                    self.state.application.application.inner.connection,
+                    self.state.window_id,
+                    self.state.gcontext_id,
+                    shm_state.width as u16,
+                    shm_state.height as u16,
+                    0,
+                    0,
+                    shm_state.width as u16,
+                    shm_state.height as u16,
+                    0,
+                    0,
+                    24,
+                    xcb::XCB_IMAGE_FORMAT_Z_PIXMAP as u8,
+                    0,
+                    shm_state.shm_seg_id,
+                    0,
+                );
+
+                xcb::xcb_request_check(self.state.application.application.inner.connection, cookie);
+            } else {
+                xcb::xcb_put_image(
+                    self.state.application.application.inner.connection,
+                    xcb::XCB_IMAGE_FORMAT_Z_PIXMAP as u8,
+                    self.state.window_id,
+                    self.state.gcontext_id,
+                    width as u16,
+                    height as u16,
+                    0,
+                    0,
+                    0,
+                    24,
+                    (width * height * mem::size_of::<u32>()) as u32,
+                    framebuffer.as_ptr() as *const u8,
+                );
+            }
 
             xcb::xcb_flush(self.state.application.application.inner.connection);
         }
@@ -416,6 +520,10 @@ impl Window {
 
                 let window = crate::Window { window: self.clone(), phantom: PhantomData };
                 window.window.state.handler.destroy(&window);
+
+                if let Some(shm_state) = self.state.shm_state.take() {
+                    Self::deinit_shm(&self.state.application, shm_state);
+                }
 
                 xcb::xcb_free_gc(
                     self.state.application.application.inner.connection,
