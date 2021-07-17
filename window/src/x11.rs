@@ -320,7 +320,7 @@ impl Window {
                 options.rect.h as u16,
                 0,
                 xcb::XCB_WINDOW_CLASS_INPUT_OUTPUT as u16,
-                (*application.application.inner.screen).root_visual,
+                xcb::XCB_COPY_FROM_PARENT,
                 value_mask,
                 value_list.as_ptr() as *const ffi::c_void,
             );
