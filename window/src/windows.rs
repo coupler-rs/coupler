@@ -232,8 +232,8 @@ impl Window {
             let mut rect = windef::RECT {
                 left: options.rect.x.round() as i32,
                 top: options.rect.y.round() as i32,
-                right: (options.rect.x + options.rect.w).round() as i32,
-                bottom: (options.rect.y + options.rect.h).round() as i32,
+                right: (options.rect.x + options.rect.width).round() as i32,
+                bottom: (options.rect.y + options.rect.height).round() as i32,
             };
 
             winuser::AdjustWindowRectEx(&mut rect, flags, minwindef::FALSE, 0);
@@ -305,8 +305,8 @@ impl Window {
                 let rect = windef::RECT {
                     left: rect.x.round() as winnt::LONG,
                     top: rect.y.round() as winnt::LONG,
-                    right: (rect.x + rect.w).round() as winnt::LONG,
-                    bottom: (rect.y + rect.h).round() as winnt::LONG,
+                    right: (rect.x + rect.width).round() as winnt::LONG,
+                    bottom: (rect.y + rect.height).round() as winnt::LONG,
                 };
 
                 winuser::InvalidateRect(self.state.hwnd.get(), &rect, minwindef::FALSE);

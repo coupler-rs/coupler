@@ -82,8 +82,8 @@ pub enum Parent<'p> {
 pub struct Rect {
     pub x: f64,
     pub y: f64,
-    pub w: f64,
-    pub h: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -125,7 +125,7 @@ impl<'p> Default for WindowOptions<'p> {
     fn default() -> Self {
         WindowOptions {
             title: "".to_string(),
-            rect: Rect { x: 0.0, y: 0.0, w: 0.0, h: 0.0 },
+            rect: Rect { x: 0.0, y: 0.0, width: 0.0, height: 0.0 },
             parent: Parent::None,
             handler: Box::new(DefaultWindowHandler),
         }

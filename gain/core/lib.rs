@@ -72,7 +72,7 @@ impl Editor for GainEditor {
         let window = Window::open(
             &application,
             WindowOptions {
-                rect: Rect { x: 0.0, y: 0.0, w: 512.0, h: 512.0 },
+                rect: Rect { x: 0.0, y: 0.0, width: 512.0, height: 512.0 },
                 parent,
                 ..WindowOptions::default()
             },

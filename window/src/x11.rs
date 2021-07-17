@@ -316,8 +316,8 @@ impl Window {
                 parent_id,
                 options.rect.x as i16,
                 options.rect.y as i16,
-                options.rect.w as u16,
-                options.rect.h as u16,
+                options.rect.width as u16,
+                options.rect.height as u16,
                 0,
                 xcb::XCB_WINDOW_CLASS_INPUT_OUTPUT as u16,
                 xcb::XCB_COPY_FROM_PARENT,
@@ -341,8 +341,11 @@ impl Window {
                 ptr::null(),
             );
 
-            let shm_state =
-                Self::init_shm(application, options.rect.w as usize, options.rect.h as usize);
+            let shm_state = Self::init_shm(
+                application,
+                options.rect.width as usize,
+                options.rect.height as usize,
+            );
 
             let atoms = &[application.application.inner.wm_delete_window];
             xcb::xcb_icccm_set_wm_protocols(

@@ -49,7 +49,7 @@ fn main() {
         &app,
         WindowOptions {
             title: "window".to_string(),
-            rect: Rect { x: 0.0, y: 0.0, w: 500.0, h: 500.0 },
+            rect: Rect { x: 0.0, y: 0.0, width: 500.0, height: 500.0 },
             handler: Box::new(Handler),
             ..WindowOptions::default()
         },
