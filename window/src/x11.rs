@@ -155,9 +155,7 @@ impl Application {
     }
 
     pub fn stop(&self) {
-        unsafe {
-            self.inner.running.set(self.inner.running.get().saturating_sub(1));
-        }
+        self.inner.running.set(self.inner.running.get().saturating_sub(1));
     }
 
     pub fn poll(&self) {
@@ -450,7 +448,7 @@ impl Window {
 
     pub fn request_display(&self) {}
 
-    pub fn request_display_rect(&self, rect: Rect) {}
+    pub fn request_display_rect(&self, _rect: Rect) {}
 
     pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {
         unsafe {
