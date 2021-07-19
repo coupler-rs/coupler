@@ -66,6 +66,12 @@ impl Canvas {
         &self.data[0..self.width * self.height]
     }
 
+    pub fn clear(&mut self, color: Color) {
+        for pixel in self.data.iter_mut() {
+            *pixel = color.0;
+        }
+    }
+
     pub fn fill(&mut self, path: &Path, color: Color) {
         if path.points.is_empty() {
             return;
