@@ -275,4 +275,8 @@ impl Canvas {
             }
         }
     }
+
+    pub fn stroke(&mut self, path: &Path, width: f64, color: Color) {
+        self.fill(&path.stroke(width), color);
+    }
 }

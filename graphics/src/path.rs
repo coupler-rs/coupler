@@ -124,7 +124,7 @@ impl Path {
         path.build()
     }
 
-    pub fn stroke(&self, width: f64) -> Path {
+    pub(crate) fn stroke(&self, width: f64) -> Path {
         #[inline]
         fn join(
             path: &mut PathBuilder,
