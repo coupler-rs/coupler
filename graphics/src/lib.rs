@@ -84,8 +84,6 @@ impl Canvas {
         let right = (max.x.floor() as isize + 8).max(0).min(self.width as isize) as usize;
         let top = (min.y.floor() as isize).max(0).min(self.height as isize) as usize;
         let bottom = (max.y.floor() as isize + 1).max(0).min(self.height as isize) as usize;
-        let width = right - left;
-        let height = bottom - top;
 
         let mut first = Vec2::new(0.0, 0.0);
         let mut last = Vec2::new(0.0, 0.0);
@@ -155,7 +153,8 @@ impl Canvas {
                     let next = (1.0 - t1) * p1 + t1 * p2;
                     let height = (next.y - prev.y) as f32;
                     let right_edge = (x + 1) as f64;
-                    let area = 0.5 * height * ((right_edge - prev.x) + (right_edge - next.x)) as f32;
+                    let area =
+                        0.5 * height * ((right_edge - prev.x) + (right_edge - next.x)) as f32;
 
                     if x >= 0 as isize
                         && x < self.width as isize
@@ -208,7 +207,9 @@ impl Canvas {
                 let current = self.tiles[tile_row * self.tiles_width + tile_span_start];
                 self.tiles[tile_row * self.tiles_width + tile_span_start] = false;
                 let mut tile_span_end = tile_span_start + 1;
-                while tile_span_end < self.tiles_width && self.tiles[tile_row * self.tiles_width + tile_span_end] == current {
+                while tile_span_end < self.tiles_width
+                    && self.tiles[tile_row * self.tiles_width + tile_span_end] == current
+                {
                     self.tiles[tile_row * self.tiles_width + tile_span_end] = false;
                     tile_span_end += 1;
                 }
