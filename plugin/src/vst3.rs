@@ -664,8 +664,10 @@ impl<P: Plugin> Wrapper<P> {
             return result::OK;
         }
 
-        let input_ptrs = slice::from_raw_parts(input_bus.channel_buffers, input_bus.num_channels as usize);
-        let output_ptrs = slice::from_raw_parts(output_bus.channel_buffers, output_bus.num_channels as usize);
+        let input_ptrs =
+            slice::from_raw_parts(input_bus.channel_buffers, input_bus.num_channels as usize);
+        let output_ptrs =
+            slice::from_raw_parts(output_bus.channel_buffers, output_bus.num_channels as usize);
 
         if input_ptrs[0].is_null()
             || input_ptrs[1].is_null()
@@ -681,8 +683,14 @@ impl<P: Plugin> Wrapper<P> {
         ];
 
         let output_slices = &mut [
-            slice::from_raw_parts_mut(output_ptrs[0] as *mut f32, process_data.num_samples as usize),
-            slice::from_raw_parts_mut(output_ptrs[1] as *mut f32, process_data.num_samples as usize),
+            slice::from_raw_parts_mut(
+                output_ptrs[0] as *mut f32,
+                process_data.num_samples as usize,
+            ),
+            slice::from_raw_parts_mut(
+                output_ptrs[1] as *mut f32,
+                process_data.num_samples as usize,
+            ),
         ];
 
         plugin_state.plugin.process(
