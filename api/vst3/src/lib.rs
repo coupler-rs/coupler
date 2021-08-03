@@ -71,13 +71,13 @@ pub mod result {
     use super::TResult;
     pub const NO_INTERFACE: TResult = -1;
     pub const OK: TResult = 0;
-    pub const TRUE: TResult = 1;
-    pub const FALSE: TResult = 2;
-    pub const INVALID_ARGUMENT: TResult = 3;
-    pub const NOT_IMPLEMENTED: TResult = 4;
-    pub const INTERNAL_ERROR: TResult = 5;
-    pub const NOT_INITIALIZED: TResult = 6;
-    pub const OUT_OF_MEMORY: TResult = 7;
+    pub const TRUE: TResult = 0;
+    pub const FALSE: TResult = 1;
+    pub const INVALID_ARGUMENT: TResult = 2;
+    pub const NOT_IMPLEMENTED: TResult = 3;
+    pub const INTERNAL_ERROR: TResult = 4;
+    pub const NOT_INITIALIZED: TResult = 5;
+    pub const OUT_OF_MEMORY: TResult = 6;
 }
 
 #[repr(C)]
