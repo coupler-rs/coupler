@@ -47,6 +47,7 @@ pub struct Factory<P> {
     pub edit_controller: *const IEditController,
     pub plug_view: *const IPlugView,
     pub event_handler: *const IEventHandler,
+    pub timer_handler: *const ITimerHandler,
     pub phantom: PhantomData<P>,
 }
 
@@ -157,6 +158,7 @@ impl<P: Plugin> Factory<P> {
             edit_controller: factory.edit_controller,
             plug_view: factory.plug_view,
             event_handler: factory.event_handler,
+            timer_handler: factory.timer_handler,
             count: AtomicU32::new(1),
             plugin_state: UnsafeCell::new(PluginState { params: plugin_params, plugin }),
             editor_state: UnsafeCell::new(EditorState {
@@ -294,6 +296,7 @@ pub struct Wrapper<P: Plugin> {
     edit_controller: *const IEditController,
     plug_view: *const IPlugView,
     event_handler: *const IEventHandler,
+    timer_handler: *const ITimerHandler,
     count: AtomicU32,
     plugin_state: UnsafeCell<PluginState<P>>,
     editor_state: UnsafeCell<EditorState<P>>,
@@ -324,6 +327,8 @@ impl<P: Plugin> Wrapper<P> {
         Self::EDIT_CONTROLLER_OFFSET + mem::size_of::<*const IEditController>() as isize;
     const EVENT_HANDLER_OFFSET: isize =
         Self::PLUG_VIEW_OFFSET + mem::size_of::<*const IPlugView>() as isize;
+    const TIMER_HANDLER_OFFSET: isize =
+        Self::EVENT_HANDLER_OFFSET + mem::size_of::<*const IEventHandler>() as isize;
 
     unsafe fn query_interface(
         this: *mut c_void,
@@ -365,6 +370,12 @@ impl<P: Plugin> Wrapper<P> {
         if iid == IEventHandler::IID {
             Self::component_add_ref(this);
             *obj = this.offset(Self::EVENT_HANDLER_OFFSET);
+            return result::OK;
+        }
+
+        if iid == ITimerHandler::IID {
+            Self::component_add_ref(this);
+            *obj = this.offset(Self::TIMER_HANDLER_OFFSET);
             return result::OK;
         }
 
@@ -1028,6 +1039,12 @@ impl<P: Plugin> Wrapper<P> {
                         file_descriptor,
                     );
 
+                    let timer_handler = this
+                        .offset(-Self::PLUG_VIEW_OFFSET + Self::TIMER_HANDLER_OFFSET)
+                        as *mut *const ITimerHandler;
+                    let result =
+                        ((*(*run_loop)).register_timer)(run_loop as *mut c_void, timer_handler, 16);
+
                     ((*(*run_loop)).unknown.release)(run_loop as *mut c_void);
                 }
             }
@@ -1061,6 +1078,11 @@ impl<P: Plugin> Wrapper<P> {
                         run_loop as *mut c_void,
                         event_handler,
                     );
+
+                    let timer_handler = this
+                        .offset(-Self::PLUG_VIEW_OFFSET + Self::TIMER_HANDLER_OFFSET)
+                        as *mut *const ITimerHandler;
+                    ((*(*run_loop)).unregister_timer)(run_loop as *mut c_void, timer_handler);
 
                     ((*(*run_loop)).unknown.release)(run_loop as *mut c_void);
                 }
@@ -1160,6 +1182,28 @@ impl<P: Plugin> Wrapper<P> {
 
     pub unsafe extern "system" fn on_fd_is_set(this: *mut c_void, _fd: c_int) {
         let wrapper = &*(this.offset(-Self::EVENT_HANDLER_OFFSET) as *const Wrapper<P>);
+        let editor_state = &mut *wrapper.editor_state.get();
+
+        editor_state.editor.poll();
+    }
+    pub unsafe extern "system" fn timer_handler_query_interface(
+        this: *mut c_void,
+        iid: *const TUID,
+        obj: *mut *mut c_void,
+    ) -> TResult {
+        Self::query_interface(this.offset(-Self::TIMER_HANDLER_OFFSET), iid, obj)
+    }
+
+    pub unsafe extern "system" fn timer_handler_add_ref(this: *mut c_void) -> u32 {
+        Self::add_ref(this.offset(-Self::TIMER_HANDLER_OFFSET))
+    }
+
+    pub unsafe extern "system" fn timer_handler_release(this: *mut c_void) -> u32 {
+        Self::release(this.offset(-Self::TIMER_HANDLER_OFFSET))
+    }
+
+    pub unsafe extern "system" fn on_timer(this: *mut c_void) {
+        let wrapper = &*(this.offset(-Self::TIMER_HANDLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
         editor_state.editor.poll();
@@ -1298,6 +1342,15 @@ macro_rules! vst3 {
                 on_fd_is_set: Wrapper::<$plugin>::on_fd_is_set,
             };
 
+            static TIMER_HANDLER_VTABLE: ITimerHandler = ITimerHandler {
+                unknown: FUnknown {
+                    query_interface: Wrapper::<$plugin>::timer_handler_query_interface,
+                    add_ref: Wrapper::<$plugin>::timer_handler_add_ref,
+                    release: Wrapper::<$plugin>::timer_handler_release,
+                },
+                on_timer: Wrapper::<$plugin>::on_timer,
+            };
+
             static PLUGIN_FACTORY: Factory<$plugin> = Factory {
                 plugin_factory_3: &PLUGIN_FACTORY_3_VTABLE,
                 component: &COMPONENT_VTABLE,
@@ -1306,6 +1359,7 @@ macro_rules! vst3 {
                 edit_controller: &EDIT_CONTROLLER_VTABLE,
                 plug_view: &PLUG_VIEW_VTABLE,
                 event_handler: &EVENT_HANDLER_VTABLE,
+                timer_handler: &TIMER_HANDLER_VTABLE,
                 phantom: PhantomData,
             };
 
