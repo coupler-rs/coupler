@@ -912,6 +912,7 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &*wrapper.editor_state.get();
 
+        ((*(*handler)).unknown.add_ref)(handler as *mut c_void);
         editor_state.context.component_handler.set(handler);
 
         result::OK
@@ -1016,9 +1017,8 @@ impl<P: Plugin> Wrapper<P> {
                     &mut obj,
                 );
                 if result == result::OK {
-                    Self::add_ref(this.offset(-Self::PLUG_VIEW_OFFSET));
-
                     let run_loop = obj as *mut *const IRunLoop;
+
                     let event_handler = this
                         .offset(-Self::PLUG_VIEW_OFFSET + Self::EVENT_HANDLER_OFFSET)
                         as *mut *const IEventHandler;
@@ -1027,6 +1027,8 @@ impl<P: Plugin> Wrapper<P> {
                         event_handler,
                         file_descriptor,
                     );
+
+                    ((*(*run_loop)).unknown.release)(run_loop as *mut c_void);
                 }
             }
         }
@@ -1051,6 +1053,7 @@ impl<P: Plugin> Wrapper<P> {
                 );
                 if result == result::OK {
                     let run_loop = obj as *mut *const IRunLoop;
+
                     let event_handler = this
                         .offset(-Self::PLUG_VIEW_OFFSET + Self::EVENT_HANDLER_OFFSET)
                         as *mut *const IEventHandler;
@@ -1058,6 +1061,8 @@ impl<P: Plugin> Wrapper<P> {
                         run_loop as *mut c_void,
                         event_handler,
                     );
+
+                    ((*(*run_loop)).unknown.release)(run_loop as *mut c_void);
                 }
             }
         }
@@ -1120,6 +1125,7 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::PLUG_VIEW_OFFSET) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
+        ((*(*frame)).unknown.add_ref)(frame as *mut c_void);
         editor_state.plug_frame = frame;
 
         result::OK
