@@ -58,7 +58,7 @@ struct ApplicationInner {
     wm_protocols: xcb::xcb_atom_t,
     wm_delete_window: xcb::xcb_atom_t,
     shm: bool,
-    windows: RefCell<HashMap<u32, crate::Window>>,
+    windows: RefCell<HashMap<xcb::xcb_window_t, crate::Window>>,
 }
 
 impl Application {
