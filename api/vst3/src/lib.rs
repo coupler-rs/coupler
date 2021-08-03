@@ -1043,11 +1043,11 @@ pub struct IRunLoop {
         unsafe extern "system" fn(this: *mut c_void, handler: *mut *const IEventHandler) -> TResult,
     pub register_timer: unsafe extern "system" fn(
         this: *mut c_void,
-        handler: *mut *const IEventHandler,
+        handler: *mut *const ITimerHandler,
         milliseconds: u64,
     ) -> TResult,
     pub unregister_timer:
-        unsafe extern "system" fn(this: *mut c_void, handler: *mut *const IEventHandler) -> TResult,
+        unsafe extern "system" fn(this: *mut c_void, handler: *mut *const ITimerHandler) -> TResult,
 }
 
 impl IRunLoop {
