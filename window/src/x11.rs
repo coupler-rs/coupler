@@ -1,4 +1,4 @@
-use crate::{Parent, Rect, WindowHandler, WindowOptions};
+use crate::{Parent, Point, Rect, WindowHandler, WindowOptions};
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -246,6 +246,13 @@ impl Application {
                     }
                 }
             }
+            xcb::XCB_MOTION_NOTIFY => {
+                let event = &*(event as *mut xcb_sys::xcb_motion_notify_event_t);
+                if let Some(window) = self.inner.windows.borrow().get(&event.event) {
+                    let point = Point { x: event.event_x as f64, y: event.event_y as f64 };
+                    window.window.state.handler.mouse_move(&window, point);
+                }
+            }
             xcb::XCB_CLIENT_MESSAGE => {
                 let event = &*(event as *mut xcb_sys::xcb_client_message_event_t);
                 if event.data.data32[0] == self.inner.wm_delete_window {
@@ -343,7 +350,7 @@ impl Window {
 
             let window_id = xcb::xcb_generate_id(application.application.inner.connection);
             let value_mask = xcb::XCB_CW_EVENT_MASK;
-            let value_list = &[xcb::XCB_EVENT_MASK_EXPOSURE];
+            let value_list = &[xcb::XCB_EVENT_MASK_EXPOSURE | xcb::XCB_EVENT_MASK_POINTER_MOTION];
             let cookie = xcb::xcb_create_window_checked(
                 application.application.inner.connection,
                 xcb::XCB_COPY_FROM_PARENT as u8,
