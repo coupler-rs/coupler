@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 use std::{ffi, fmt, mem, os, ptr, slice};
 
-use raw_window_handle::{unix::XlibHandle, HasRawWindowHandle, RawWindowHandle};
+use raw_window_handle::{unix::XcbHandle, HasRawWindowHandle, RawWindowHandle};
 use xcb_sys as xcb;
 
 unsafe fn intern_atom(
@@ -557,6 +557,14 @@ impl Window {
 
 unsafe impl HasRawWindowHandle for Window {
     fn raw_window_handle(&self) -> RawWindowHandle {
-        RawWindowHandle::Xlib(XlibHandle { ..XlibHandle::empty() })
+        if self.state.open.get() {
+            RawWindowHandle::Xcb(XcbHandle {
+                window: self.state.window_id,
+                connection: self.state.application.application.inner.connection as *mut ffi::c_void,
+                ..XcbHandle::empty()
+            })
+        } else {
+            RawWindowHandle::Xcb(XcbHandle::empty())
+        }
     }
 }
