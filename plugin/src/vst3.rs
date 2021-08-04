@@ -1042,8 +1042,7 @@ impl<P: Plugin> Wrapper<P> {
                     let timer_handler = this
                         .offset(-Self::PLUG_VIEW_OFFSET + Self::TIMER_HANDLER_OFFSET)
                         as *mut *const ITimerHandler;
-                    let result =
-                        ((*(*run_loop)).register_timer)(run_loop as *mut c_void, timer_handler, 16);
+                    ((*(*run_loop)).register_timer)(run_loop as *mut c_void, timer_handler, 16);
 
                     ((*(*run_loop)).unknown.release)(run_loop as *mut c_void);
                 }
