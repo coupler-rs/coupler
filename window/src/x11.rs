@@ -299,6 +299,7 @@ struct WindowState {
     window_id: xcb::xcb_window_t,
     gcontext_id: xcb::xcb_gcontext_t,
     shm_state: RefCell<Option<ShmState>>,
+    rect: Cell<Rect>,
     expose_rects: RefCell<Vec<xcb::xcb_rectangle_t>>,
     application: crate::Application,
     handler: Box<dyn WindowHandler>,
@@ -410,6 +411,12 @@ impl Window {
                         window_id,
                         gcontext_id,
                         shm_state: RefCell::new(shm_state),
+                        rect: Cell::new(Rect {
+                            x: 0.0,
+                            y: 0.0,
+                            width: options.rect.width,
+                            height: options.rect.height,
+                        }),
                         expose_rects: RefCell::new(Vec::new()),
                         application: application.clone(),
                         handler: options.handler,
@@ -482,9 +489,43 @@ impl Window {
         }
     }
 
-    pub fn request_display(&self) {}
+    pub fn request_display(&self) {
+        if self.state.open.get() {
+            self.request_display_rect(self.state.rect.get());
+        }
+    }
 
-    pub fn request_display_rect(&self, _rect: Rect) {}
+    pub fn request_display_rect(&self, rect: Rect) {
+        unsafe {
+            if self.state.open.get() {
+                let event = libc::malloc(mem::size_of::<xcb::xcb_expose_event_t>())
+                    as *mut xcb::xcb_expose_event_t;
+
+                ptr::write(
+                    event,
+                    xcb::xcb_expose_event_t {
+                        response_type: xcb::XCB_EXPOSE as u8,
+                        window: self.state.window_id,
+                        x: rect.x as u16,
+                        y: rect.y as u16,
+                        width: rect.width as u16,
+                        height: rect.height as u16,
+                        count: 0,
+                        ..mem::zeroed()
+                    },
+                );
+
+                xcb::xcb_send_event(
+                    self.state.application.application.inner.connection,
+                    0,
+                    self.state.window_id,
+                    xcb::XCB_EVENT_MASK_EXPOSURE,
+                    event as *const os::raw::c_char,
+                );
+                xcb::xcb_flush(self.state.application.application.inner.connection);
+            }
+        }
+    }
 
     pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {
         unsafe {
