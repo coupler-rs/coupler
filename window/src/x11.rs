@@ -5,10 +5,13 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::marker::PhantomData;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 use std::{ffi, fmt, mem, os, ptr, slice};
 
 use raw_window_handle::{unix::XcbHandle, HasRawWindowHandle, RawWindowHandle};
 use xcb_sys as xcb;
+
+const FRAME_INTERVAL: Duration = Duration::from_millis(16);
 
 unsafe fn intern_atom(
     connection: *mut xcb::xcb_connection_t,
@@ -33,7 +36,6 @@ unsafe fn intern_atom_reply(
 #[derive(Debug)]
 pub enum ApplicationError {
     ConnectionFailed(i32),
-    GetEvent(i32),
     Close(Vec<WindowError>),
 }
 
@@ -58,6 +60,7 @@ struct ApplicationInner {
     wm_protocols: xcb::xcb_atom_t,
     wm_delete_window: xcb::xcb_atom_t,
     shm: bool,
+    next_frame: Cell<Instant>,
     windows: RefCell<HashMap<xcb::xcb_window_t, crate::Window>>,
 }
 
@@ -103,6 +106,7 @@ impl Application {
                     wm_protocols,
                     wm_delete_window,
                     shm,
+                    next_frame: Cell::new(Instant::now() + FRAME_INTERVAL),
                     windows: RefCell::new(HashMap::new()),
                 }),
             })
@@ -138,15 +142,29 @@ impl Application {
                 let depth = self.inner.running.get();
                 self.inner.running.set(depth + 1);
 
-                while self.inner.open.get() && self.inner.running.get() > depth {
-                    let event = xcb::xcb_wait_for_event(self.inner.connection);
+                let fd = xcb::xcb_get_file_descriptor(self.inner.connection);
 
-                    if event.is_null() {
-                        let error = xcb::xcb_connection_has_error(self.inner.connection);
-                        return Err(ApplicationError::GetEvent(error));
+                while self.inner.open.get() && self.inner.running.get() > depth {
+                    self.frame();
+
+                    while self.inner.open.get() && self.inner.running.get() > depth {
+                        let event = xcb::xcb_poll_for_event(self.inner.connection);
+                        if event.is_null() {
+                            break;
+                        }
+                        self.handle_event(event);
                     }
 
-                    self.handle_event(event);
+                    let to_next_frame =
+                        self.inner.next_frame.get().saturating_duration_since(Instant::now());
+                    if !to_next_frame.is_zero() {
+                        let mut fds = [libc::pollfd { fd, events: libc::POLLIN, revents: 0 }];
+                        libc::poll(
+                            fds.as_mut_ptr(),
+                            fds.len() as u64,
+                            to_next_frame.as_millis() as i32,
+                        );
+                    }
                 }
             }
 
@@ -161,14 +179,32 @@ impl Application {
     pub fn poll(&self) {
         unsafe {
             while self.inner.open.get() {
-                let event = xcb::xcb_poll_for_event(self.inner.connection);
+                self.frame();
 
+                let event = xcb::xcb_poll_for_event(self.inner.connection);
                 if event.is_null() {
                     break;
                 }
-
                 self.handle_event(event);
             }
+        }
+    }
+
+    fn frame(&self) {
+        let time = Instant::now();
+        let mut next_frame = self.inner.next_frame.get();
+
+        if time >= next_frame {
+            let windows: Vec<crate::Window> =
+                self.inner.windows.borrow().values().cloned().collect();
+            for window in windows {
+                window.window.state.handler.frame(&window);
+            }
+
+            while next_frame < time {
+                next_frame += FRAME_INTERVAL;
+            }
+            self.inner.next_frame.set(next_frame);
         }
     }
 
