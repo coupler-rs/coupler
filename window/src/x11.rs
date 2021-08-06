@@ -1,4 +1,4 @@
-use crate::{Parent, Point, Rect, WindowHandler, WindowOptions};
+use crate::{MouseButton, Parent, Point, Rect, WindowHandler, WindowOptions};
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -253,6 +253,55 @@ impl Application {
                     window.window.state.handler.mouse_move(&window, point);
                 }
             }
+            xcb::XCB_BUTTON_PRESS => {
+                let event = &*(event as *mut xcb_sys::xcb_button_press_event_t);
+                if let Some(window) = self.inner.windows.borrow().get(&event.event) {
+                    match event.detail {
+                        1 | 2 | 3 | 6 | 7 => {
+                            let button = match event.detail {
+                                1 => MouseButton::Left,
+                                2 => MouseButton::Middle,
+                                3 => MouseButton::Right,
+                                6 => MouseButton::Back,
+                                7 => MouseButton::Forward,
+                                _ => unreachable!(),
+                            };
+
+                            window.window.state.handler.mouse_down(&window, button);
+                        }
+                        4 | 5 => {
+                            let dy = match event.detail {
+                                4 => 1.0,
+                                5 => -1.0,
+                                _ => 0.0,
+                            };
+
+                            window.window.state.handler.scroll(&window, 0.0, dy);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            xcb::XCB_BUTTON_RELEASE => {
+                let event = &*(event as *mut xcb_sys::xcb_button_release_event_t);
+                if let Some(window) = self.inner.windows.borrow().get(&event.event) {
+                    match event.detail {
+                        1 | 2 | 3 | 6 | 7 => {
+                            let button = match event.detail {
+                                1 => MouseButton::Left,
+                                2 => MouseButton::Middle,
+                                3 => MouseButton::Right,
+                                6 => MouseButton::Back,
+                                7 => MouseButton::Forward,
+                                _ => unreachable!(),
+                            };
+
+                            window.window.state.handler.mouse_up(&window, button);
+                        }
+                        _ => {}
+                    }
+                }
+            }
             xcb::XCB_CLIENT_MESSAGE => {
                 let event = &*(event as *mut xcb_sys::xcb_client_message_event_t);
                 if event.data.data32[0] == self.inner.wm_delete_window {
@@ -350,7 +399,10 @@ impl Window {
 
             let window_id = xcb::xcb_generate_id(application.application.inner.connection);
             let value_mask = xcb::XCB_CW_EVENT_MASK;
-            let value_list = &[xcb::XCB_EVENT_MASK_EXPOSURE | xcb::XCB_EVENT_MASK_POINTER_MOTION];
+            let value_list = &[xcb::XCB_EVENT_MASK_EXPOSURE
+                | xcb::XCB_EVENT_MASK_POINTER_MOTION
+                | xcb::XCB_EVENT_MASK_BUTTON_PRESS
+                | xcb::XCB_EVENT_MASK_BUTTON_RELEASE];
             let cookie = xcb::xcb_create_window_checked(
                 application.application.inner.connection,
                 xcb::XCB_COPY_FROM_PARENT as u8,
