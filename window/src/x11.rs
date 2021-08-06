@@ -257,26 +257,28 @@ impl Application {
                 let event = &*(event as *mut xcb_sys::xcb_button_press_event_t);
                 if let Some(window) = self.inner.windows.borrow().get(&event.event) {
                     match event.detail {
-                        1 | 2 | 3 | 6 | 7 => {
+                        1 | 2 | 3 | 8 | 9 => {
                             let button = match event.detail {
                                 1 => MouseButton::Left,
                                 2 => MouseButton::Middle,
                                 3 => MouseButton::Right,
-                                6 => MouseButton::Back,
-                                7 => MouseButton::Forward,
+                                8 => MouseButton::Back,
+                                9 => MouseButton::Forward,
                                 _ => unreachable!(),
                             };
 
                             window.window.state.handler.mouse_down(&window, button);
                         }
-                        4 | 5 => {
-                            let dy = match event.detail {
-                                4 => 1.0,
-                                5 => -1.0,
-                                _ => 0.0,
+                        4 | 5 | 6 | 7 => {
+                            let (dx, dy) = match event.detail {
+                                4 => (0.0, 1.0),
+                                5 => (0.0, -1.0),
+                                6 => (-1.0, 0.0),
+                                7 => (1.0, 0.0),
+                                _ => (0.0, 0.0),
                             };
 
-                            window.window.state.handler.scroll(&window, 0.0, dy);
+                            window.window.state.handler.scroll(&window, dx, dy);
                         }
                         _ => {}
                     }
@@ -286,13 +288,13 @@ impl Application {
                 let event = &*(event as *mut xcb_sys::xcb_button_release_event_t);
                 if let Some(window) = self.inner.windows.borrow().get(&event.event) {
                     match event.detail {
-                        1 | 2 | 3 | 6 | 7 => {
+                        1 | 2 | 3 | 8 | 9 => {
                             let button = match event.detail {
                                 1 => MouseButton::Left,
                                 2 => MouseButton::Middle,
                                 3 => MouseButton::Right,
-                                6 => MouseButton::Back,
-                                7 => MouseButton::Forward,
+                                8 => MouseButton::Back,
+                                9 => MouseButton::Forward,
                                 _ => unreachable!(),
                             };
 
