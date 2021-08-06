@@ -923,7 +923,9 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &*wrapper.editor_state.get();
 
-        ((*(*handler)).unknown.add_ref)(handler as *mut c_void);
+        if !handler.is_null() {
+            ((*(*handler)).unknown.add_ref)(handler as *mut c_void);
+        }
         editor_state.context.component_handler.set(handler);
 
         result::OK
