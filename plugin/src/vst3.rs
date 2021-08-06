@@ -1146,7 +1146,12 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::PLUG_VIEW_OFFSET) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
-        ((*(*frame)).unknown.add_ref)(frame as *mut c_void);
+        if !editor_state.plug_frame.is_null() {
+            ((*(*editor_state.plug_frame)).unknown.release)(editor_state.plug_frame as *mut c_void);
+        }
+        if !frame.is_null() {
+            ((*(*frame)).unknown.add_ref)(frame as *mut c_void);
+        }
         editor_state.plug_frame = frame;
 
         result::OK
