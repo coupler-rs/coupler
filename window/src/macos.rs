@@ -1,4 +1,4 @@
-use crate::{Rect, WindowHandler, WindowOptions};
+use crate::{Parent, Rect, WindowHandler, WindowOptions};
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
@@ -80,8 +80,9 @@ impl Application {
                 self.inner.open.set(false);
 
                 for ns_view in self.inner.windows.take() {
-                    let state_ptr = *runtime::Object::get_ivar::<*mut c_void>(&*ns_view, WINDOW_STATE)
-                        as *mut WindowState;
+                    let state_ptr =
+                        *runtime::Object::get_ivar::<*mut c_void>(&*ns_view, WINDOW_STATE)
+                            as *mut WindowState;
                     let state = Rc::from_raw(state_ptr);
                     let _ = Rc::into_raw(state.clone());
                     let window = crate::Window { window: Window { state }, phantom: PhantomData };
@@ -174,6 +175,7 @@ impl Application {
 #[derive(Debug)]
 pub enum WindowError {
     ApplicationClosed,
+    InvalidWindowHandle,
 }
 
 impl fmt::Display for WindowError {
@@ -191,7 +193,7 @@ pub struct Window {
 
 struct WindowState {
     open: Cell<bool>,
-    ns_window: base::id,
+    ns_window: Option<base::id>,
     ns_view: base::id,
     application: crate::Application,
     handler: Box<dyn WindowHandler>,
@@ -209,22 +211,35 @@ impl Window {
 
             let pool = foundation::NSAutoreleasePool::new(base::nil);
 
-            let style_mask = appkit::NSWindowStyleMask::NSTitledWindowMask
-                | appkit::NSWindowStyleMask::NSClosableWindowMask
-                | appkit::NSWindowStyleMask::NSMiniaturizableWindowMask
-                | appkit::NSWindowStyleMask::NSResizableWindowMask;
+            let ns_window = if let Parent::None = options.parent {
+                let style_mask = appkit::NSWindowStyleMask::NSTitledWindowMask
+                    | appkit::NSWindowStyleMask::NSClosableWindowMask
+                    | appkit::NSWindowStyleMask::NSMiniaturizableWindowMask
+                    | appkit::NSWindowStyleMask::NSResizableWindowMask;
 
-            let ns_window: base::id = msg_send![class!(NSWindow), alloc];
-            appkit::NSWindow::initWithContentRect_styleMask_backing_defer_(
-                ns_window,
-                foundation::NSRect::new(
-                    foundation::NSPoint::new(options.rect.x, options.rect.y),
-                    foundation::NSSize::new(options.rect.width, options.rect.height),
-                ),
-                style_mask,
-                appkit::NSBackingStoreBuffered,
-                base::NO,
-            );
+                let ns_window: base::id = msg_send![class!(NSWindow), alloc];
+                appkit::NSWindow::initWithContentRect_styleMask_backing_defer_(
+                    ns_window,
+                    foundation::NSRect::new(
+                        foundation::NSPoint::new(options.rect.x, options.rect.y),
+                        foundation::NSSize::new(options.rect.width, options.rect.height),
+                    ),
+                    style_mask,
+                    appkit::NSBackingStoreBuffered,
+                    base::NO,
+                );
+
+                let title = foundation::NSString::init_str(
+                    foundation::NSString::alloc(base::nil),
+                    &options.title,
+                );
+                let () = msg_send![title, autorelease];
+                appkit::NSWindow::setTitle_(ns_window, title);
+
+                Some(ns_window)
+            } else {
+                None
+            };
 
             let ns_view: base::id = msg_send![application.application.inner.class, alloc];
             appkit::NSView::initWithFrame_(
@@ -234,17 +249,6 @@ impl Window {
                     foundation::NSSize::new(options.rect.width, options.rect.height),
                 ),
             );
-
-            let title = foundation::NSString::init_str(
-                foundation::NSString::alloc(base::nil),
-                &options.title,
-            );
-            let () = msg_send![title, autorelease];
-            appkit::NSWindow::setTitle_(ns_window, title);
-
-            appkit::NSWindow::setContentView_(ns_window, ns_view);
-
-            let () = msg_send![ns_view, release];
 
             let state = Rc::new(WindowState {
                 open: Cell::new(true),
@@ -261,13 +265,30 @@ impl Window {
             );
 
             application.application.inner.windows.borrow_mut().insert(ns_view);
-
             let window = crate::Window { window: Window { state }, phantom: PhantomData };
-
             window.window.state.handler.create(&window);
 
-            appkit::NSWindow::center(window.window.state.ns_window);
-            appkit::NSWindow::makeKeyAndOrderFront_(window.window.state.ns_window, base::nil);
+            if let Some(ns_window) = window.window.state.ns_window {
+                appkit::NSWindow::setContentView_(ns_window, ns_view);
+                let () = msg_send![ns_view, release];
+
+                appkit::NSWindow::center(ns_window);
+                appkit::NSWindow::makeKeyAndOrderFront_(ns_window, base::nil);
+            } else if let Parent::Parent(parent) = options.parent {
+                match parent.raw_window_handle() {
+                    RawWindowHandle::MacOS(handle) => {
+                        if handle.ns_view.is_null() {
+                            return Err(WindowError::InvalidWindowHandle);
+                        }
+
+                        appkit::NSView::addSubview_(handle.ns_view as base::id, ns_view);
+                        let () = msg_send![ns_view, release];
+                    }
+                    _ => {
+                        return Err(WindowError::InvalidWindowHandle);
+                    }
+                }
+            }
 
             let () = msg_send![pool, drain];
 
@@ -286,7 +307,11 @@ impl Window {
             if self.state.open.get() {
                 let pool = foundation::NSAutoreleasePool::new(base::nil);
 
-                appkit::NSWindow::close(self.state.ns_window);
+                if let Some(ns_window) = self.state.ns_window {
+                    appkit::NSWindow::close(ns_window);
+                } else {
+                    appkit::NSView::removeFromSuperview(self.state.ns_view);
+                }
 
                 let () = msg_send![pool, drain];
             }
@@ -304,7 +329,7 @@ unsafe impl HasRawWindowHandle for Window {
     fn raw_window_handle(&self) -> RawWindowHandle {
         if self.state.open.get() {
             RawWindowHandle::MacOS(MacOSHandle {
-                ns_window: self.state.ns_window as *mut c_void,
+                ns_window: self.state.ns_window.unwrap_or(ptr::null_mut()) as *mut c_void,
                 ns_view: self.state.ns_view as *mut c_void,
                 ..MacOSHandle::empty()
             })
