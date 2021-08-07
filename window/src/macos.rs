@@ -288,7 +288,15 @@ impl Window {
 
 unsafe impl HasRawWindowHandle for Window {
     fn raw_window_handle(&self) -> RawWindowHandle {
-        RawWindowHandle::MacOS(MacOSHandle { ..MacOSHandle::empty() })
+        if self.state.open.get() {
+            RawWindowHandle::MacOS(MacOSHandle {
+                ns_window: self.state.ns_window as *mut c_void,
+                ns_view: self.state.ns_view as *mut c_void,
+                ..MacOSHandle::empty()
+            })
+        } else {
+            RawWindowHandle::MacOS(MacOSHandle::empty())
+        }
     }
 }
 
