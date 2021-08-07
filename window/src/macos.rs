@@ -57,6 +57,10 @@ impl Application {
             class_decl.add_ivar::<*mut c_void>(WINDOW_STATE);
 
             class_decl.add_method(
+                sel!(drawRect:),
+                draw_rect as extern "C" fn(&mut runtime::Object, runtime::Sel, foundation::NSRect),
+            );
+            class_decl.add_method(
                 sel!(dealloc),
                 dealloc as extern "C" fn(&mut runtime::Object, runtime::Sel),
             );
@@ -360,7 +364,20 @@ unsafe impl HasRawWindowHandle for Window {
     }
 }
 
-extern "C" fn dealloc(this: &mut runtime::Object, _cmd: runtime::Sel) {
+extern "C" fn draw_rect(this: &mut runtime::Object, _: runtime::Sel, _rect: foundation::NSRect) {
+    unsafe {
+        let state_ptr =
+            *runtime::Object::get_ivar::<*mut c_void>(&*this, WINDOW_STATE)
+                as *mut WindowState;
+        let state = Rc::from_raw(state_ptr);
+        let _ = Rc::into_raw(state.clone());
+        let window = crate::Window { window: Window { state }, phantom: PhantomData };
+
+        window.window.state.handler.display(&window);
+    }
+}
+
+extern "C" fn dealloc(this: &mut runtime::Object, _: runtime::Sel) {
     unsafe {
         let state_ptr =
             *runtime::Object::get_ivar::<*mut c_void>(this, WINDOW_STATE) as *mut WindowState;
