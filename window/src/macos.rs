@@ -150,7 +150,9 @@ impl Application {
 }
 
 #[derive(Debug)]
-pub enum WindowError {}
+pub enum WindowError {
+    ApplicationClosed,
+}
 
 impl fmt::Display for WindowError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -166,6 +168,9 @@ pub struct Window {
 }
 
 struct WindowState {
+    open: Cell<bool>,
+    window: base::id,
+    view: base::id,
     application: crate::Application,
 }
 
@@ -174,10 +179,56 @@ impl Window {
         application: &crate::Application,
         options: WindowOptions,
     ) -> Result<crate::Window, WindowError> {
-        Ok(crate::Window {
-            window: Window { state: Rc::new(WindowState { application: application.clone() }) },
-            phantom: PhantomData,
-        })
+        unsafe {
+            if !application.application.inner.open.get() {
+                return Err(WindowError::ApplicationClosed);
+            }
+
+            let pool = foundation::NSAutoreleasePool::new(base::nil);
+
+            let style_mask = appkit::NSWindowStyleMask::NSTitledWindowMask
+                | appkit::NSWindowStyleMask::NSClosableWindowMask
+                | appkit::NSWindowStyleMask::NSMiniaturizableWindowMask
+                | appkit::NSWindowStyleMask::NSResizableWindowMask;
+
+            let window: base::id = msg_send![class!(NSWindow), alloc];
+            appkit::NSWindow::initWithContentRect_styleMask_backing_defer_(
+                window,
+                foundation::NSRect::new(
+                    foundation::NSPoint::new(options.rect.x, options.rect.y),
+                    foundation::NSSize::new(options.rect.width, options.rect.height),
+                ),
+                style_mask,
+                appkit::NSBackingStoreBuffered,
+                base::NO,
+            );
+
+            let view: base::id = msg_send![application.application.inner.class, alloc];
+            appkit::NSView::initWithFrame_(
+                view,
+                foundation::NSRect::new(
+                    foundation::NSPoint::new(0.0, 0.0),
+                    foundation::NSSize::new(options.rect.width, options.rect.height),
+                ),
+            );
+
+            appkit::NSWindow::setContentView_(window, view);
+            appkit::NSWindow::center(window);
+            appkit::NSWindow::makeKeyAndOrderFront_(window, base::nil);
+
+            let () = msg_send![view, release];
+
+            let () = msg_send![pool, drain];
+
+            let state = Rc::new(WindowState {
+                open: Cell::new(true),
+                window: window,
+                view,
+                application: application.clone(),
+            });
+
+            Ok(crate::Window { window: Window { state }, phantom: PhantomData })
+        }
     }
 
     pub fn request_display(&self) {}
@@ -187,7 +238,17 @@ impl Window {
     pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {}
 
     pub fn close(&self) -> Result<(), WindowError> {
-        Ok(())
+        unsafe {
+            if self.state.open.get() {
+                let pool = foundation::NSAutoreleasePool::new(base::nil);
+
+                appkit::NSWindow::close(self.state.window);
+
+                let () = msg_send![pool, drain];
+            }
+
+            Ok(())
+        }
     }
 
     pub fn application(&self) -> &crate::Application {
