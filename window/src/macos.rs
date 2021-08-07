@@ -19,6 +19,7 @@ const WINDOW_STATE: &str = "windowState";
 pub enum ApplicationError {
     ViewClassRegistration,
     GetEvent,
+    Close(Vec<WindowError>),
 }
 
 impl fmt::Display for ApplicationError {
@@ -79,6 +80,7 @@ impl Application {
                 self.inner.running.set(0);
                 self.inner.open.set(false);
 
+                let mut window_errors = Vec::new();
                 for ns_view in self.inner.windows.take() {
                     let state_ptr =
                         *runtime::Object::get_ivar::<*mut c_void>(&*ns_view, WINDOW_STATE)
@@ -86,10 +88,16 @@ impl Application {
                     let state = Rc::from_raw(state_ptr);
                     let _ = Rc::into_raw(state.clone());
                     let window = crate::Window { window: Window { state }, phantom: PhantomData };
-                    window.close();
+                    if let Err(error) = window.window.close() {
+                        window_errors.push(error);
+                    }
                 }
 
                 runtime::objc_disposeClassPair(self.inner.class);
+
+                if !window_errors.is_empty() {
+                    return Err(ApplicationError::Close(window_errors));
+                }
             }
 
             Ok(())
