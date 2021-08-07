@@ -141,10 +141,8 @@ impl Application {
     }
 
     pub fn stop(&self) {
-        unsafe {
-            if self.inner.open.get() {
-                self.inner.running.set(self.inner.running.get().saturating_sub(1));
-            }
+        if self.inner.open.get() {
+            self.inner.running.set(self.inner.running.get().saturating_sub(1));
         }
     }
 
@@ -347,7 +345,7 @@ unsafe impl HasRawWindowHandle for Window {
     }
 }
 
-extern "C" fn dealloc(this: &mut runtime::Object, cmd: runtime::Sel) {
+extern "C" fn dealloc(this: &mut runtime::Object, _cmd: runtime::Sel) {
     unsafe {
         let state_ptr =
             *runtime::Object::get_ivar::<*mut c_void>(this, WINDOW_STATE) as *mut WindowState;
