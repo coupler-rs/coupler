@@ -212,6 +212,13 @@ impl Window {
                 ),
             );
 
+            let title = foundation::NSString::init_str(
+                foundation::NSString::alloc(base::nil),
+                &options.title,
+            );
+            let () = msg_send![title, autorelease];
+            appkit::NSWindow::setTitle_(window, title);
+
             appkit::NSWindow::setContentView_(window, view);
             appkit::NSWindow::center(window);
             appkit::NSWindow::makeKeyAndOrderFront_(window, base::nil);
