@@ -302,9 +302,24 @@ impl Window {
         }
     }
 
-    pub fn request_display(&self) {}
+    pub fn request_display(&self) {
+        unsafe {
+            if self.state.open.get() {
+                let () = msg_send![self.state.ns_view, setNeedsDisplay: base::YES];
+            }
+        }
+    }
 
-    pub fn request_display_rect(&self, rect: Rect) {}
+    pub fn request_display_rect(&self, rect: Rect) {
+        unsafe {
+            if self.state.open.get() {
+                let () = msg_send![self.state.ns_view, setNeedsDisplayInRect: foundation::NSRect::new(
+                    foundation::NSPoint::new(rect.x, rect.y),
+                    foundation::NSSize::new(rect.width, rect.height),
+                )];
+            }
+        }
+    }
 
     pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {}
 
