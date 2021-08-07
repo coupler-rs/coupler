@@ -1,6 +1,7 @@
 use crate::{Rect, WindowHandler, WindowOptions};
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::collections::HashSet;
 use std::error::Error;
 use std::ffi::c_void;
 use std::marker::PhantomData;
@@ -37,6 +38,7 @@ struct ApplicationInner {
     open: Cell<bool>,
     running: Cell<usize>,
     class: *mut runtime::Class,
+    windows: RefCell<HashSet<base::id>>,
 }
 
 impl Application {
@@ -65,6 +67,7 @@ impl Application {
                     open: Cell::new(true),
                     running: Cell::new(0),
                     class: class as *const runtime::Class as *mut runtime::Class,
+                    windows: RefCell::new(HashSet::new()),
                 }),
             })
         }
@@ -75,6 +78,15 @@ impl Application {
             if self.inner.open.get() {
                 self.inner.running.set(0);
                 self.inner.open.set(false);
+
+                for ns_view in self.inner.windows.take() {
+                    let state_ptr = *runtime::Object::get_ivar::<*mut c_void>(&*ns_view, WINDOW_STATE)
+                        as *mut WindowState;
+                    let state = Rc::from_raw(state_ptr);
+                    let _ = Rc::into_raw(state.clone());
+                    let window = crate::Window { window: Window { state }, phantom: PhantomData };
+                    window.close();
+                }
 
                 runtime::objc_disposeClassPair(self.inner.class);
             }
@@ -248,6 +260,8 @@ impl Window {
                 Rc::into_raw(state.clone()) as *mut c_void,
             );
 
+            application.application.inner.windows.borrow_mut().insert(ns_view);
+
             let window = crate::Window { window: Window { state }, phantom: PhantomData };
 
             window.window.state.handler.create(&window);
@@ -309,6 +323,8 @@ extern "C" fn dealloc(this: &mut runtime::Object, cmd: runtime::Sel) {
         let state = Rc::from_raw(state_ptr);
         let window = crate::Window { window: Window { state }, phantom: PhantomData };
         window.window.state.open.set(false);
+        let ns_view = window.window.state.ns_view;
+        window.application().application.inner.windows.borrow_mut().remove(&ns_view);
         window.window.state.handler.destroy(&window);
         drop(window);
 
