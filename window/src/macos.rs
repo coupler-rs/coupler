@@ -6,12 +6,15 @@ use std::error::Error;
 use std::ffi::c_void;
 use std::marker::PhantomData;
 use std::rc::Rc;
-use std::{fmt, ptr, slice};
+use std::{fmt, mem, ptr, slice};
 
 use cocoa::{appkit, base, foundation};
+use core_foundation::{date, runloop};
 use objc::{class, msg_send, sel, sel_impl};
 use objc::{declare, runtime};
 use raw_window_handle::{macos::MacOSHandle, HasRawWindowHandle, RawWindowHandle};
+
+const TIMER_INTERVAL: f64 = 1.0 / 60.0;
 
 const WINDOW_STATE: &str = "windowState";
 
@@ -207,6 +210,7 @@ struct WindowState {
     ns_view: base::id,
     rect: Cell<Rect>,
     back_buffer: RefCell<Vec<u32>>,
+    timer: runloop::CFRunLoopTimerRef,
     application: crate::Application,
     handler: Box<dyn WindowHandler>,
 }
@@ -262,6 +266,24 @@ impl Window {
                 ),
             );
 
+            let timer = runloop::CFRunLoopTimerCreate(
+                ptr::null(),
+                date::CFAbsoluteTimeGetCurrent() + TIMER_INTERVAL,
+                TIMER_INTERVAL,
+                0,
+                0,
+                frame,
+                &mut runloop::CFRunLoopTimerContext {
+                    info: ns_view as *mut c_void,
+                    ..mem::zeroed()
+                },
+            );
+            runloop::CFRunLoopAddTimer(
+                runloop::CFRunLoopGetCurrent(),
+                timer,
+                runloop::kCFRunLoopDefaultMode,
+            );
+
             let back_buffer_size = options.rect.width as usize * options.rect.height as usize;
             let back_buffer = RefCell::new(vec![0xFF000000; back_buffer_size]);
 
@@ -276,6 +298,7 @@ impl Window {
                     height: options.rect.height,
                 }),
                 back_buffer,
+                timer,
                 application: application.clone(),
                 handler: options.handler,
             });
@@ -443,6 +466,19 @@ unsafe impl HasRawWindowHandle for Window {
     }
 }
 
+extern "C" fn frame(_timer: runloop::CFRunLoopTimerRef, info: *mut c_void) {
+    unsafe {
+        let state_ptr =
+            *runtime::Object::get_ivar::<*mut c_void>(&*(info as base::id), WINDOW_STATE)
+                as *mut WindowState;
+        let state = Rc::from_raw(state_ptr);
+        let _ = Rc::into_raw(state.clone());
+        let window = crate::Window { window: Window { state }, phantom: PhantomData };
+
+        window.window.state.handler.frame(&window);
+    }
+}
+
 extern "C" fn draw_rect(this: &mut runtime::Object, _: runtime::Sel, _rect: foundation::NSRect) {
     unsafe {
         let state_ptr =
@@ -460,9 +496,11 @@ extern "C" fn dealloc(this: &mut runtime::Object, _: runtime::Sel) {
         let state_ptr =
             *runtime::Object::get_ivar::<*mut c_void>(this, WINDOW_STATE) as *mut WindowState;
         runtime::Object::set_ivar::<*mut c_void>(this, WINDOW_STATE, ptr::null_mut());
-
         let state = Rc::from_raw(state_ptr);
         let window = crate::Window { window: Window { state }, phantom: PhantomData };
+
+        runloop::CFRunLoopTimerInvalidate(window.window.state.timer);
+
         window.window.state.open.set(false);
         let ns_view = window.window.state.ns_view;
         window.application().application.inner.windows.borrow_mut().remove(&ns_view);
