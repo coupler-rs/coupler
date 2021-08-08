@@ -205,6 +205,8 @@ struct WindowState {
     open: Cell<bool>,
     ns_window: Option<base::id>,
     ns_view: base::id,
+    rect: Cell<Rect>,
+    back_buffer: RefCell<Vec<u32>>,
     application: crate::Application,
     handler: Box<dyn WindowHandler>,
 }
@@ -260,10 +262,20 @@ impl Window {
                 ),
             );
 
+            let back_buffer_size = options.rect.width as usize * options.rect.height as usize;
+            let back_buffer = RefCell::new(vec![0xFF000000; back_buffer_size]);
+
             let state = Rc::new(WindowState {
                 open: Cell::new(true),
                 ns_window,
                 ns_view,
+                rect: Cell::new(Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: options.rect.width,
+                    height: options.rect.height,
+                }),
+                back_buffer,
                 application: application.clone(),
                 handler: options.handler,
             });
@@ -349,11 +361,25 @@ impl Window {
                     let context = CGContext::from_existing_context_ptr(context_ptr);
 
                     let color_space = CGColorSpace::create_device_rgb();
+
+                    let window_width = self.state.rect.get().width as usize;
+                    let window_height = self.state.rect.get().height as usize;
+                    let copy_width = width.min(window_width as usize);
+                    let copy_height = height.min(window_height as usize);
+                    let mut back_buffer = self.state.back_buffer.borrow_mut();
+                    for row in 0..copy_height {
+                        let src = &framebuffer[row * width..row * width + copy_width];
+                        let dst =
+                            &mut back_buffer[row * window_width..row * window_width + copy_width];
+                        dst.copy_from_slice(src);
+                    }
+
                     let data = slice::from_raw_parts(
-                        framebuffer.as_ptr() as *const u8,
+                        back_buffer.as_ptr() as *const u8,
                         4 * width * height,
                     );
                     let data_provider = CGDataProvider::from_slice(data);
+
                     let image = CGImage::new(
                         width,
                         height,
