@@ -15,6 +15,8 @@ impl Handler {
 
 impl WindowHandler for Handler {
     fn display(&self, window: &Window) {
+        self.canvas.borrow_mut().clear(Color::rgba(0, 0, 0, 255));
+
         let mut path = Path::builder();
         path.move_to(Vec2::new(400.0, 300.0))
             .quadratic_to(Vec2::new(500.0, 200.0), Vec2::new(400.0, 100.0))
