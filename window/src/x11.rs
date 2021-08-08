@@ -198,7 +198,9 @@ impl Application {
             let windows: Vec<crate::Window> =
                 self.inner.windows.borrow().values().cloned().collect();
             for window in windows {
-                window.window.state.handler.frame(&window);
+                if window.window.state.open.get() {
+                    window.window.state.handler.frame(&window);
+                }
             }
 
             while next_frame < time {
