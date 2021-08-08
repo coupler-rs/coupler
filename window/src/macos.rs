@@ -6,7 +6,7 @@ use std::error::Error;
 use std::ffi::c_void;
 use std::marker::PhantomData;
 use std::rc::Rc;
-use std::{fmt, ptr};
+use std::{fmt, ptr, slice};
 
 use cocoa::{appkit, base, foundation};
 use objc::{class, msg_send, sel, sel_impl};
@@ -325,7 +325,60 @@ impl Window {
         }
     }
 
-    pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {}
+    pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {
+        use core_graphics::base::{
+            kCGBitmapByteOrder32Host, kCGImageAlphaPremultipliedFirst, kCGRenderingIntentDefault,
+        };
+        use core_graphics::context::{CGBlendMode, CGContext};
+        use core_graphics::geometry::{CGPoint, CGRect, CGSize};
+        use core_graphics::{
+            color_space::CGColorSpace, data_provider::CGDataProvider, image::CGImage,
+        };
+
+        unsafe {
+            if self.state.open.get() {
+                let width = width.min(framebuffer.len());
+                let height = height.min(framebuffer.len() / width);
+
+                let current_context: base::id =
+                    msg_send![class!(NSGraphicsContext), currentContext];
+
+                if !current_context.is_null() {
+                    let context_ptr: *mut core_graphics::sys::CGContext =
+                        msg_send![current_context, CGContext];
+                    let context = CGContext::from_existing_context_ptr(context_ptr);
+
+                    let color_space = CGColorSpace::create_device_rgb();
+                    let data = slice::from_raw_parts(
+                        framebuffer.as_ptr() as *const u8,
+                        4 * width * height,
+                    );
+                    let data_provider = CGDataProvider::from_slice(data);
+                    let image = CGImage::new(
+                        width,
+                        height,
+                        8,
+                        32,
+                        4 * width,
+                        &color_space,
+                        kCGBitmapByteOrder32Host | kCGImageAlphaPremultipliedFirst,
+                        &data_provider,
+                        false,
+                        kCGRenderingIntentDefault,
+                    );
+
+                    context.set_blend_mode(CGBlendMode::Copy);
+                    context.draw_image(
+                        CGRect::new(
+                            &CGPoint::new(0.0, 0.0),
+                            &CGSize::new(width as f64, height as f64),
+                        ),
+                        &image,
+                    );
+                }
+            }
+        }
+    }
 
     pub fn close(&self) -> Result<(), WindowError> {
         unsafe {
@@ -367,8 +420,7 @@ unsafe impl HasRawWindowHandle for Window {
 extern "C" fn draw_rect(this: &mut runtime::Object, _: runtime::Sel, _rect: foundation::NSRect) {
     unsafe {
         let state_ptr =
-            *runtime::Object::get_ivar::<*mut c_void>(&*this, WINDOW_STATE)
-                as *mut WindowState;
+            *runtime::Object::get_ivar::<*mut c_void>(&*this, WINDOW_STATE) as *mut WindowState;
         let state = Rc::from_raw(state_ptr);
         let _ = Rc::into_raw(state.clone());
         let window = crate::Window { window: Window { state }, phantom: PhantomData };
