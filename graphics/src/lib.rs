@@ -47,7 +47,7 @@ impl Canvas {
         Canvas {
             width,
             height,
-            data: vec![0x00000000; width * height + 1],
+            data: vec![0xFF000000; width * height + 1],
             coverage: vec![0.0; width * height + 1],
             tiles_width,
             tiles,
