@@ -119,6 +119,10 @@ impl Application {
                 other_mouse_up as extern "C" fn(&mut runtime::Object, runtime::Sel, base::id),
             );
             class_decl.add_method(
+                sel!(scrollWheel:),
+                scroll_wheel as extern "C" fn(&mut runtime::Object, runtime::Sel, base::id),
+            );
+            class_decl.add_method(
                 sel!(dealloc),
                 dealloc as extern "C" fn(&mut runtime::Object, runtime::Sel),
             );
@@ -647,6 +651,20 @@ extern "C" fn other_mouse_up(this: &mut runtime::Object, _: runtime::Sel, event:
         if let Some(mouse_button) = mouse_button_from_number(appkit::NSEvent::buttonNumber(event)) {
             window.window.state.handler.mouse_down(&window, mouse_button);
         }
+    }
+}
+
+extern "C" fn scroll_wheel(this: &mut runtime::Object, _: runtime::Sel, event: base::id) {
+    unsafe {
+        let window = Window::from_ns_view(this);
+        let dx = appkit::NSEvent::scrollingDeltaX(event);
+        let dy = appkit::NSEvent::scrollingDeltaY(event);
+        let (dx, dy) = if appkit::NSEvent::hasPreciseScrollingDeltas(event) == base::YES {
+            (dx, dy)
+        } else {
+            (32.0 * dx, 32.0 * dy)
+        };
+        window.window.state.handler.scroll(&window, dx, dy);
     }
 }
 
