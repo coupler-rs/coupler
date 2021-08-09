@@ -120,12 +120,7 @@ impl Application {
 
                 let mut window_errors = Vec::new();
                 for ns_view in self.inner.windows.take() {
-                    let state_ptr =
-                        *runtime::Object::get_ivar::<*mut c_void>(&*ns_view, WINDOW_STATE)
-                            as *mut WindowState;
-                    let state = Rc::from_raw(state_ptr);
-                    let _ = Rc::into_raw(state.clone());
-                    let window = crate::Window { window: Window { state }, phantom: PhantomData };
+                    let window = Window::from_ns_view(ns_view);
                     if let Err(error) = window.window.close() {
                         window_errors.push(error);
                     }
@@ -510,6 +505,14 @@ impl Window {
     pub fn application(&self) -> &crate::Application {
         &self.state.application
     }
+
+    unsafe fn from_ns_view(ns_view: base::id) -> crate::Window {
+        let state_ptr =
+            *runtime::Object::get_ivar::<*mut c_void>(&*ns_view, WINDOW_STATE) as *mut WindowState;
+        let state = Rc::from_raw(state_ptr);
+        let _ = Rc::into_raw(state.clone());
+        crate::Window { window: Window { state }, phantom: PhantomData }
+    }
 }
 
 unsafe impl HasRawWindowHandle for Window {
@@ -528,25 +531,14 @@ unsafe impl HasRawWindowHandle for Window {
 
 extern "C" fn frame(_timer: runloop::CFRunLoopTimerRef, info: *mut c_void) {
     unsafe {
-        let state_ptr =
-            *runtime::Object::get_ivar::<*mut c_void>(&*(info as base::id), WINDOW_STATE)
-                as *mut WindowState;
-        let state = Rc::from_raw(state_ptr);
-        let _ = Rc::into_raw(state.clone());
-        let window = crate::Window { window: Window { state }, phantom: PhantomData };
-
+        let window = Window::from_ns_view(info as base::id);
         window.window.state.handler.frame(&window);
     }
 }
 
 extern "C" fn draw_rect(this: &mut runtime::Object, _: runtime::Sel, _rect: foundation::NSRect) {
     unsafe {
-        let state_ptr =
-            *runtime::Object::get_ivar::<*mut c_void>(&*this, WINDOW_STATE) as *mut WindowState;
-        let state = Rc::from_raw(state_ptr);
-        let _ = Rc::into_raw(state.clone());
-        let window = crate::Window { window: Window { state }, phantom: PhantomData };
-
+        let window = Window::from_ns_view(this);
         window.window.state.handler.display(&window);
     }
 }
@@ -569,12 +561,7 @@ extern "C" fn is_flipped(_this: &mut runtime::Object, _: runtime::Sel) -> base::
 
 extern "C" fn mouse_moved(this: &mut runtime::Object, _: runtime::Sel, event: base::id) {
     unsafe {
-        let state_ptr =
-            *runtime::Object::get_ivar::<*mut c_void>(&*this, WINDOW_STATE) as *mut WindowState;
-        let state = Rc::from_raw(state_ptr);
-        let _ = Rc::into_raw(state.clone());
-        let window = crate::Window { window: Window { state }, phantom: PhantomData };
-
+        let window = Window::from_ns_view(this);
         let point = appkit::NSEvent::locationInWindow(event);
         let point = appkit::NSView::convertPoint_fromView_(this as base::id, point, base::nil);
         let point = Point { x: point.x, y: point.y };
