@@ -234,7 +234,7 @@ impl Window {
                     | appkit::NSWindowStyleMask::NSResizableWindowMask;
 
                 let ns_window: base::id = msg_send![class!(NSWindow), alloc];
-                appkit::NSWindow::initWithContentRect_styleMask_backing_defer_(
+                let ns_window = appkit::NSWindow::initWithContentRect_styleMask_backing_defer_(
                     ns_window,
                     foundation::NSRect::new(
                         foundation::NSPoint::new(options.rect.x, options.rect.y),
@@ -258,7 +258,7 @@ impl Window {
             };
 
             let ns_view: base::id = msg_send![application.application.inner.class, alloc];
-            appkit::NSView::initWithFrame_(
+            let ns_view = appkit::NSView::initWithFrame_(
                 ns_view,
                 foundation::NSRect::new(
                     foundation::NSPoint::new(0.0, 0.0),
