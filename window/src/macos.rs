@@ -1,4 +1,4 @@
-use crate::{Parent, Rect, WindowHandler, WindowOptions};
+use crate::{Parent, Point, Rect, WindowHandler, WindowOptions};
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
@@ -62,6 +62,27 @@ impl Application {
             class_decl.add_method(
                 sel!(drawRect:),
                 draw_rect as extern "C" fn(&mut runtime::Object, runtime::Sel, foundation::NSRect),
+            );
+            class_decl.add_method(
+                sel!(isFlipped),
+                is_flipped
+                    as extern "C" fn(_this: &mut runtime::Object, _: runtime::Sel) -> base::BOOL,
+            );
+            class_decl.add_method(
+                sel!(mouseMoved:),
+                mouse_moved as extern "C" fn(&mut runtime::Object, runtime::Sel, base::id),
+            );
+            class_decl.add_method(
+                sel!(mouseDragged:),
+                mouse_moved as extern "C" fn(&mut runtime::Object, runtime::Sel, base::id),
+            );
+            class_decl.add_method(
+                sel!(rightMouseDragged:),
+                mouse_moved as extern "C" fn(&mut runtime::Object, runtime::Sel, base::id),
+            );
+            class_decl.add_method(
+                sel!(otherMouseDragged:),
+                mouse_moved as extern "C" fn(&mut runtime::Object, runtime::Sel, base::id),
             );
             class_decl.add_method(
                 sel!(dealloc),
@@ -265,6 +286,35 @@ impl Window {
                     foundation::NSSize::new(options.rect.width, options.rect.height),
                 ),
             );
+
+            #[allow(non_upper_case_globals)]
+            let tracking_options = {
+                const NSTrackingMouseEnteredAndExited: foundation::NSUInteger = 0x1;
+                const NSTrackingMouseMoved: foundation::NSUInteger = 0x2;
+                const NSTrackingActiveAlways: foundation::NSUInteger = 0x80;
+                const NSTrackingInVisibleRect: foundation::NSUInteger = 0x200;
+                const NSTrackingEnabledDuringMouseDrag: foundation::NSUInteger = 0x400;
+
+                NSTrackingMouseEnteredAndExited
+                    | NSTrackingMouseMoved
+                    | NSTrackingActiveAlways
+                    | NSTrackingInVisibleRect
+                    | NSTrackingEnabledDuringMouseDrag
+            };
+
+            let tracking_area: base::id = msg_send![class!(NSTrackingArea), alloc];
+            let tracking_area: base::id = msg_send![
+                tracking_area,
+                initWithRect: foundation::NSRect::new(
+                    foundation::NSPoint::new(0.0, 0.0),
+                    foundation::NSSize::new(0.0, 0.0),
+                )
+                options: tracking_options
+                owner: ns_view
+                userInfo: base::nil
+            ];
+            let () = msg_send![ns_view, addTrackingArea: tracking_area];
+            let () = msg_send![tracking_area, autorelease];
 
             let timer = runloop::CFRunLoopTimerCreate(
                 ptr::null(),
@@ -488,6 +538,25 @@ extern "C" fn draw_rect(this: &mut runtime::Object, _: runtime::Sel, _rect: foun
         let window = crate::Window { window: Window { state }, phantom: PhantomData };
 
         window.window.state.handler.display(&window);
+    }
+}
+
+extern "C" fn is_flipped(_this: &mut runtime::Object, _: runtime::Sel) -> base::BOOL {
+    base::YES
+}
+
+extern "C" fn mouse_moved(this: &mut runtime::Object, _: runtime::Sel, event: base::id) {
+    unsafe {
+        let state_ptr =
+            *runtime::Object::get_ivar::<*mut c_void>(&*this, WINDOW_STATE) as *mut WindowState;
+        let state = Rc::from_raw(state_ptr);
+        let _ = Rc::into_raw(state.clone());
+        let window = crate::Window { window: Window { state }, phantom: PhantomData };
+
+        let point = appkit::NSEvent::locationInWindow(event);
+        let point = appkit::NSView::convertPoint_fromView_(this as base::id, point, base::nil);
+        let point = Point { x: point.x, y: point.y };
+        window.window.state.handler.mouse_move(&window, point);
     }
 }
 
