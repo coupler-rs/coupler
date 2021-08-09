@@ -500,6 +500,8 @@ impl Window {
                     );
 
                     context.set_blend_mode(CGBlendMode::Copy);
+                    context.translate(0.0, self.state.rect.get().height);
+                    context.scale(1.0, -1.0);
                     context.draw_image(
                         CGRect::new(
                             &CGPoint::new(0.0, 0.0),
