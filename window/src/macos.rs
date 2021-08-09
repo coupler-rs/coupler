@@ -1,4 +1,4 @@
-use crate::{Parent, Point, Rect, WindowHandler, WindowOptions};
+use crate::{MouseButton, Parent, Point, Rect, WindowHandler, WindowOptions};
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
@@ -93,6 +93,30 @@ impl Application {
             class_decl.add_method(
                 sel!(otherMouseDragged:),
                 mouse_moved as extern "C" fn(&mut runtime::Object, runtime::Sel, base::id),
+            );
+            class_decl.add_method(
+                sel!(mouseDown:),
+                mouse_down as extern "C" fn(&mut runtime::Object, runtime::Sel, base::id),
+            );
+            class_decl.add_method(
+                sel!(mouseUp:),
+                mouse_up as extern "C" fn(&mut runtime::Object, runtime::Sel, base::id),
+            );
+            class_decl.add_method(
+                sel!(rightMouseDown:),
+                right_mouse_down as extern "C" fn(&mut runtime::Object, runtime::Sel, base::id),
+            );
+            class_decl.add_method(
+                sel!(rightMouseUp:),
+                right_mouse_up as extern "C" fn(&mut runtime::Object, runtime::Sel, base::id),
+            );
+            class_decl.add_method(
+                sel!(otherMouseDown:),
+                other_mouse_down as extern "C" fn(&mut runtime::Object, runtime::Sel, base::id),
+            );
+            class_decl.add_method(
+                sel!(otherMouseUp:),
+                other_mouse_up as extern "C" fn(&mut runtime::Object, runtime::Sel, base::id),
             );
             class_decl.add_method(
                 sel!(dealloc),
@@ -566,6 +590,63 @@ extern "C" fn mouse_moved(this: &mut runtime::Object, _: runtime::Sel, event: ba
         let point = appkit::NSView::convertPoint_fromView_(this as base::id, point, base::nil);
         let point = Point { x: point.x, y: point.y };
         window.window.state.handler.mouse_move(&window, point);
+    }
+}
+
+extern "C" fn mouse_down(this: &mut runtime::Object, _: runtime::Sel, _event: base::id) {
+    unsafe {
+        let window = Window::from_ns_view(this);
+        window.window.state.handler.mouse_down(&window, MouseButton::Left);
+    }
+}
+
+extern "C" fn mouse_up(this: &mut runtime::Object, _: runtime::Sel, _event: base::id) {
+    unsafe {
+        let window = Window::from_ns_view(this);
+        window.window.state.handler.mouse_up(&window, MouseButton::Left);
+    }
+}
+
+extern "C" fn right_mouse_down(this: &mut runtime::Object, _: runtime::Sel, _event: base::id) {
+    unsafe {
+        let window = Window::from_ns_view(this);
+        window.window.state.handler.mouse_down(&window, MouseButton::Right);
+    }
+}
+
+extern "C" fn right_mouse_up(this: &mut runtime::Object, _: runtime::Sel, _event: base::id) {
+    unsafe {
+        let window = Window::from_ns_view(this);
+        window.window.state.handler.mouse_up(&window, MouseButton::Right);
+    }
+}
+
+fn mouse_button_from_number(button_number: foundation::NSInteger) -> Option<MouseButton> {
+    match button_number {
+        0 => Some(MouseButton::Left),
+        1 => Some(MouseButton::Right),
+        2 => Some(MouseButton::Middle),
+        3 => Some(MouseButton::Back),
+        4 => Some(MouseButton::Forward),
+        _ => None,
+    }
+}
+
+extern "C" fn other_mouse_down(this: &mut runtime::Object, _: runtime::Sel, event: base::id) {
+    unsafe {
+        let window = Window::from_ns_view(this);
+        if let Some(mouse_button) = mouse_button_from_number(appkit::NSEvent::buttonNumber(event)) {
+            window.window.state.handler.mouse_down(&window, mouse_button);
+        }
+    }
+}
+
+extern "C" fn other_mouse_up(this: &mut runtime::Object, _: runtime::Sel, event: base::id) {
+    unsafe {
+        let window = Window::from_ns_view(this);
+        if let Some(mouse_button) = mouse_button_from_number(appkit::NSEvent::buttonNumber(event)) {
+            window.window.state.handler.mouse_down(&window, mouse_button);
+        }
     }
 }
 
