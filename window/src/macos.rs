@@ -341,7 +341,7 @@ impl Window {
             runloop::CFRunLoopAddTimer(
                 runloop::CFRunLoopGetCurrent(),
                 timer,
-                runloop::kCFRunLoopDefaultMode,
+                runloop::kCFRunLoopCommonModes,
             );
 
             let back_buffer_size = options.rect.width as usize * options.rect.height as usize;
