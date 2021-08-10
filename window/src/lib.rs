@@ -101,6 +101,21 @@ pub enum MouseButton {
     Forward,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum Cursor {
+    Arrow,
+    Crosshair,
+    Hand,
+    IBeam,
+    No,
+    SizeNs,
+    SizeWe,
+    SizeNesw,
+    SizeNwse,
+    Wait,
+    None,
+}
+
 #[allow(unused_variables)]
 pub trait WindowHandler {
     fn create(&self, window: &Window) {}
@@ -178,6 +193,10 @@ impl Window {
 
     pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {
         self.window.update_contents(framebuffer, width, height);
+    }
+
+    pub fn set_cursor(&self, cursor: Cursor) {
+        self.window.set_cursor(cursor);
     }
 
     pub fn close(&self) -> Result<(), WindowError> {

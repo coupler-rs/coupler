@@ -1,4 +1,4 @@
-use crate::{MouseButton, Parent, Point, Rect, WindowHandler, WindowOptions};
+use crate::{Cursor, MouseButton, Parent, Point, Rect, WindowHandler, WindowOptions};
 
 use std::cell::Cell;
 use std::collections::HashSet;
@@ -364,6 +364,32 @@ impl Window {
         }
     }
 
+    pub fn set_cursor(&self, cursor: Cursor) {
+        unsafe {
+            if self.state.open.get() {
+                let hcursor = match cursor {
+                    Cursor::Arrow => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_ARROW),
+                    Cursor::Crosshair => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_CROSS),
+                    Cursor::Hand => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_HAND),
+                    Cursor::IBeam => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_IBEAM),
+                    Cursor::No => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_NO),
+                    Cursor::SizeNs => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_SIZENS),
+                    Cursor::SizeWe => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_SIZEWE),
+                    Cursor::SizeNesw => {
+                        winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_SIZENESW)
+                    }
+                    Cursor::SizeNwse => {
+                        winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_SIZENWSE)
+                    }
+                    Cursor::Wait => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_WAIT),
+                    Cursor::None => ptr::null_mut(),
+                };
+
+                winuser::SetCursor(hcursor);
+            }
+        }
+    }
+
     pub fn close(&self) -> Result<(), WindowError> {
         unsafe {
             if self.state.open.get() {
@@ -512,6 +538,9 @@ unsafe extern "system" fn wnd_proc(
                 if result {
                     return 0;
                 }
+            }
+            winuser::WM_SETCURSOR => {
+                return 0;
             }
             winuser::WM_TIMER => {
                 if wparam == TIMER_ID {

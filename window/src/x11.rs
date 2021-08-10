@@ -1,4 +1,4 @@
-use crate::{MouseButton, Parent, Point, Rect, WindowHandler, WindowOptions};
+use crate::{Cursor, MouseButton, Parent, Point, Rect, WindowHandler, WindowOptions};
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -650,6 +650,8 @@ impl Window {
             xcb::xcb_flush(self.state.application.application.inner.connection);
         }
     }
+
+    pub fn set_cursor(&self, _cursor: Cursor) {}
 
     pub fn close(&self) -> Result<(), WindowError> {
         unsafe {
