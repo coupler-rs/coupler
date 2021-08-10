@@ -203,6 +203,7 @@ struct WindowState {
     hwnd: Cell<windef::HWND>,
     hdc: Cell<Option<windef::HDC>>,
     mouse_down_count: Cell<usize>,
+    cursor: Cell<Cursor>,
     application: crate::Application,
     handler: Box<dyn WindowHandler>,
 }
@@ -259,6 +260,7 @@ impl Window {
                 hwnd: Cell::new(ptr::null_mut()),
                 hdc: Cell::new(None),
                 mouse_down_count: Cell::new(0),
+                cursor: Cell::new(Cursor::Arrow),
                 application: application.clone(),
                 handler: options.handler,
             });
@@ -367,6 +369,8 @@ impl Window {
     pub fn set_cursor(&self, cursor: Cursor) {
         unsafe {
             if self.state.open.get() {
+                self.state.cursor.set(cursor);
+
                 let hcursor = match cursor {
                     Cursor::Arrow => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_ARROW),
                     Cursor::Crosshair => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_CROSS),
@@ -553,7 +557,12 @@ unsafe extern "system" fn wnd_proc(
                 }
             }
             winuser::WM_SETCURSOR => {
-                return 0;
+                if minwindef::LOWORD(lparam as minwindef::DWORD)
+                    == winuser::HTCLIENT as minwindef::WORD
+                {
+                    window.set_cursor(window.window.state.cursor.get());
+                    return 0;
+                }
             }
             winuser::WM_TIMER => {
                 if wparam == TIMER_ID {
