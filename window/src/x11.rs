@@ -653,7 +653,25 @@ impl Window {
 
     pub fn set_cursor(&self, _cursor: Cursor) {}
 
-    pub fn set_mouse_position(&self, _position: Point) {}
+    pub fn set_mouse_position(&self, position: Point) {
+        unsafe {
+            if self.state.open.get() {
+                xcb::xcb_warp_pointer(
+                    self.state.application.application.inner.connection,
+                    xcb::XCB_NONE,
+                    self.state.window_id,
+                    0,
+                    0,
+                    0,
+                    0,
+                    position.x as i16,
+                    position.y as i16,
+                );
+
+                xcb::xcb_flush(self.state.application.application.inner.connection);
+            }
+        }
+    }
 
     pub fn close(&self) -> Result<(), WindowError> {
         unsafe {
