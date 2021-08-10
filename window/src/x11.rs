@@ -36,6 +36,7 @@ unsafe fn intern_atom_reply(
 #[derive(Debug)]
 pub enum ApplicationError {
     ConnectionFailed(i32),
+    CursorContext,
     Close(Vec<WindowError>),
 }
 
@@ -60,6 +61,8 @@ struct ApplicationInner {
     wm_protocols: xcb::xcb_atom_t,
     wm_delete_window: xcb::xcb_atom_t,
     shm: bool,
+    cursor_context: *mut xcb::xcb_cursor_context_t,
+    cursor_cache: RefCell<HashMap<Cursor, xcb::xcb_cursor_t>>,
     next_frame: Cell<Instant>,
     windows: RefCell<HashMap<xcb::xcb_window_t, crate::Window>>,
 }
@@ -97,6 +100,11 @@ impl Application {
                 libc::free(shm_version as *mut ffi::c_void);
             }
 
+            let mut cursor_context = ptr::null_mut();
+            if xcb::xcb_cursor_context_new(connection, screen, &mut cursor_context) < 0 {
+                return Err(ApplicationError::CursorContext);
+            }
+
             Ok(Application {
                 inner: Rc::new(ApplicationInner {
                     open: Cell::new(true),
@@ -106,6 +114,8 @@ impl Application {
                     wm_protocols,
                     wm_delete_window,
                     shm,
+                    cursor_context,
+                    cursor_cache: RefCell::new(HashMap::new()),
                     next_frame: Cell::new(Instant::now() + FRAME_INTERVAL),
                     windows: RefCell::new(HashMap::new()),
                 }),
@@ -124,6 +134,8 @@ impl Application {
                         window_errors.push(error);
                     }
                 }
+
+                xcb::xcb_cursor_context_free(self.inner.cursor_context);
 
                 xcb::xcb_disconnect(self.inner.connection);
 
@@ -651,7 +663,72 @@ impl Window {
         }
     }
 
-    pub fn set_cursor(&self, _cursor: Cursor) {}
+    pub fn set_cursor(&self, cursor: Cursor) {
+        unsafe {
+            if self.state.open.get() {
+                let application_inner = &self.state.application.application.inner;
+
+                let cursor_cache = &application_inner.cursor_cache;
+                let cursor_id = *cursor_cache.borrow_mut().entry(cursor).or_insert_with(|| {
+                    if cursor == Cursor::None {
+                        let cursor_id = xcb::xcb_generate_id(application_inner.connection);
+                        let pixmap_id = xcb::xcb_generate_id(application_inner.connection);
+                        xcb::xcb_create_pixmap(
+                            application_inner.connection,
+                            1,
+                            pixmap_id,
+                            (*application_inner.screen).root,
+                            1,
+                            1,
+                        );
+                        xcb::xcb_create_cursor(
+                            application_inner.connection,
+                            cursor_id,
+                            pixmap_id,
+                            pixmap_id,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                        );
+                        xcb::xcb_free_pixmap(application_inner.connection, pixmap_id);
+                        cursor_id
+                    } else {
+                        let cursor_name = match cursor {
+                            Cursor::Arrow => &b"left_ptr\0"[..],
+                            Cursor::Crosshair => &b"crosshair\0"[..],
+                            Cursor::Hand => &b"hand2\0"[..],
+                            Cursor::IBeam => &b"text\0"[..],
+                            Cursor::No => &b"crossed_circle\0"[..],
+                            Cursor::SizeNs => &b"v_double_arrow\0"[..],
+                            Cursor::SizeWe => &b"h_double_arrow\0"[..],
+                            Cursor::SizeNesw => &b"fd_double_arrow\0"[..],
+                            Cursor::SizeNwse => &b"bd_double_arrow\0"[..],
+                            Cursor::Wait => &b"watch\0"[..],
+                            Cursor::None => &b"\0"[..],
+                        };
+                        xcb::xcb_cursor_load_cursor(
+                            application_inner.cursor_context,
+                            cursor_name.as_ptr() as *const os::raw::c_char,
+                        )
+                    }
+                });
+
+                xcb::xcb_change_window_attributes(
+                    application_inner.connection,
+                    self.state.window_id,
+                    xcb::XCB_CW_CURSOR,
+                    &cursor_id as *const xcb::xcb_cursor_t as *const ffi::c_void,
+                );
+
+                xcb::xcb_flush(application_inner.connection);
+            }
+        }
+    }
 
     pub fn set_mouse_position(&self, position: Point) {
         unsafe {

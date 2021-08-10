@@ -101,7 +101,7 @@ pub enum MouseButton {
     Forward,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Cursor {
     Arrow,
     Crosshair,
