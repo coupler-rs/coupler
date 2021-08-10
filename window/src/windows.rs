@@ -6,7 +6,7 @@ use std::error::Error;
 use std::marker::PhantomData;
 use std::os::windows::ffi::OsStrExt;
 use std::rc::Rc;
-use std::{ffi, fmt, mem, ptr};
+use std::{ffi, fmt, mem, os, ptr};
 
 use raw_window_handle::{windows::WindowsHandle, HasRawWindowHandle, RawWindowHandle};
 use winapi::{
@@ -386,6 +386,19 @@ impl Window {
                 };
 
                 winuser::SetCursor(hcursor);
+            }
+        }
+    }
+
+    pub fn set_mouse_position(&self, position: Point) {
+        unsafe {
+            if self.state.open.get() {
+                let mut point = windef::POINT {
+                    x: position.x as os::raw::c_int,
+                    y: position.y as os::raw::c_int,
+                };
+                winuser::ClientToScreen(self.state.hwnd.get(), &mut point);
+                winuser::SetCursorPos(point.x, point.y);
             }
         }
     }

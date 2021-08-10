@@ -653,6 +653,8 @@ impl Window {
 
     pub fn set_cursor(&self, _cursor: Cursor) {}
 
+    pub fn set_mouse_position(&self, _position: Point) {}
+
     pub fn close(&self) -> Result<(), WindowError> {
         unsafe {
             if self.state.open.get() {

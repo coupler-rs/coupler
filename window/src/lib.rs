@@ -199,6 +199,10 @@ impl Window {
         self.window.set_cursor(cursor);
     }
 
+    pub fn set_mouse_position(&self, position: Point) {
+        self.window.set_mouse_position(position);
+    }
+
     pub fn close(&self) -> Result<(), WindowError> {
         match self.window.close() {
             Ok(()) => Ok(()),
