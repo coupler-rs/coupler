@@ -13,7 +13,7 @@ impl WindowHandler for Handler {
 
     fn display(&self, window: &Window) {
         println!("display");
-        window.update_contents(&[0xFF00FF; 1920 * 1920], 1920, 1920);
+        window.update_contents(&[0xFFFF00FF; 1920 * 1920], 1920, 1920);
     }
 
     fn mouse_move(&self, _window: &Window, position: Point) {
