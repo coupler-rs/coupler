@@ -118,6 +118,11 @@ impl Application {
                 scroll_wheel as extern "C" fn(&mut runtime::Object, runtime::Sel, base::id),
             );
             class_decl.add_method(
+                sel!(windowShouldClose:),
+                window_should_close
+                    as extern "C" fn(&mut runtime::Object, runtime::Sel, base::id) -> base::BOOL,
+            );
+            class_decl.add_method(
                 sel!(dealloc),
                 dealloc as extern "C" fn(&mut runtime::Object, runtime::Sel),
             );
@@ -392,6 +397,7 @@ impl Window {
             window.window.state.handler.create(&window);
 
             if let Some(ns_window) = window.window.state.ns_window {
+                appkit::NSWindow::setDelegate_(ns_window, ns_view);
                 appkit::NSWindow::setContentView_(ns_window, ns_view);
                 let () = msg_send![ns_view, release];
 
@@ -662,6 +668,19 @@ extern "C" fn scroll_wheel(this: &mut runtime::Object, _: runtime::Sel, event: b
             (32.0 * dx, 32.0 * dy)
         };
         window.window.state.handler.scroll(&window, dx, dy);
+    }
+}
+
+extern "C" fn window_should_close(
+    this: &mut runtime::Object,
+    _: runtime::Sel,
+    _sender: base::id,
+) -> base::BOOL {
+    unsafe {
+        let window = Window::from_ns_view(this);
+        window.window.state.handler.request_close(&window);
+
+        base::NO
     }
 }
 
