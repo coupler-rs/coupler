@@ -474,25 +474,25 @@ impl Window {
                     let copy_width = width.min(window_width as usize);
                     let copy_height = height.min(window_height as usize);
                     let mut back_buffer = self.state.back_buffer.borrow_mut();
-                    for row in 0..copy_height {
+                    for row in (0..copy_height).rev() {
                         let src = &framebuffer[row * width..row * width + copy_width];
                         let dst =
-                            &mut back_buffer[row * window_width..row * window_width + copy_width];
+                            &mut back_buffer[row * copy_width..row * copy_width + copy_width];
                         dst.copy_from_slice(src);
                     }
 
                     let data = slice::from_raw_parts(
                         back_buffer.as_ptr() as *const u8,
-                        4 * width * height,
+                        4 * copy_width * copy_height,
                     );
                     let data_provider = CGDataProvider::from_slice(data);
 
                     let image = CGImage::new(
-                        width,
-                        height,
+                        copy_width,
+                        copy_height,
                         8,
                         32,
-                        4 * width,
+                        4 * copy_width,
                         &color_space,
                         kCGBitmapByteOrder32Host | kCGImageAlphaPremultipliedFirst,
                         &data_provider,
@@ -501,8 +501,6 @@ impl Window {
                     );
 
                     context.set_blend_mode(CGBlendMode::Copy);
-                    context.translate(0.0, self.state.rect.get().height);
-                    context.scale(1.0, -1.0);
                     context.draw_image(
                         CGRect::new(
                             &CGPoint::new(0.0, 0.0),
