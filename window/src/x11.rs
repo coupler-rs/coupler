@@ -135,6 +135,10 @@ impl Application {
                     }
                 }
 
+                if let Some(cursor_id) = self.inner.cursor_cache.borrow().get(&Cursor::None) {
+                    xcb::xcb_free_cursor(self.inner.connection, *cursor_id);
+                }
+
                 xcb::xcb_cursor_context_free(self.inner.cursor_context);
 
                 xcb::xcb_disconnect(self.inner.connection);
