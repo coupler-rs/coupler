@@ -517,7 +517,39 @@ impl Window {
 
     pub fn set_cursor(&self, _cursor: Cursor) {}
 
-    pub fn set_mouse_position(&self, _position: Point) {}
+    pub fn set_mouse_position(&self, position: Point) {
+        use core_graphics::display::{
+            CGAssociateMouseAndMouseCursorPosition, CGWarpMouseCursorPosition,
+        };
+        use core_graphics::geometry::CGPoint;
+
+        #[link(name = "CoreGraphics", kind = "framework")]
+        extern "C" {
+            fn CGSetLocalEventsSuppressionInterval(seconds: f64) -> core_graphics::base::CGError;
+        }
+
+        unsafe {
+            if self.state.open.get() {
+                let window: base::id = msg_send![self.state.ns_view, window];
+                if window.is_null() {
+                    return;
+                }
+
+                let point = foundation::NSPoint::new(position.x, position.y);
+                let point: foundation::NSPoint =
+                    msg_send![self.state.ns_view, convertPoint: point toView: base::nil];
+                let point: foundation::NSPoint = msg_send![window, convertPointToScreen: point];
+
+                let screens: base::id = msg_send![class!(NSScreen), screens];
+                let primary_screen = foundation::NSArray::objectAtIndex(screens, 0);
+                let screen_height = appkit::NSScreen::frame(primary_screen).size.height;
+
+                CGWarpMouseCursorPosition(CGPoint::new(point.x, screen_height - point.y));
+                CGAssociateMouseAndMouseCursorPosition(0);
+                CGSetLocalEventsSuppressionInterval(0.0);
+            }
+        }
+    }
 
     pub fn close(&self) -> Result<(), WindowError> {
         unsafe {
