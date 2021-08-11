@@ -64,11 +64,6 @@ impl Application {
                 draw_rect as extern "C" fn(&mut runtime::Object, runtime::Sel, foundation::NSRect),
             );
             class_decl.add_method(
-                sel!(acceptsFirstResponder),
-                accepts_first_responder
-                    as extern "C" fn(_this: &mut runtime::Object, _: runtime::Sel) -> base::BOOL,
-            );
-            class_decl.add_method(
                 sel!(acceptsFirstMouse:),
                 accepts_first_mouse
                     as extern "C" fn(&mut runtime::Object, runtime::Sel, base::id) -> base::BOOL,
@@ -575,10 +570,6 @@ extern "C" fn draw_rect(this: &mut runtime::Object, _: runtime::Sel, _rect: foun
         let window = Window::from_ns_view(this);
         window.window.state.handler.display(&window);
     }
-}
-
-extern "C" fn accepts_first_responder(_this: &mut runtime::Object, _: runtime::Sel) -> base::BOOL {
-    base::YES
 }
 
 extern "C" fn accepts_first_mouse(
