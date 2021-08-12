@@ -42,6 +42,7 @@ struct ApplicationInner {
     open: Cell<bool>,
     running: Cell<usize>,
     class: *mut runtime::Class,
+    empty_cursor: base::id,
     windows: RefCell<HashSet<base::id>>,
 }
 
@@ -126,6 +127,10 @@ impl Application {
                 scroll_wheel as extern "C" fn(&mut runtime::Object, runtime::Sel, base::id),
             );
             class_decl.add_method(
+                sel!(cursorUpdate:),
+                cursor_update as extern "C" fn(&mut runtime::Object, runtime::Sel, base::id),
+            );
+            class_decl.add_method(
                 sel!(windowShouldClose:),
                 window_should_close
                     as extern "C" fn(&mut runtime::Object, runtime::Sel, base::id) -> base::BOOL,
@@ -137,6 +142,18 @@ impl Application {
 
             let class = class_decl.register();
 
+            let empty_cursor_image = appkit::NSImage::initWithSize_(
+                appkit::NSImage::alloc(base::nil),
+                foundation::NSSize::new(1.0, 1.0),
+            );
+            let empty_cursor: base::id = msg_send![class!(NSCursor), alloc];
+            let empty_cursor: base::id = msg_send![
+                empty_cursor,
+                initWithImage: empty_cursor_image
+                hotSpot: foundation::NSPoint::new(0.0, 0.0)
+            ];
+            let () = msg_send![empty_cursor_image, release];
+
             let () = msg_send![pool, drain];
 
             Ok(Application {
@@ -144,6 +161,7 @@ impl Application {
                     open: Cell::new(true),
                     running: Cell::new(0),
                     class: class as *const runtime::Class as *mut runtime::Class,
+                    empty_cursor,
                     windows: RefCell::new(HashSet::new()),
                 }),
             })
@@ -173,6 +191,8 @@ impl Application {
                 if !window_errors.is_empty() {
                     return Err(ApplicationError::Close(window_errors));
                 }
+
+                let () = msg_send![self.inner.empty_cursor, release];
 
                 runtime::objc_disposeClassPair(self.inner.class);
             }
@@ -282,6 +302,7 @@ struct WindowState {
     rect: Cell<Rect>,
     back_buffer: RefCell<Vec<u32>>,
     timer: runloop::CFRunLoopTimerRef,
+    cursor: Cell<Cursor>,
     application: crate::Application,
     handler: Box<dyn WindowHandler>,
 }
@@ -341,12 +362,14 @@ impl Window {
             let tracking_options = {
                 const NSTrackingMouseEnteredAndExited: foundation::NSUInteger = 0x1;
                 const NSTrackingMouseMoved: foundation::NSUInteger = 0x2;
+                const NSTrackingCursorUpdate: foundation::NSUInteger = 0x4;
                 const NSTrackingActiveAlways: foundation::NSUInteger = 0x80;
                 const NSTrackingInVisibleRect: foundation::NSUInteger = 0x200;
                 const NSTrackingEnabledDuringMouseDrag: foundation::NSUInteger = 0x400;
 
                 NSTrackingMouseEnteredAndExited
                     | NSTrackingMouseMoved
+                    | NSTrackingCursorUpdate
                     | NSTrackingActiveAlways
                     | NSTrackingInVisibleRect
                     | NSTrackingEnabledDuringMouseDrag
@@ -399,6 +422,7 @@ impl Window {
                 }),
                 back_buffer,
                 timer,
+                cursor: Cell::new(Cursor::Arrow),
                 application: application.clone(),
                 handler: options.handler,
             });
@@ -529,7 +553,39 @@ impl Window {
         }
     }
 
-    pub fn set_cursor(&self, _cursor: Cursor) {}
+    pub fn set_cursor(&self, cursor: Cursor) {
+        unsafe {
+            if self.state.open.get() {
+                self.state.cursor.set(cursor);
+
+                let ns_cursor: base::id = if cursor == Cursor::None {
+                    self.application().application.inner.empty_cursor
+                } else {
+                    let selector: runtime::Sel = match cursor {
+                        Cursor::Arrow => sel!(arrowCursor),
+                        Cursor::Crosshair => sel!(crosshairCursor),
+                        Cursor::Hand => sel!(pointingHandCursor),
+                        Cursor::IBeam => sel!(IBeamCursor),
+                        Cursor::No => sel!(operationNotAllowedCursor),
+                        Cursor::SizeNs => sel!(_windowResizeNorthSouthCursor),
+                        Cursor::SizeWe => sel!(_windowResizeEastWestCursor),
+                        Cursor::SizeNesw => sel!(_windowResizeNorthEastSouthWestCursor),
+                        Cursor::SizeNwse => sel!(_windowResizeNorthWestSouthEastCursor),
+                        Cursor::Wait => sel!(_waitCursor),
+                        _ => sel!(arrowCursor),
+                    };
+
+                    if msg_send![class!(NSCursor), respondsToSelector: selector] {
+                        msg_send![class!(NSCursor), performSelector: selector]
+                    } else {
+                        msg_send![class!(NSCursor), arrowCursor]
+                    }
+                };
+
+                let () = msg_send![ns_cursor, set];
+            }
+        }
+    }
 
     pub fn set_mouse_position(&self, position: Point) {
         use core_graphics::display::{
@@ -747,6 +803,13 @@ extern "C" fn scroll_wheel(this: &mut runtime::Object, _: runtime::Sel, event: b
             let superclass = msg_send![this, superclass];
             let () = msg_send![super(this, superclass), scrollWheel: event];
         }
+    }
+}
+
+extern "C" fn cursor_update(this: &mut runtime::Object, _: runtime::Sel, _event: base::id) {
+    unsafe {
+        let window = Window::from_ns_view(this);
+        window.set_cursor(window.window.state.cursor.get());
     }
 }
 
