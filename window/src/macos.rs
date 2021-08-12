@@ -483,8 +483,7 @@ impl Window {
                     let mut back_buffer = self.state.back_buffer.borrow_mut();
                     for row in (0..copy_height).rev() {
                         let src = &framebuffer[row * width..row * width + copy_width];
-                        let dst =
-                            &mut back_buffer[row * copy_width..row * copy_width + copy_width];
+                        let dst = &mut back_buffer[row * copy_width..row * copy_width + copy_width];
                         dst.copy_from_slice(src);
                     }
 
