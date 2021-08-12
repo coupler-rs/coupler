@@ -598,6 +598,11 @@ impl Window {
         };
         use core_graphics::geometry::CGPoint;
 
+        #[link(name = "CoreGraphics", kind = "framework")]
+        extern "C" {
+            fn CGSetLocalEventsSuppressionInterval(seconds: f64) -> core_graphics::base::CGError;
+        }
+
         unsafe {
             if self.state.open.get() {
                 let window: base::id = msg_send![self.state.ns_view, window];
@@ -616,6 +621,7 @@ impl Window {
 
                 CGWarpMouseCursorPosition(CGPoint::new(point.x, screen_height - point.y));
                 CGAssociateMouseAndMouseCursorPosition(1);
+                CGSetLocalEventsSuppressionInterval(0.0);
             }
         }
     }
