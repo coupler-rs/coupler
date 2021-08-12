@@ -463,7 +463,7 @@ impl Window {
 
     pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {
         use core_graphics::base::{
-            kCGBitmapByteOrder32Host, kCGImageAlphaPremultipliedFirst, kCGRenderingIntentDefault,
+            kCGBitmapByteOrder32Host, kCGImageAlphaNoneSkipFirst, kCGRenderingIntentDefault,
         };
         use core_graphics::context::{CGBlendMode, CGContext};
         use core_graphics::geometry::{CGPoint, CGRect, CGSize};
@@ -510,7 +510,7 @@ impl Window {
                         32,
                         4 * copy_width,
                         &color_space,
-                        kCGBitmapByteOrder32Host | kCGImageAlphaPremultipliedFirst,
+                        kCGBitmapByteOrder32Host | kCGImageAlphaNoneSkipFirst,
                         &data_provider,
                         false,
                         kCGRenderingIntentDefault,
