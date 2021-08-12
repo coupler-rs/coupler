@@ -168,6 +168,8 @@ impl Application {
                 self.inner.running.set(0);
                 self.inner.open.set(false);
 
+                let pool = foundation::NSAutoreleasePool::new(base::nil);
+
                 let mut window_errors = Vec::new();
                 for ns_view in self.inner.windows.take() {
                     let window = Window::from_ns_view(ns_view);
@@ -189,6 +191,8 @@ impl Application {
                 let () = msg_send![self.inner.empty_cursor, release];
 
                 runtime::objc_disposeClassPair(self.inner.class);
+
+                let () = msg_send![pool, drain];
             }
 
             Ok(())
