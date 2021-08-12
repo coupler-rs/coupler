@@ -68,7 +68,7 @@ impl EditorContext for Vst2EditorContext {
                         param_info.id as i32,
                         0,
                         ptr::null_mut(),
-                        value as f32,
+                        (param_info.to_normal)(value) as f32,
                     );
                 }
             }
