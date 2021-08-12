@@ -51,12 +51,6 @@ impl Application {
         unsafe {
             let pool = foundation::NSAutoreleasePool::new(base::nil);
 
-            let app = appkit::NSApp();
-            appkit::NSApplication::setActivationPolicy_(
-                app,
-                appkit::NSApplicationActivationPolicyRegular,
-            );
-
             let class_name = format!("window-{}", uuid::Uuid::new_v4().to_simple());
 
             let mut class_decl =
@@ -208,6 +202,11 @@ impl Application {
                 self.inner.running.set(depth + 1);
 
                 let app = appkit::NSApp();
+                appkit::NSApplication::setActivationPolicy_(
+                    app,
+                    appkit::NSApplicationActivationPolicyRegular,
+                );
+
                 let until_date = msg_send![class!(NSDate), distantFuture];
                 while self.inner.open.get() && self.inner.running.get() > depth {
                     let pool = foundation::NSAutoreleasePool::new(base::nil);
