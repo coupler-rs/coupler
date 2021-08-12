@@ -515,7 +515,7 @@ impl Window {
                     let copy_width = width.min(window_width as usize);
                     let copy_height = height.min(window_height as usize);
                     let mut back_buffer = self.state.back_buffer.borrow_mut();
-                    for row in (0..copy_height).rev() {
+                    for row in 0..copy_height {
                         let src = &framebuffer[row * width..row * width + copy_width];
                         let dst = &mut back_buffer[row * copy_width..row * copy_width + copy_width];
                         dst.copy_from_slice(src);
@@ -541,10 +541,12 @@ impl Window {
                     );
 
                     context.set_blend_mode(CGBlendMode::Copy);
+                    context.translate(0.0, self.state.rect.get().height);
+                    context.scale(1.0, -1.0);
                     context.draw_image(
                         CGRect::new(
                             &CGPoint::new(0.0, 0.0),
-                            &CGSize::new(width as f64, height as f64),
+                            &CGSize::new(copy_width as f64, copy_height as f64),
                         ),
                         &image,
                     );
