@@ -48,6 +48,14 @@ struct ApplicationInner {
 impl Application {
     pub fn open() -> Result<Application, ApplicationError> {
         unsafe {
+            let pool = foundation::NSAutoreleasePool::new(base::nil);
+
+            let app = appkit::NSApp();
+            appkit::NSApplication::setActivationPolicy_(
+                app,
+                appkit::NSApplicationActivationPolicyRegular,
+            );
+
             let class_name = format!("window-{}", uuid::Uuid::new_v4().to_simple());
 
             let mut class_decl =
@@ -128,6 +136,8 @@ impl Application {
             );
 
             let class = class_decl.register();
+
+            let () = msg_send![pool, drain];
 
             Ok(Application {
                 inner: Rc::new(ApplicationInner {
