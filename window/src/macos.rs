@@ -149,16 +149,22 @@ impl Application {
                 let mut window_errors = Vec::new();
                 for ns_view in self.inner.windows.take() {
                     let window = Window::from_ns_view(ns_view);
+
                     if let Err(error) = window.window.close() {
                         window_errors.push(error);
+                        continue;
+                    }
+
+                    if window.window.state.open.get() {
+                        window_errors.push(WindowError::CouldNotClose);
                     }
                 }
-
-                runtime::objc_disposeClassPair(self.inner.class);
 
                 if !window_errors.is_empty() {
                     return Err(ApplicationError::Close(window_errors));
                 }
+
+                runtime::objc_disposeClassPair(self.inner.class);
             }
 
             Ok(())
@@ -243,6 +249,7 @@ impl Application {
 pub enum WindowError {
     ApplicationClosed,
     InvalidWindowHandle,
+    CouldNotClose,
 }
 
 impl fmt::Display for WindowError {
@@ -554,11 +561,7 @@ impl Window {
             if self.state.open.get() {
                 let pool = foundation::NSAutoreleasePool::new(base::nil);
 
-                if let Some(ns_window) = self.state.ns_window {
-                    appkit::NSWindow::close(ns_window);
-                } else {
-                    appkit::NSView::removeFromSuperview(self.state.ns_view);
-                }
+                appkit::NSView::removeFromSuperview(self.state.ns_view);
 
                 let () = msg_send![pool, drain];
             }
@@ -723,6 +726,10 @@ extern "C" fn dealloc(this: &mut runtime::Object, _: runtime::Sel) {
         let window = crate::Window { window: Window { state }, phantom: PhantomData };
 
         runloop::CFRunLoopTimerInvalidate(window.window.state.timer);
+
+        if let Some(ns_window) = window.window.state.ns_window {
+            appkit::NSWindow::close(ns_window);
+        }
 
         window.window.state.open.set(false);
         let ns_view = window.window.state.ns_view;
