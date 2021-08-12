@@ -642,31 +642,51 @@ extern "C" fn mouse_moved(this: &mut runtime::Object, _: runtime::Sel, event: ba
     }
 }
 
-extern "C" fn mouse_down(this: &mut runtime::Object, _: runtime::Sel, _event: base::id) {
+extern "C" fn mouse_down(this: &mut runtime::Object, _: runtime::Sel, event: base::id) {
     unsafe {
         let window = Window::from_ns_view(this);
-        window.window.state.handler.mouse_down(&window, MouseButton::Left);
+        let result = window.window.state.handler.mouse_down(&window, MouseButton::Left);
+
+        if !result {
+            let superclass = msg_send![this, superclass];
+            let () = msg_send![super(this, superclass), mouseDown: event];
+        }
     }
 }
 
-extern "C" fn mouse_up(this: &mut runtime::Object, _: runtime::Sel, _event: base::id) {
+extern "C" fn mouse_up(this: &mut runtime::Object, _: runtime::Sel, event: base::id) {
     unsafe {
         let window = Window::from_ns_view(this);
-        window.window.state.handler.mouse_up(&window, MouseButton::Left);
+        let result = window.window.state.handler.mouse_up(&window, MouseButton::Left);
+
+        if !result {
+            let superclass = msg_send![this, superclass];
+            let () = msg_send![super(this, superclass), mouseUp: event];
+        }
     }
 }
 
-extern "C" fn right_mouse_down(this: &mut runtime::Object, _: runtime::Sel, _event: base::id) {
+extern "C" fn right_mouse_down(this: &mut runtime::Object, _: runtime::Sel, event: base::id) {
     unsafe {
         let window = Window::from_ns_view(this);
-        window.window.state.handler.mouse_down(&window, MouseButton::Right);
+        let result = window.window.state.handler.mouse_down(&window, MouseButton::Right);
+
+        if !result {
+            let superclass = msg_send![this, superclass];
+            let () = msg_send![super(this, superclass), rightMouseDown: event];
+        }
     }
 }
 
-extern "C" fn right_mouse_up(this: &mut runtime::Object, _: runtime::Sel, _event: base::id) {
+extern "C" fn right_mouse_up(this: &mut runtime::Object, _: runtime::Sel, event: base::id) {
     unsafe {
         let window = Window::from_ns_view(this);
-        window.window.state.handler.mouse_up(&window, MouseButton::Right);
+        let result = window.window.state.handler.mouse_up(&window, MouseButton::Right);
+
+        if !result {
+            let superclass = msg_send![this, superclass];
+            let () = msg_send![super(this, superclass), rightMouseUp: event];
+        }
     }
 }
 
@@ -684,8 +704,17 @@ fn mouse_button_from_number(button_number: foundation::NSInteger) -> Option<Mous
 extern "C" fn other_mouse_down(this: &mut runtime::Object, _: runtime::Sel, event: base::id) {
     unsafe {
         let window = Window::from_ns_view(this);
-        if let Some(mouse_button) = mouse_button_from_number(appkit::NSEvent::buttonNumber(event)) {
-            window.window.state.handler.mouse_down(&window, mouse_button);
+        let result = if let Some(mouse_button) =
+            mouse_button_from_number(appkit::NSEvent::buttonNumber(event))
+        {
+            window.window.state.handler.mouse_down(&window, mouse_button)
+        } else {
+            false
+        };
+
+        if !result {
+            let superclass = msg_send![this, superclass];
+            let () = msg_send![super(this, superclass), otherMouseDown: event];
         }
     }
 }
@@ -693,8 +722,17 @@ extern "C" fn other_mouse_down(this: &mut runtime::Object, _: runtime::Sel, even
 extern "C" fn other_mouse_up(this: &mut runtime::Object, _: runtime::Sel, event: base::id) {
     unsafe {
         let window = Window::from_ns_view(this);
-        if let Some(mouse_button) = mouse_button_from_number(appkit::NSEvent::buttonNumber(event)) {
-            window.window.state.handler.mouse_down(&window, mouse_button);
+        let result = if let Some(mouse_button) =
+            mouse_button_from_number(appkit::NSEvent::buttonNumber(event))
+        {
+            window.window.state.handler.mouse_down(&window, mouse_button)
+        } else {
+            false
+        };
+
+        if !result {
+            let superclass = msg_send![this, superclass];
+            let () = msg_send![super(this, superclass), otherMouseUp: event];
         }
     }
 }
@@ -709,7 +747,12 @@ extern "C" fn scroll_wheel(this: &mut runtime::Object, _: runtime::Sel, event: b
         } else {
             (32.0 * dx, 32.0 * dy)
         };
-        window.window.state.handler.scroll(&window, dx, dy);
+        let result = window.window.state.handler.scroll(&window, dx, dy);
+
+        if !result {
+            let superclass = msg_send![this, superclass];
+            let () = msg_send![super(this, superclass), scrollWheel: event];
+        }
     }
 }
 
