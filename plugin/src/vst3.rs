@@ -660,7 +660,9 @@ impl<P: Plugin> Wrapper<P> {
                     continue;
                 }
 
-                plugin_state.params[param_id as usize] = value;
+                if let Some(param_info) = P::PARAMS.get(param_index as usize) {
+                    plugin_state.params[param_id as usize] = (param_info.from_normal)(value);
+                }
             }
         }
 
