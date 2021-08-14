@@ -38,16 +38,9 @@ pub struct Application {
 }
 
 impl Application {
-    pub fn open() -> Result<Application, ApplicationError> {
-        match platform::Application::open() {
+    pub fn new() -> Result<Application, ApplicationError> {
+        match platform::Application::new() {
             Ok(application) => Ok(Application { application, phantom: PhantomData }),
-            Err(error) => Err(ApplicationError(error)),
-        }
-    }
-
-    pub fn close(&self) -> Result<(), ApplicationError> {
-        match self.application.close() {
-            Ok(()) => Ok(()),
             Err(error) => Err(ApplicationError(error)),
         }
     }

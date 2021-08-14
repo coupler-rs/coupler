@@ -37,7 +37,6 @@ unsafe fn intern_atom_reply(
 pub enum ApplicationError {
     ConnectionFailed(i32),
     CursorContext,
-    Close(Vec<WindowError>),
 }
 
 impl fmt::Display for ApplicationError {
@@ -54,7 +53,6 @@ pub struct Application {
 }
 
 struct ApplicationInner {
-    open: Cell<bool>,
     running: Cell<usize>,
     connection: *mut xcb::xcb_connection_t,
     screen: *mut xcb::xcb_screen_t,
@@ -68,7 +66,7 @@ struct ApplicationInner {
 }
 
 impl Application {
-    pub fn open() -> Result<Application, ApplicationError> {
+    pub fn new() -> Result<Application, ApplicationError> {
         unsafe {
             let mut default_screen_index = 0;
             let connection = xcb::xcb_connect(ptr::null(), &mut default_screen_index);
@@ -107,7 +105,6 @@ impl Application {
 
             Ok(Application {
                 inner: Rc::new(ApplicationInner {
-                    open: Cell::new(true),
                     running: Cell::new(0),
                     connection,
                     screen,
@@ -123,64 +120,33 @@ impl Application {
         }
     }
 
-    pub fn close(&self) -> Result<(), ApplicationError> {
-        unsafe {
-            if self.inner.open.get() {
-                self.inner.open.set(false);
-
-                let mut window_errors = Vec::new();
-                for (_, window) in self.inner.windows.take() {
-                    if let Err(error) = window.window.close() {
-                        window_errors.push(error);
-                    }
-                }
-
-                if let Some(cursor_id) = self.inner.cursor_cache.borrow().get(&Cursor::None) {
-                    xcb::xcb_free_cursor(self.inner.connection, *cursor_id);
-                }
-
-                xcb::xcb_cursor_context_free(self.inner.cursor_context);
-
-                xcb::xcb_disconnect(self.inner.connection);
-
-                if !window_errors.is_empty() {
-                    return Err(ApplicationError::Close(window_errors));
-                }
-            }
-
-            Ok(())
-        }
-    }
-
     pub fn start(&self) -> Result<(), ApplicationError> {
         unsafe {
-            if self.inner.open.get() {
-                let depth = self.inner.running.get();
-                self.inner.running.set(depth + 1);
+            let depth = self.inner.running.get();
+            self.inner.running.set(depth + 1);
 
-                let fd = xcb::xcb_get_file_descriptor(self.inner.connection);
+            let fd = xcb::xcb_get_file_descriptor(self.inner.connection);
 
-                while self.inner.open.get() && self.inner.running.get() > depth {
-                    self.frame();
+            while self.inner.running.get() > depth {
+                self.frame();
 
-                    while self.inner.open.get() && self.inner.running.get() > depth {
-                        let event = xcb::xcb_poll_for_event(self.inner.connection);
-                        if event.is_null() {
-                            break;
-                        }
-                        self.handle_event(event);
+                while self.inner.running.get() > depth {
+                    let event = xcb::xcb_poll_for_event(self.inner.connection);
+                    if event.is_null() {
+                        break;
                     }
+                    self.handle_event(event);
+                }
 
-                    let to_next_frame =
-                        self.inner.next_frame.get().saturating_duration_since(Instant::now());
-                    if !to_next_frame.is_zero() {
-                        let mut fds = [libc::pollfd { fd, events: libc::POLLIN, revents: 0 }];
-                        libc::poll(
-                            fds.as_mut_ptr(),
-                            fds.len() as u64,
-                            to_next_frame.as_millis() as i32,
-                        );
-                    }
+                let to_next_frame =
+                    self.inner.next_frame.get().saturating_duration_since(Instant::now());
+                if !to_next_frame.is_zero() {
+                    let mut fds = [libc::pollfd { fd, events: libc::POLLIN, revents: 0 }];
+                    libc::poll(
+                        fds.as_mut_ptr(),
+                        fds.len() as u64,
+                        to_next_frame.as_millis() as i32,
+                    );
                 }
             }
 
@@ -194,7 +160,7 @@ impl Application {
 
     pub fn poll(&self) {
         unsafe {
-            while self.inner.open.get() {
+            loop {
                 self.frame();
 
                 let event = xcb::xcb_poll_for_event(self.inner.connection);
@@ -338,19 +304,25 @@ impl Application {
     }
 
     pub fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
+        unsafe { Some(xcb::xcb_get_file_descriptor(self.inner.connection)) }
+    }
+}
+
+impl Drop for ApplicationInner {
+    fn drop(&mut self) {
         unsafe {
-            if self.inner.open.get() {
-                Some(xcb::xcb_get_file_descriptor(self.inner.connection))
-            } else {
-                None
+            if let Some(cursor_id) = self.cursor_cache.borrow().get(&Cursor::None) {
+                xcb::xcb_free_cursor(self.connection, *cursor_id);
             }
+            xcb::xcb_cursor_context_free(self.cursor_context);
+
+            xcb::xcb_disconnect(self.connection);
         }
     }
 }
 
 #[derive(Debug)]
 pub enum WindowError {
-    ApplicationClosed,
     WindowClosed,
     WindowCreation(u8),
     MapWindow(u8),
@@ -395,10 +367,6 @@ impl Window {
         options: WindowOptions,
     ) -> Result<crate::Window, WindowError> {
         unsafe {
-            if !application.application.inner.open.get() {
-                return Err(WindowError::ApplicationClosed);
-            }
-
             let parent_id = if let Parent::Parent(parent) = options.parent {
                 let parent_id = match parent.raw_window_handle() {
                     RawWindowHandle::Xcb(handle) => handle.window,

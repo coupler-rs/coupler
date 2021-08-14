@@ -38,7 +38,7 @@ impl Plugin for Gain {
 
     fn create(_editor_context: Rc<dyn EditorContext>) -> (Gain, GainEditor) {
         let gain = Gain { gain: 0.0 };
-        let gain_editor = GainEditor { application: None, window: None };
+        let gain_editor = GainEditor { application: Application::new().unwrap(), window: None };
 
         (gain, gain_editor)
     }
@@ -55,7 +55,7 @@ impl Plugin for Gain {
 }
 
 pub struct GainEditor {
-    application: Option<Application>,
+    application: Application,
     window: Option<Window>,
 }
 
@@ -68,9 +68,8 @@ impl Editor for GainEditor {
         let parent =
             if let Some(parent) = parent { Parent::Parent(parent) } else { Parent::Detached };
 
-        let application = Application::open().unwrap();
         let window = Window::open(
-            &application,
+            &self.application,
             WindowOptions {
                 rect: Rect { x: 0.0, y: 0.0, width: 512.0, height: 512.0 },
                 parent,
@@ -79,7 +78,6 @@ impl Editor for GainEditor {
         )
         .unwrap();
 
-        self.application = Some(application);
         self.window = Some(window);
     }
 
@@ -87,15 +85,11 @@ impl Editor for GainEditor {
         if let Some(window) = self.window.take() {
             let _ = window.close();
         }
-
-        if let Some(application) = self.application.take() {
-            let _ = application.close();
-        }
     }
 
     fn poll(&mut self) {
-        if let Some(ref application) = self.application {
-            application.poll();
+        if self.window.is_some() {
+            self.application.poll();
         }
     }
 
@@ -108,10 +102,6 @@ impl Editor for GainEditor {
     }
 
     fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
-        if let Some(ref application) = self.application {
-            application.file_descriptor()
-        } else {
-            None
-        }
+        self.application.file_descriptor()
     }
 }

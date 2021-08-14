@@ -52,7 +52,7 @@ impl Drop for Handler {
 }
 
 fn main() {
-    let app = Application::open().unwrap();
+    let app = Application::new().unwrap();
 
     Window::open(
         &app,
@@ -66,5 +66,4 @@ fn main() {
     .unwrap();
 
     app.start().unwrap();
-    app.close().unwrap();
 }

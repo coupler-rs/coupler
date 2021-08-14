@@ -22,7 +22,6 @@ const WINDOW_STATE: &str = "windowState";
 pub enum ApplicationError {
     ViewClassRegistration,
     GetEvent,
-    Close(Vec<WindowError>),
 }
 
 impl fmt::Display for ApplicationError {
@@ -39,15 +38,13 @@ pub struct Application {
 }
 
 struct ApplicationInner {
-    open: Cell<bool>,
     running: Cell<usize>,
     class: *mut runtime::Class,
     empty_cursor: base::id,
-    windows: RefCell<HashSet<base::id>>,
 }
 
 impl Application {
-    pub fn open() -> Result<Application, ApplicationError> {
+    pub fn new() -> Result<Application, ApplicationError> {
         unsafe {
             let pool = foundation::NSAutoreleasePool::new(base::nil);
 
@@ -152,45 +149,44 @@ impl Application {
 
             Ok(Application {
                 inner: Rc::new(ApplicationInner {
-                    open: Cell::new(true),
                     running: Cell::new(0),
                     class: class as *const runtime::Class as *mut runtime::Class,
                     empty_cursor,
-                    windows: RefCell::new(HashSet::new()),
                 }),
             })
         }
     }
 
-    pub fn close(&self) -> Result<(), ApplicationError> {
+    pub fn start(&self) -> Result<(), ApplicationError> {
         unsafe {
-            if self.inner.open.get() {
-                self.inner.running.set(0);
-                self.inner.open.set(false);
+            let depth = self.inner.running.get();
+            self.inner.running.set(depth + 1);
 
+            let app = appkit::NSApp();
+            appkit::NSApplication::setActivationPolicy_(
+                app,
+                appkit::NSApplicationActivationPolicyRegular,
+            );
+
+            let until_date = msg_send![class!(NSDate), distantFuture];
+            while self.inner.running.get() > depth {
                 let pool = foundation::NSAutoreleasePool::new(base::nil);
 
-                let mut window_errors = Vec::new();
-                for ns_view in self.inner.windows.take() {
-                    let window = Window::from_ns_view(ns_view);
+                let event = appkit::NSApplication::nextEventMatchingMask_untilDate_inMode_dequeue_(
+                    app,
+                    appkit::NSEventMask::NSAnyEventMask.bits(),
+                    until_date,
+                    foundation::NSDefaultRunLoopMode,
+                    base::YES,
+                );
 
-                    if let Err(error) = window.window.close() {
-                        window_errors.push(error);
-                        continue;
-                    }
-
-                    if window.window.state.open.get() {
-                        window_errors.push(WindowError::CouldNotClose);
-                    }
+                if event.is_null() {
+                    self.inner.running.set(depth);
+                    let () = msg_send![pool, drain];
+                    return Err(ApplicationError::GetEvent);
+                } else {
+                    appkit::NSApplication::sendEvent_(app, event);
                 }
-
-                if !window_errors.is_empty() {
-                    return Err(ApplicationError::Close(window_errors));
-                }
-
-                let () = msg_send![self.inner.empty_cursor, release];
-
-                runtime::objc_disposeClassPair(self.inner.class);
 
                 let () = msg_send![pool, drain];
             }
@@ -199,58 +195,15 @@ impl Application {
         }
     }
 
-    pub fn start(&self) -> Result<(), ApplicationError> {
-        unsafe {
-            if self.inner.open.get() {
-                let depth = self.inner.running.get();
-                self.inner.running.set(depth + 1);
-
-                let app = appkit::NSApp();
-                appkit::NSApplication::setActivationPolicy_(
-                    app,
-                    appkit::NSApplicationActivationPolicyRegular,
-                );
-
-                let until_date = msg_send![class!(NSDate), distantFuture];
-                while self.inner.open.get() && self.inner.running.get() > depth {
-                    let pool = foundation::NSAutoreleasePool::new(base::nil);
-
-                    let event =
-                        appkit::NSApplication::nextEventMatchingMask_untilDate_inMode_dequeue_(
-                            app,
-                            appkit::NSEventMask::NSAnyEventMask.bits(),
-                            until_date,
-                            foundation::NSDefaultRunLoopMode,
-                            base::YES,
-                        );
-
-                    if event.is_null() {
-                        self.inner.running.set(depth);
-                        let () = msg_send![pool, drain];
-                        return Err(ApplicationError::GetEvent);
-                    } else {
-                        appkit::NSApplication::sendEvent_(app, event);
-                    }
-
-                    let () = msg_send![pool, drain];
-                }
-            }
-
-            Ok(())
-        }
-    }
-
     pub fn stop(&self) {
-        if self.inner.open.get() {
-            self.inner.running.set(self.inner.running.get().saturating_sub(1));
-        }
+        self.inner.running.set(self.inner.running.get().saturating_sub(1));
     }
 
     pub fn poll(&self) {
         unsafe {
             let app = appkit::NSApp();
             let until_date = msg_send![class!(NSDate), now];
-            while self.inner.open.get() {
+            loop {
                 let pool = foundation::NSAutoreleasePool::new(base::nil);
 
                 let event = appkit::NSApplication::nextEventMatchingMask_untilDate_inMode_dequeue_(
@@ -278,11 +231,23 @@ impl Application {
     }
 }
 
+impl Drop for ApplicationInner {
+    fn drop(&mut self) {
+        unsafe {
+            let pool = foundation::NSAutoreleasePool::new(base::nil);
+
+            let () = msg_send![self.empty_cursor, release];
+
+            let () = msg_send![pool, drain];
+
+            runtime::objc_disposeClassPair(self.class);
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum WindowError {
-    ApplicationClosed,
     InvalidWindowHandle,
-    CouldNotClose,
 }
 
 impl fmt::Display for WindowError {
@@ -316,10 +281,6 @@ impl Window {
         options: WindowOptions,
     ) -> Result<crate::Window, WindowError> {
         unsafe {
-            if !application.application.inner.open.get() {
-                return Err(WindowError::ApplicationClosed);
-            }
-
             let pool = foundation::NSAutoreleasePool::new(base::nil);
 
             let ns_window = if let Parent::None = options.parent {
@@ -436,7 +397,6 @@ impl Window {
                 Rc::into_raw(state.clone()) as *mut c_void,
             );
 
-            application.application.inner.windows.borrow_mut().insert(ns_view);
             let window = crate::Window { window: Window { state }, phantom: PhantomData };
             window.window.state.handler.create(&window);
 
@@ -853,7 +813,6 @@ extern "C" fn dealloc(this: &mut runtime::Object, _: runtime::Sel) {
 
         window.window.state.open.set(false);
         let ns_view = window.window.state.ns_view;
-        window.application().application.inner.windows.borrow_mut().remove(&ns_view);
         window.window.state.handler.destroy(&window);
         drop(window);
 

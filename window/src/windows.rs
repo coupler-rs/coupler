@@ -23,8 +23,6 @@ fn to_wstring(str: &str) -> Vec<ntdef::WCHAR> {
 #[derive(Debug)]
 pub enum ApplicationError {
     WindowClassRegistration(u32),
-    WindowClassUnregistration(u32),
-    Close(Vec<WindowError>),
     GetMessage(u32),
 }
 
@@ -42,10 +40,8 @@ pub struct Application {
 }
 
 struct ApplicationInner {
-    open: Cell<bool>,
     running: Cell<usize>,
     class: minwindef::ATOM,
-    windows: Cell<HashSet<windef::HWND>>,
 }
 
 extern "C" {
@@ -53,7 +49,7 @@ extern "C" {
 }
 
 impl Application {
-    pub fn open() -> Result<Application, ApplicationError> {
+    pub fn new() -> Result<Application, ApplicationError> {
         unsafe {
             let class_name = to_wstring(&format!("window-{}", uuid::Uuid::new_v4().to_simple()));
             let wnd_class = winuser::WNDCLASSW {
@@ -76,72 +72,29 @@ impl Application {
                 ));
             }
 
-            Ok(Application {
-                inner: Rc::new(ApplicationInner {
-                    open: Cell::new(true),
-                    running: Cell::new(0),
-                    class,
-                    windows: Cell::new(HashSet::new()),
-                }),
-            })
-        }
-    }
-
-    pub fn close(&self) -> Result<(), ApplicationError> {
-        unsafe {
-            if self.inner.open.get() {
-                self.inner.running.set(0);
-                self.inner.open.set(false);
-
-                let mut window_errors = Vec::new();
-                for window in self.inner.windows.take() {
-                    let result = winuser::DestroyWindow(window);
-                    if result == 0 {
-                        window_errors
-                            .push(WindowError::WindowClose(errhandlingapi::GetLastError()));
-                    }
-                }
-                if !window_errors.is_empty() {
-                    return Err(ApplicationError::Close(window_errors));
-                }
-
-                let result = winuser::UnregisterClassW(
-                    self.inner.class as *const ntdef::WCHAR,
-                    &__ImageBase as *const winnt::IMAGE_DOS_HEADER as minwindef::HINSTANCE,
-                );
-
-                if result == 0 {
-                    return Err(ApplicationError::WindowClassUnregistration(
-                        errhandlingapi::GetLastError(),
-                    ));
-                }
-            }
-
-            Ok(())
+            Ok(Application { inner: Rc::new(ApplicationInner { running: Cell::new(0), class }) })
         }
     }
 
     pub fn start(&self) -> Result<(), ApplicationError> {
         unsafe {
-            if self.inner.open.get() {
-                let depth = self.inner.running.get();
-                self.inner.running.set(depth + 1);
+            let depth = self.inner.running.get();
+            self.inner.running.set(depth + 1);
 
-                while self.inner.open.get() && self.inner.running.get() > depth {
-                    let mut msg: winuser::MSG = mem::zeroed();
+            while self.inner.running.get() > depth {
+                let mut msg: winuser::MSG = mem::zeroed();
 
-                    let result = winuser::GetMessageW(&mut msg, ptr::null_mut(), 0, 0);
-                    if result < 0 {
-                        self.inner.running.set(depth);
-                        return Err(ApplicationError::GetMessage(errhandlingapi::GetLastError()));
-                    } else if result == 0 {
-                        // ignore WM_QUIT messages
-                        continue;
-                    }
-
-                    winuser::TranslateMessage(&msg);
-                    winuser::DispatchMessageW(&msg);
+                let result = winuser::GetMessageW(&mut msg, ptr::null_mut(), 0, 0);
+                if result < 0 {
+                    self.inner.running.set(depth);
+                    return Err(ApplicationError::GetMessage(errhandlingapi::GetLastError()));
+                } else if result == 0 {
+                    // ignore WM_QUIT messages
+                    continue;
                 }
+
+                winuser::TranslateMessage(&msg);
+                winuser::DispatchMessageW(&msg);
             }
 
             Ok(())
@@ -154,7 +107,7 @@ impl Application {
 
     pub fn poll(&self) {
         unsafe {
-            while self.inner.open.get() {
+            loop {
                 let mut msg: winuser::MSG = mem::zeroed();
 
                 let result =
@@ -174,6 +127,17 @@ impl Application {
 
     pub fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
         None
+    }
+}
+
+impl Drop for ApplicationInner {
+    fn drop(&mut self) {
+        unsafe {
+            winuser::UnregisterClassW(
+                self.class as *const ntdef::WCHAR,
+                &__ImageBase as *const winnt::IMAGE_DOS_HEADER as minwindef::HINSTANCE,
+            );
+        }
     }
 }
 
@@ -214,10 +178,6 @@ impl Window {
         options: WindowOptions,
     ) -> Result<crate::Window, WindowError> {
         unsafe {
-            if !application.application.inner.open.get() {
-                return Err(WindowError::ApplicationClosed);
-            }
-
             let mut flags = winuser::WS_CLIPCHILDREN | winuser::WS_CLIPSIBLINGS;
 
             if let Parent::Parent(_) = options.parent {
@@ -454,10 +414,6 @@ unsafe extern "system" fn wnd_proc(
         state.open.set(true);
         state.hwnd.set(hwnd);
 
-        let mut application_windows = state.application.application.inner.windows.take();
-        application_windows.insert(hwnd);
-        state.application.application.inner.windows.set(application_windows);
-
         winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, Rc::into_raw(state) as isize);
 
         return 1;
@@ -591,9 +547,6 @@ unsafe extern "system" fn wnd_proc(
             }
             winuser::WM_DESTROY => {
                 window.window.state.open.set(false);
-                let mut application_windows = window.application().application.inner.windows.take();
-                application_windows.remove(&hwnd);
-                window.application().application.inner.windows.set(application_windows);
                 window.window.state.handler.destroy(&window);
 
                 winuser::KillTimer(hwnd, TIMER_ID);
