@@ -1,6 +1,7 @@
 [workspace]
 
 members = [
+    "api/auv2",
     "api/vst2",
     "api/vst2-test",
     "api/vst3",
