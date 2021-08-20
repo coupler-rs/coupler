@@ -1,7 +1,6 @@
 use crate::{Cursor, MouseButton, Parent, Point, Rect, WindowHandler, WindowOptions};
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashSet;
 use std::error::Error;
 use std::ffi::c_void;
 use std::marker::PhantomData;
@@ -812,7 +811,6 @@ extern "C" fn dealloc(this: &mut runtime::Object, _: runtime::Sel) {
         }
 
         window.window.state.open.set(false);
-        let ns_view = window.window.state.ns_view;
         window.window.state.handler.destroy(&window);
         drop(window);
 
