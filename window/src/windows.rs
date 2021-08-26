@@ -1,7 +1,6 @@
 use crate::{Cursor, MouseButton, Parent, Point, Rect, WindowHandler, WindowOptions};
 
 use std::cell::Cell;
-use std::collections::HashSet;
 use std::error::Error;
 use std::marker::PhantomData;
 use std::os::windows::ffi::OsStrExt;
@@ -143,7 +142,6 @@ impl Drop for ApplicationInner {
 
 #[derive(Debug)]
 pub enum WindowError {
-    ApplicationClosed,
     WindowOpen(u32),
     WindowClose(u32),
     InvalidWindowHandle,
