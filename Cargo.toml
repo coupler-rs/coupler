@@ -9,5 +9,6 @@ members = [
     "gain/*",
     "graphics",
     "plugin",
+    "simd",
     "window",
 ]
