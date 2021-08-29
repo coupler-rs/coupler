@@ -38,6 +38,16 @@ impl f32x4 {
             x86_64::_mm_storeu_ps(slice.as_mut_ptr(), self.0);
         }
     }
+
+    #[inline]
+    pub fn min(&self, other: f32x4) -> f32x4 {
+        unsafe { f32x4(x86_64::_mm_min_ps(self.0, other.0)) }
+    }
+
+    #[inline]
+    pub fn max(&self, other: f32x4) -> f32x4 {
+        unsafe { f32x4(x86_64::_mm_max_ps(self.0, other.0)) }
+    }
 }
 
 impl Index<usize> for f32x4 {
