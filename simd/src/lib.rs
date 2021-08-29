@@ -40,6 +40,11 @@ impl f32x4 {
     }
 
     #[inline]
+    pub fn shuffle<const MASK: i32>(&self) -> f32x4 {
+        unsafe { f32x4(x86_64::_mm_shuffle_ps::<MASK>(self.0, self.0)) }
+    }
+
+    #[inline]
     pub fn min(&self, other: f32x4) -> f32x4 {
         unsafe { f32x4(x86_64::_mm_min_ps(self.0, other.0)) }
     }
