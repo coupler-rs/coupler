@@ -44,6 +44,47 @@ impl f32x4 {
     }
 
     #[inline]
+    pub fn select(mask: m32x4, a: f32x4, b: f32x4) -> f32x4 {
+        unsafe {
+            let mask = x86_64::_mm_castsi128_ps(mask.0);
+            f32x4(x86_64::_mm_or_ps(
+                x86_64::_mm_and_ps(mask, a.0),
+                x86_64::_mm_andnot_ps(mask, b.0),
+            ))
+        }
+    }
+
+    #[inline]
+    pub fn eq(&self, other: f32x4) -> m32x4 {
+        unsafe { m32x4(x86_64::_mm_castps_si128(x86_64::_mm_cmpeq_ps(self.0, other.0))) }
+    }
+
+    #[inline]
+    pub fn ne(&self, other: f32x4) -> m32x4 {
+        unsafe { m32x4(x86_64::_mm_castps_si128(x86_64::_mm_cmpneq_ps(self.0, other.0))) }
+    }
+
+    #[inline]
+    pub fn lt(&self, other: f32x4) -> m32x4 {
+        unsafe { m32x4(x86_64::_mm_castps_si128(x86_64::_mm_cmplt_ps(self.0, other.0))) }
+    }
+
+    #[inline]
+    pub fn gt(&self, other: f32x4) -> m32x4 {
+        unsafe { m32x4(x86_64::_mm_castps_si128(x86_64::_mm_cmpgt_ps(self.0, other.0))) }
+    }
+
+    #[inline]
+    pub fn le(&self, other: f32x4) -> m32x4 {
+        unsafe { m32x4(x86_64::_mm_castps_si128(x86_64::_mm_cmple_ps(self.0, other.0))) }
+    }
+
+    #[inline]
+    pub fn ge(&self, other: f32x4) -> m32x4 {
+        unsafe { m32x4(x86_64::_mm_castps_si128(x86_64::_mm_cmpge_ps(self.0, other.0))) }
+    }
+
+    #[inline]
     pub fn min(&self, other: f32x4) -> f32x4 {
         unsafe { f32x4(x86_64::_mm_min_ps(self.0, other.0)) }
     }
