@@ -361,7 +361,7 @@ impl<P: Plugin> Wrapper<P> {
             return result::OK;
         }
 
-        if iid == IPlugView::IID {
+        if iid == IPlugView::IID && P::INFO.has_editor {
             Self::component_add_ref(this);
             *obj = this.offset(Self::PLUG_VIEW_OFFSET);
             return result::OK;
