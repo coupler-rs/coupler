@@ -171,55 +171,50 @@ impl Neg for f32x4 {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Eq, PartialEq)]
-#[repr(transparent)]
-pub struct m32(i32);
-
-impl m32 {
-    pub const FALSE: m32 = m32(0);
-    pub const TRUE: m32 = m32(!0);
-}
-
-impl From<bool> for m32 {
-    fn from(value: bool) -> m32 {
-        if value {
-            Self::TRUE
-        } else {
-            Self::FALSE
-        }
-    }
-}
-
-impl From<m32> for bool {
-    fn from(value: m32) -> bool {
-        if value == m32::TRUE {
-            true
-        } else {
-            false
-        }
-    }
-}
-
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct m32x4(x86_64::__m128i);
 
 impl m32x4 {
     #[inline]
-    pub fn new(a: m32, b: m32, c: m32, d: m32) -> m32x4 {
-        unsafe { m32x4(x86_64::_mm_setr_epi32(a.0, b.0, c.0, d.0)) }
+    fn bool_to_mask(value: bool) -> i32 {
+        if value {
+            !0
+        } else {
+            0
+        }
     }
 
     #[inline]
-    pub fn splat(value: m32) -> m32x4 {
-        unsafe { m32x4(x86_64::_mm_set1_epi32(value.0)) }
+    fn mask_to_bool(value: i32) -> bool {
+        value == !0
     }
 
     #[inline]
-    pub fn get<const INDEX: i32>(&self) -> m32 {
+    pub fn new(a: bool, b: bool, c: bool, d: bool) -> m32x4 {
+        unsafe {
+            m32x4(x86_64::_mm_setr_epi32(
+                Self::bool_to_mask(a),
+                Self::bool_to_mask(b),
+                Self::bool_to_mask(c),
+                Self::bool_to_mask(d),
+            ))
+        }
+    }
+
+    #[inline]
+    pub fn splat(value: bool) -> m32x4 {
+        unsafe { m32x4(x86_64::_mm_set1_epi32(Self::bool_to_mask(value))) }
+    }
+
+    #[inline]
+    pub fn get<const INDEX: i32>(&self) -> bool {
         assert!(INDEX >= 0 && INDEX < 4);
-        unsafe { m32(x86_64::_mm_cvtsi128_si32(x86_64::_mm_shuffle_epi32::<INDEX>(self.0))) }
+        unsafe {
+            Self::mask_to_bool(x86_64::_mm_cvtsi128_si32(x86_64::_mm_shuffle_epi32::<INDEX>(
+                self.0,
+            )))
+        }
     }
 
     #[inline]
