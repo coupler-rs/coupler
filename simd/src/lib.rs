@@ -1,7 +1,6 @@
 #![cfg(target_feature = "sse2")]
 
 use std::arch::x86_64;
-use std::mem;
 use std::ops::*;
 
 #[allow(non_camel_case_types)]
@@ -32,6 +31,12 @@ impl f32x4 {
         unsafe {
             x86_64::_mm_storeu_ps(slice.as_mut_ptr(), self.0);
         }
+    }
+
+    #[inline]
+    pub fn get<const INDEX: i32>(&self) -> f32 {
+        assert!(INDEX >= 0 && INDEX < 4);
+        unsafe { x86_64::_mm_cvtss_f32(x86_64::_mm_shuffle_ps::<INDEX>(self.0, self.0)) }
     }
 
     #[inline]
@@ -89,22 +94,6 @@ impl f32x4 {
     #[inline]
     pub fn max(&self, other: f32x4) -> f32x4 {
         unsafe { f32x4(x86_64::_mm_max_ps(self.0, other.0)) }
-    }
-}
-
-impl Index<usize> for f32x4 {
-    type Output = f32;
-
-    #[inline]
-    fn index(&self, index: usize) -> &f32 {
-        unsafe { &mem::transmute::<&x86_64::__m128, &[f32; 4]>(&self.0)[index] }
-    }
-}
-
-impl IndexMut<usize> for f32x4 {
-    #[inline]
-    fn index_mut(&mut self, index: usize) -> &mut f32 {
-        unsafe { &mut mem::transmute::<&mut x86_64::__m128, &mut [f32; 4]>(&mut self.0)[index] }
     }
 }
 
@@ -228,6 +217,12 @@ impl m32x4 {
     }
 
     #[inline]
+    pub fn get<const INDEX: i32>(&self) -> m32 {
+        assert!(INDEX >= 0 && INDEX < 4);
+        unsafe { m32(x86_64::_mm_cvtsi128_si32(x86_64::_mm_shuffle_epi32::<INDEX>(self.0))) }
+    }
+
+    #[inline]
     pub fn shuffle<const MASK: i32>(&self) -> m32x4 {
         assert_eq!(MASK as u32 & 0xFFFFFF00, 0);
         unsafe { m32x4(x86_64::_mm_shuffle_epi32::<MASK>(self.0)) }
@@ -251,22 +246,6 @@ impl m32x4 {
     #[inline]
     pub fn ne(&self, other: m32x4) -> m32x4 {
         !self.eq(other)
-    }
-}
-
-impl Index<usize> for m32x4 {
-    type Output = m32;
-
-    #[inline]
-    fn index(&self, index: usize) -> &m32 {
-        unsafe { &mem::transmute::<&x86_64::__m128i, &[m32; 4]>(&self.0)[index] }
-    }
-}
-
-impl IndexMut<usize> for m32x4 {
-    #[inline]
-    fn index_mut(&mut self, index: usize) -> &mut m32 {
-        unsafe { &mut mem::transmute::<&mut x86_64::__m128i, &mut [m32; 4]>(&mut self.0)[index] }
     }
 }
 
