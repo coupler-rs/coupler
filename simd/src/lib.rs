@@ -40,6 +40,21 @@ impl f32x4 {
     }
 
     #[inline]
+    pub fn replace<const INDEX: i32>(&self, value: f32) -> f32x4 {
+        assert!(INDEX >= 0 && INDEX < 4);
+        unsafe {
+            let mask = x86_64::_mm_castsi128_ps(x86_64::_mm_cmpeq_epi32(
+                x86_64::_mm_setr_epi32(0, 1, 2, 3),
+                x86_64::_mm_set1_epi32(INDEX),
+            ));
+            f32x4(x86_64::_mm_or_ps(
+                x86_64::_mm_andnot_ps(mask, self.0),
+                x86_64::_mm_and_ps(mask, x86_64::_mm_set1_ps(value)),
+            ))
+        }
+    }
+
+    #[inline]
     pub fn shuffle<const MASK: i32>(&self) -> f32x4 {
         assert_eq!(MASK as u32 & 0xFFFFFF00, 0);
         unsafe { f32x4(x86_64::_mm_shuffle_ps::<MASK>(self.0, self.0)) }
@@ -214,6 +229,21 @@ impl m32x4 {
             Self::mask_to_bool(x86_64::_mm_cvtsi128_si32(x86_64::_mm_shuffle_epi32::<INDEX>(
                 self.0,
             )))
+        }
+    }
+
+    #[inline]
+    pub fn replace<const INDEX: i32>(&self, value: bool) -> m32x4 {
+        assert!(INDEX >= 0 && INDEX < 4);
+        unsafe {
+            let mask = x86_64::_mm_cmpeq_epi32(
+                x86_64::_mm_setr_epi32(0, 1, 2, 3),
+                x86_64::_mm_set1_epi32(INDEX),
+            );
+            m32x4(x86_64::_mm_or_si128(
+                x86_64::_mm_andnot_si128(mask, self.0),
+                x86_64::_mm_and_si128(mask, x86_64::_mm_set1_epi32(Self::bool_to_mask(value))),
+            ))
         }
     }
 
