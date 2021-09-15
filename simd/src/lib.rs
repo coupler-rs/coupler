@@ -12,11 +12,7 @@ pub struct f32x4(x86_64::__m128);
 impl f32x4 {
     #[inline]
     pub fn new(a: f32, b: f32, c: f32, d: f32) -> f32x4 {
-        #[repr(C, align(16))]
-        struct Align([f32; 4]);
-
-        let values = Align([a, b, c, d]);
-        unsafe { f32x4(x86_64::_mm_load_ps(values.0.as_ptr())) }
+        unsafe { f32x4(x86_64::_mm_setr_ps(a, b, c, d)) }
     }
 
     #[inline]
@@ -222,11 +218,7 @@ pub struct m32x4(x86_64::__m128i);
 impl m32x4 {
     #[inline]
     pub fn new(a: m32, b: m32, c: m32, d: m32) -> m32x4 {
-        #[repr(C, align(16))]
-        struct Align([m32; 4]);
-
-        let values = Align([a, b, c, d]);
-        unsafe { m32x4(x86_64::_mm_load_si128(values.0.as_ptr() as *const x86_64::__m128i)) }
+        unsafe { m32x4(x86_64::_mm_setr_epi32(a.0, b.0, c.0, d.0)) }
     }
 
     #[inline]
