@@ -1,114 +1,108 @@
 #![cfg(target_feature = "sse2")]
 
-use std::arch::x86_64;
+use std::arch::x86_64::*;
 use std::ops::*;
 
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone)]
 #[repr(transparent)]
-pub struct f32x4(x86_64::__m128);
+pub struct f32x4(__m128);
 
 impl f32x4 {
     #[inline]
     pub fn new(a: f32, b: f32, c: f32, d: f32) -> f32x4 {
-        unsafe { f32x4(x86_64::_mm_setr_ps(a, b, c, d)) }
+        unsafe { f32x4(_mm_setr_ps(a, b, c, d)) }
     }
 
     #[inline]
     pub fn splat(value: f32) -> f32x4 {
-        unsafe { f32x4(x86_64::_mm_set1_ps(value)) }
+        unsafe { f32x4(_mm_set1_ps(value)) }
     }
 
     #[inline]
     pub fn from_slice(slice: &[f32]) -> f32x4 {
         assert_eq!(slice.len(), 4);
-        unsafe { f32x4(x86_64::_mm_loadu_ps(slice.as_ptr())) }
+        unsafe { f32x4(_mm_loadu_ps(slice.as_ptr())) }
     }
 
     #[inline]
     pub fn write_to_slice(&self, slice: &mut [f32]) {
         assert_eq!(slice.len(), 4);
         unsafe {
-            x86_64::_mm_storeu_ps(slice.as_mut_ptr(), self.0);
+            _mm_storeu_ps(slice.as_mut_ptr(), self.0);
         }
     }
 
     #[inline]
     pub fn get<const INDEX: i32>(&self) -> f32 {
         assert!(INDEX >= 0 && INDEX < 4);
-        unsafe { x86_64::_mm_cvtss_f32(x86_64::_mm_shuffle_ps::<INDEX>(self.0, self.0)) }
+        unsafe { _mm_cvtss_f32(_mm_shuffle_ps::<INDEX>(self.0, self.0)) }
     }
 
     #[inline]
     pub fn replace<const INDEX: i32>(&self, value: f32) -> f32x4 {
         assert!(INDEX >= 0 && INDEX < 4);
         unsafe {
-            let mask = x86_64::_mm_castsi128_ps(x86_64::_mm_cmpeq_epi32(
-                x86_64::_mm_setr_epi32(0, 1, 2, 3),
-                x86_64::_mm_set1_epi32(INDEX),
+            let mask = _mm_castsi128_ps(_mm_cmpeq_epi32(
+                _mm_setr_epi32(0, 1, 2, 3),
+                _mm_set1_epi32(INDEX),
             ));
-            f32x4(x86_64::_mm_or_ps(
-                x86_64::_mm_andnot_ps(mask, self.0),
-                x86_64::_mm_and_ps(mask, x86_64::_mm_set1_ps(value)),
-            ))
+            f32x4(_mm_or_ps(_mm_andnot_ps(mask, self.0), _mm_and_ps(mask, _mm_set1_ps(value))))
         }
     }
 
     #[inline]
     pub fn shuffle<const MASK: i32>(&self) -> f32x4 {
         assert_eq!(MASK as u32 & 0xFFFFFF00, 0);
-        unsafe { f32x4(x86_64::_mm_shuffle_ps::<MASK>(self.0, self.0)) }
+        unsafe { f32x4(_mm_shuffle_ps::<MASK>(self.0, self.0)) }
     }
 
     #[inline]
     pub fn select(mask: m32x4, a: f32x4, b: f32x4) -> f32x4 {
         unsafe {
-            let mask = x86_64::_mm_castsi128_ps(mask.0);
-            f32x4(x86_64::_mm_or_ps(
-                x86_64::_mm_and_ps(mask, a.0),
-                x86_64::_mm_andnot_ps(mask, b.0),
-            ))
+            let mask = _mm_castsi128_ps(mask.0);
+            f32x4(_mm_or_ps(_mm_and_ps(mask, a.0), _mm_andnot_ps(mask, b.0)))
         }
     }
 
     #[inline]
     pub fn eq(&self, other: f32x4) -> m32x4 {
-        unsafe { m32x4(x86_64::_mm_castps_si128(x86_64::_mm_cmpeq_ps(self.0, other.0))) }
+        unsafe { m32x4(_mm_castps_si128(_mm_cmpeq_ps(self.0, other.0))) }
     }
 
     #[inline]
     pub fn ne(&self, other: f32x4) -> m32x4 {
-        unsafe { m32x4(x86_64::_mm_castps_si128(x86_64::_mm_cmpneq_ps(self.0, other.0))) }
+        unsafe { m32x4(_mm_castps_si128(_mm_cmpneq_ps(self.0, other.0))) }
     }
 
     #[inline]
     pub fn lt(&self, other: f32x4) -> m32x4 {
-        unsafe { m32x4(x86_64::_mm_castps_si128(x86_64::_mm_cmplt_ps(self.0, other.0))) }
+        unsafe { m32x4(_mm_castps_si128(_mm_cmplt_ps(self.0, other.0))) }
     }
 
     #[inline]
     pub fn gt(&self, other: f32x4) -> m32x4 {
-        unsafe { m32x4(x86_64::_mm_castps_si128(x86_64::_mm_cmpgt_ps(self.0, other.0))) }
+        unsafe { m32x4(_mm_castps_si128(_mm_cmpgt_ps(self.0, other.0))) }
     }
 
     #[inline]
     pub fn le(&self, other: f32x4) -> m32x4 {
-        unsafe { m32x4(x86_64::_mm_castps_si128(x86_64::_mm_cmple_ps(self.0, other.0))) }
+        unsafe { m32x4(_mm_castps_si128(_mm_cmple_ps(self.0, other.0))) }
     }
 
     #[inline]
     pub fn ge(&self, other: f32x4) -> m32x4 {
-        unsafe { m32x4(x86_64::_mm_castps_si128(x86_64::_mm_cmpge_ps(self.0, other.0))) }
+        unsafe { m32x4(_mm_castps_si128(_mm_cmpge_ps(self.0, other.0))) }
     }
 
     #[inline]
     pub fn min(&self, other: f32x4) -> f32x4 {
-        unsafe { f32x4(x86_64::_mm_min_ps(self.0, other.0)) }
+        unsafe { f32x4(_mm_min_ps(self.0, other.0)) }
     }
 
     #[inline]
     pub fn max(&self, other: f32x4) -> f32x4 {
-        unsafe { f32x4(x86_64::_mm_max_ps(self.0, other.0)) }
+        unsafe { f32x4(_mm_max_ps(self.0, other.0)) }
     }
 }
 
@@ -117,7 +111,7 @@ impl Add<f32x4> for f32x4 {
 
     #[inline]
     fn add(self, other: f32x4) -> f32x4 {
-        unsafe { f32x4(x86_64::_mm_add_ps(self.0, other.0)) }
+        unsafe { f32x4(_mm_add_ps(self.0, other.0)) }
     }
 }
 
@@ -133,7 +127,7 @@ impl Sub<f32x4> for f32x4 {
 
     #[inline]
     fn sub(self, other: f32x4) -> f32x4 {
-        unsafe { f32x4(x86_64::_mm_sub_ps(self.0, other.0)) }
+        unsafe { f32x4(_mm_sub_ps(self.0, other.0)) }
     }
 }
 
@@ -149,7 +143,7 @@ impl Mul<f32x4> for f32x4 {
 
     #[inline]
     fn mul(self, other: f32x4) -> f32x4 {
-        unsafe { f32x4(x86_64::_mm_mul_ps(self.0, other.0)) }
+        unsafe { f32x4(_mm_mul_ps(self.0, other.0)) }
     }
 }
 
@@ -165,7 +159,7 @@ impl Div<f32x4> for f32x4 {
 
     #[inline]
     fn div(self, other: f32x4) -> f32x4 {
-        unsafe { f32x4(x86_64::_mm_div_ps(self.0, other.0)) }
+        unsafe { f32x4(_mm_div_ps(self.0, other.0)) }
     }
 }
 
@@ -188,7 +182,7 @@ impl Neg for f32x4 {
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone)]
 #[repr(transparent)]
-pub struct m32x4(x86_64::__m128i);
+pub struct m32x4(__m128i);
 
 impl m32x4 {
     #[inline]
@@ -208,7 +202,7 @@ impl m32x4 {
     #[inline]
     pub fn new(a: bool, b: bool, c: bool, d: bool) -> m32x4 {
         unsafe {
-            m32x4(x86_64::_mm_setr_epi32(
+            m32x4(_mm_setr_epi32(
                 Self::bool_to_mask(a),
                 Self::bool_to_mask(b),
                 Self::bool_to_mask(c),
@@ -219,30 +213,23 @@ impl m32x4 {
 
     #[inline]
     pub fn splat(value: bool) -> m32x4 {
-        unsafe { m32x4(x86_64::_mm_set1_epi32(Self::bool_to_mask(value))) }
+        unsafe { m32x4(_mm_set1_epi32(Self::bool_to_mask(value))) }
     }
 
     #[inline]
     pub fn get<const INDEX: i32>(&self) -> bool {
         assert!(INDEX >= 0 && INDEX < 4);
-        unsafe {
-            Self::mask_to_bool(x86_64::_mm_cvtsi128_si32(x86_64::_mm_shuffle_epi32::<INDEX>(
-                self.0,
-            )))
-        }
+        unsafe { Self::mask_to_bool(_mm_cvtsi128_si32(_mm_shuffle_epi32::<INDEX>(self.0))) }
     }
 
     #[inline]
     pub fn replace<const INDEX: i32>(&self, value: bool) -> m32x4 {
         assert!(INDEX >= 0 && INDEX < 4);
         unsafe {
-            let mask = x86_64::_mm_cmpeq_epi32(
-                x86_64::_mm_setr_epi32(0, 1, 2, 3),
-                x86_64::_mm_set1_epi32(INDEX),
-            );
-            m32x4(x86_64::_mm_or_si128(
-                x86_64::_mm_andnot_si128(mask, self.0),
-                x86_64::_mm_and_si128(mask, x86_64::_mm_set1_epi32(Self::bool_to_mask(value))),
+            let mask = _mm_cmpeq_epi32(_mm_setr_epi32(0, 1, 2, 3), _mm_set1_epi32(INDEX));
+            m32x4(_mm_or_si128(
+                _mm_andnot_si128(mask, self.0),
+                _mm_and_si128(mask, _mm_set1_epi32(Self::bool_to_mask(value))),
             ))
         }
     }
@@ -250,22 +237,17 @@ impl m32x4 {
     #[inline]
     pub fn shuffle<const MASK: i32>(&self) -> m32x4 {
         assert_eq!(MASK as u32 & 0xFFFFFF00, 0);
-        unsafe { m32x4(x86_64::_mm_shuffle_epi32::<MASK>(self.0)) }
+        unsafe { m32x4(_mm_shuffle_epi32::<MASK>(self.0)) }
     }
 
     #[inline]
     pub fn select(mask: m32x4, a: m32x4, b: m32x4) -> m32x4 {
-        unsafe {
-            m32x4(x86_64::_mm_or_si128(
-                x86_64::_mm_and_si128(mask.0, a.0),
-                x86_64::_mm_andnot_si128(mask.0, b.0),
-            ))
-        }
+        unsafe { m32x4(_mm_or_si128(_mm_and_si128(mask.0, a.0), _mm_andnot_si128(mask.0, b.0))) }
     }
 
     #[inline]
     pub fn eq(&self, other: m32x4) -> m32x4 {
-        unsafe { m32x4(x86_64::_mm_cmpeq_epi32(self.0, other.0)) }
+        unsafe { m32x4(_mm_cmpeq_epi32(self.0, other.0)) }
     }
 
     #[inline]
@@ -279,7 +261,7 @@ impl BitAnd<m32x4> for m32x4 {
 
     #[inline]
     fn bitand(self, other: m32x4) -> m32x4 {
-        unsafe { m32x4(x86_64::_mm_and_si128(self.0, other.0)) }
+        unsafe { m32x4(_mm_and_si128(self.0, other.0)) }
     }
 }
 
@@ -295,7 +277,7 @@ impl BitOr<m32x4> for m32x4 {
 
     #[inline]
     fn bitor(self, other: m32x4) -> m32x4 {
-        unsafe { m32x4(x86_64::_mm_or_si128(self.0, other.0)) }
+        unsafe { m32x4(_mm_or_si128(self.0, other.0)) }
     }
 }
 
@@ -311,7 +293,7 @@ impl BitXor<m32x4> for m32x4 {
 
     #[inline]
     fn bitxor(self, other: m32x4) -> m32x4 {
-        unsafe { m32x4(x86_64::_mm_xor_si128(self.0, other.0)) }
+        unsafe { m32x4(_mm_xor_si128(self.0, other.0)) }
     }
 }
 
@@ -327,6 +309,6 @@ impl Not for m32x4 {
 
     #[inline]
     fn not(self) -> m32x4 {
-        unsafe { m32x4(x86_64::_mm_andnot_si128(self.0, x86_64::_mm_set1_epi32(!0))) }
+        unsafe { m32x4(_mm_andnot_si128(self.0, _mm_set1_epi32(!0))) }
     }
 }
