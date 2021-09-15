@@ -40,6 +40,11 @@ impl f32x4 {
     }
 
     #[inline]
+    pub fn set<const INDEX: i32>(&mut self, value: f32) {
+        *self = self.replace::<INDEX>(value);
+    }
+
+    #[inline]
     pub fn replace<const INDEX: i32>(&self, value: f32) -> f32x4 {
         assert!(INDEX >= 0 && INDEX < 4);
         unsafe {
@@ -220,6 +225,11 @@ impl m32x4 {
     pub fn get<const INDEX: i32>(&self) -> bool {
         assert!(INDEX >= 0 && INDEX < 4);
         unsafe { Self::mask_to_bool(_mm_cvtsi128_si32(_mm_shuffle_epi32::<INDEX>(self.0))) }
+    }
+
+    #[inline]
+    pub fn set<const INDEX: i32>(&mut self, value: bool) {
+        *self = self.replace::<INDEX>(value);
     }
 
     #[inline]
