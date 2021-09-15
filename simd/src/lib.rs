@@ -36,6 +36,7 @@ impl f32x4 {
 
     #[inline]
     pub fn shuffle<const MASK: i32>(&self) -> f32x4 {
+        assert_eq!(MASK as u32 & 0xFFFFFF00, 0);
         unsafe { f32x4(x86_64::_mm_shuffle_ps::<MASK>(self.0, self.0)) }
     }
 
@@ -228,6 +229,7 @@ impl m32x4 {
 
     #[inline]
     pub fn shuffle<const MASK: i32>(&self) -> m32x4 {
+        assert_eq!(MASK as u32 & 0xFFFFFF00, 0);
         unsafe { m32x4(x86_64::_mm_shuffle_epi32::<MASK>(self.0)) }
     }
 
