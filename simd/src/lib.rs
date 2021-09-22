@@ -47,13 +47,7 @@ impl f32x4 {
     #[inline]
     pub fn replace<const INDEX: i32>(&self, value: f32) -> f32x4 {
         assert!(INDEX >= 0 && INDEX < 4);
-        unsafe {
-            let mask = _mm_castsi128_ps(_mm_cmpeq_epi32(
-                _mm_setr_epi32(0, 1, 2, 3),
-                _mm_set1_epi32(INDEX),
-            ));
-            f32x4(_mm_or_ps(_mm_andnot_ps(mask, self.0), _mm_and_ps(mask, _mm_set1_ps(value))))
-        }
+        f32x4::select(i32x4::new(0, 1, 2, 3).eq(i32x4::splat(INDEX)), *self, f32x4::splat(value))
     }
 
     #[inline]
@@ -228,13 +222,7 @@ impl u32x4 {
     #[inline]
     pub fn replace<const INDEX: i32>(&self, value: u32) -> u32x4 {
         assert!(INDEX >= 0 && INDEX < 4);
-        unsafe {
-            let mask = _mm_cmpeq_epi32(_mm_setr_epi32(0, 1, 2, 3), _mm_set1_epi32(INDEX));
-            u32x4(_mm_or_si128(
-                _mm_andnot_si128(mask, self.0),
-                _mm_and_si128(mask, _mm_set1_epi32(value as i32)),
-            ))
-        }
+        u32x4::select(i32x4::new(0, 1, 2, 3).eq(i32x4::splat(INDEX)), *self, u32x4::splat(value))
     }
 
     #[inline]
@@ -476,13 +464,7 @@ impl i32x4 {
     #[inline]
     pub fn replace<const INDEX: i32>(&self, value: i32) -> i32x4 {
         assert!(INDEX >= 0 && INDEX < 4);
-        unsafe {
-            let mask = _mm_cmpeq_epi32(_mm_setr_epi32(0, 1, 2, 3), _mm_set1_epi32(INDEX));
-            i32x4(_mm_or_si128(
-                _mm_andnot_si128(mask, self.0),
-                _mm_and_si128(mask, _mm_set1_epi32(value)),
-            ))
-        }
+        i32x4::select(i32x4::new(0, 1, 2, 3).eq(i32x4::splat(INDEX)), *self, i32x4::splat(value))
     }
 
     #[inline]
@@ -725,13 +707,7 @@ impl m32x4 {
     #[inline]
     pub fn replace<const INDEX: i32>(&self, value: bool) -> m32x4 {
         assert!(INDEX >= 0 && INDEX < 4);
-        unsafe {
-            let mask = _mm_cmpeq_epi32(_mm_setr_epi32(0, 1, 2, 3), _mm_set1_epi32(INDEX));
-            m32x4(_mm_or_si128(
-                _mm_andnot_si128(mask, self.0),
-                _mm_and_si128(mask, _mm_set1_epi32(Self::bool_to_mask(value))),
-            ))
-        }
+        m32x4::select(i32x4::new(0, 1, 2, 3).eq(i32x4::splat(INDEX)), *self, m32x4::splat(value))
     }
 
     #[inline]
