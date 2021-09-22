@@ -185,6 +185,254 @@ impl Neg for f32x4 {
 }
 
 #[allow(non_camel_case_types)]
+#[derive(Copy, Clone, Debug)]
+#[repr(transparent)]
+pub struct u32x4(__m128i);
+
+impl u32x4 {
+    #[inline]
+    pub fn new(a: u32, b: u32, c: u32, d: u32) -> u32x4 {
+        unsafe { u32x4(_mm_setr_epi32(a as i32, b as i32, c as i32, d as i32)) }
+    }
+
+    #[inline]
+    pub fn splat(value: u32) -> u32x4 {
+        unsafe { u32x4(_mm_set1_epi32(value as i32)) }
+    }
+
+    #[inline]
+    pub fn from_slice(slice: &[u32]) -> u32x4 {
+        assert_eq!(slice.len(), 4);
+        unsafe { u32x4(_mm_loadu_si128(slice.as_ptr() as *const __m128i)) }
+    }
+
+    #[inline]
+    pub fn write_to_slice(&self, slice: &mut [u32]) {
+        assert_eq!(slice.len(), 4);
+        unsafe {
+            _mm_storeu_si128(slice.as_mut_ptr() as *mut __m128i, self.0);
+        }
+    }
+
+    #[inline]
+    pub fn get<const INDEX: i32>(&self) -> u32 {
+        assert!(INDEX >= 0 && INDEX < 4);
+        unsafe { _mm_cvtsi128_si32(_mm_shuffle_epi32::<INDEX>(self.0)) as u32 }
+    }
+
+    #[inline]
+    pub fn set<const INDEX: i32>(&mut self, value: u32) {
+        *self = self.replace::<INDEX>(value);
+    }
+
+    #[inline]
+    pub fn replace<const INDEX: i32>(&self, value: u32) -> u32x4 {
+        assert!(INDEX >= 0 && INDEX < 4);
+        unsafe {
+            let mask = _mm_cmpeq_epi32(_mm_setr_epi32(0, 1, 2, 3), _mm_set1_epi32(INDEX));
+            u32x4(_mm_or_si128(
+                _mm_andnot_si128(mask, self.0),
+                _mm_and_si128(mask, _mm_set1_epi32(value as i32)),
+            ))
+        }
+    }
+
+    #[inline]
+    pub fn shuffle<const MASK: i32>(&self) -> u32x4 {
+        assert_eq!(MASK as u32 & 0xFFFFFF00, 0);
+        unsafe { u32x4(_mm_shuffle_epi32::<MASK>(self.0)) }
+    }
+
+    #[inline]
+    pub fn select(mask: m32x4, a: u32x4, b: u32x4) -> u32x4 {
+        unsafe { u32x4(_mm_or_si128(_mm_and_si128(mask.0, a.0), _mm_andnot_si128(mask.0, b.0))) }
+    }
+
+    #[inline]
+    pub fn eq(&self, other: u32x4) -> m32x4 {
+        unsafe { m32x4(_mm_cmpeq_epi32(self.0, other.0)) }
+    }
+
+    #[inline]
+    pub fn ne(&self, other: u32x4) -> m32x4 {
+        !self.eq(other)
+    }
+
+    #[inline]
+    pub fn lt(&self, other: u32x4) -> m32x4 {
+        unsafe {
+            let bias = _mm_set1_epi32(i32::MIN);
+            m32x4(_mm_cmplt_epi32(_mm_add_epi32(self.0, bias), _mm_add_epi32(other.0, bias)))
+        }
+    }
+
+    #[inline]
+    pub fn gt(&self, other: u32x4) -> m32x4 {
+        unsafe {
+            let bias = _mm_set1_epi32(i32::MIN);
+            m32x4(_mm_cmpgt_epi32(_mm_add_epi32(self.0, bias), _mm_add_epi32(other.0, bias)))
+        }
+    }
+
+    #[inline]
+    pub fn le(&self, other: u32x4) -> m32x4 {
+        !self.gt(other)
+    }
+
+    #[inline]
+    pub fn ge(&self, other: u32x4) -> m32x4 {
+        !self.lt(other)
+    }
+
+    #[inline]
+    pub fn min(&self, other: u32x4) -> u32x4 {
+        u32x4::select(self.lt(other), *self, other)
+    }
+
+    #[inline]
+    pub fn max(&self, other: u32x4) -> u32x4 {
+        u32x4::select(self.gt(other), *self, other)
+    }
+}
+
+impl Add<u32x4> for u32x4 {
+    type Output = u32x4;
+
+    #[inline]
+    fn add(self, other: u32x4) -> u32x4 {
+        unsafe { u32x4(_mm_add_epi32(self.0, other.0)) }
+    }
+}
+
+impl AddAssign<u32x4> for u32x4 {
+    #[inline]
+    fn add_assign(&mut self, other: u32x4) {
+        *self = *self + other;
+    }
+}
+
+impl Sub<u32x4> for u32x4 {
+    type Output = u32x4;
+
+    #[inline]
+    fn sub(self, other: u32x4) -> u32x4 {
+        unsafe { u32x4(_mm_sub_epi32(self.0, other.0)) }
+    }
+}
+
+impl SubAssign<u32x4> for u32x4 {
+    #[inline]
+    fn sub_assign(&mut self, other: u32x4) {
+        *self = *self - other;
+    }
+}
+
+impl Mul<u32x4> for u32x4 {
+    type Output = u32x4;
+
+    #[inline]
+    fn mul(self, other: u32x4) -> u32x4 {
+        unsafe { u32x4(_mm_mul_epu32(self.0, other.0)) }
+    }
+}
+
+impl MulAssign<u32x4> for u32x4 {
+    #[inline]
+    fn mul_assign(&mut self, other: u32x4) {
+        *self = *self * other;
+    }
+}
+
+impl BitAnd<u32x4> for u32x4 {
+    type Output = u32x4;
+
+    #[inline]
+    fn bitand(self, other: u32x4) -> u32x4 {
+        unsafe { u32x4(_mm_and_si128(self.0, other.0)) }
+    }
+}
+
+impl BitAndAssign<u32x4> for u32x4 {
+    #[inline]
+    fn bitand_assign(&mut self, other: u32x4) {
+        *self = *self & other;
+    }
+}
+
+impl BitOr<u32x4> for u32x4 {
+    type Output = u32x4;
+
+    #[inline]
+    fn bitor(self, other: u32x4) -> u32x4 {
+        unsafe { u32x4(_mm_or_si128(self.0, other.0)) }
+    }
+}
+
+impl BitOrAssign<u32x4> for u32x4 {
+    #[inline]
+    fn bitor_assign(&mut self, other: u32x4) {
+        *self = *self | other;
+    }
+}
+
+impl BitXor<u32x4> for u32x4 {
+    type Output = u32x4;
+
+    #[inline]
+    fn bitxor(self, other: u32x4) -> u32x4 {
+        unsafe { u32x4(_mm_xor_si128(self.0, other.0)) }
+    }
+}
+
+impl BitXorAssign<u32x4> for u32x4 {
+    #[inline]
+    fn bitxor_assign(&mut self, other: u32x4) {
+        *self = *self ^ other;
+    }
+}
+
+impl Not for u32x4 {
+    type Output = u32x4;
+
+    #[inline]
+    fn not(self) -> u32x4 {
+        unsafe { u32x4(_mm_andnot_si128(self.0, _mm_set1_epi32(!0))) }
+    }
+}
+
+impl Shl<u32x4> for u32x4 {
+    type Output = u32x4;
+
+    #[inline]
+    fn shl(self, other: u32x4) -> u32x4 {
+        unsafe { u32x4(_mm_sll_epi32(self.0, other.0)) }
+    }
+}
+
+impl ShlAssign<u32x4> for u32x4 {
+    #[inline]
+    fn shl_assign(&mut self, other: u32x4) {
+        *self = *self << other;
+    }
+}
+
+impl Shr<u32x4> for u32x4 {
+    type Output = u32x4;
+
+    #[inline]
+    fn shr(self, other: u32x4) -> u32x4 {
+        unsafe { u32x4(_mm_srl_epi32(self.0, other.0)) }
+    }
+}
+
+impl ShrAssign<u32x4> for u32x4 {
+    #[inline]
+    fn shr_assign(&mut self, other: u32x4) {
+        *self = *self >> other;
+    }
+}
+
+#[allow(non_camel_case_types)]
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct m32x4(__m128i);
