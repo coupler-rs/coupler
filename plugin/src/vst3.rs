@@ -25,8 +25,13 @@ fn copy_cstring(src: &str, dst: &mut [c_char]) {
 }
 
 fn copy_wstring(src: &str, dst: &mut [i16]) {
+    let mut len = 0;
     for (src, dst) in src.encode_utf16().zip(dst.iter_mut()) {
         *dst = src as i16;
+        len += 1;
+    }
+    if len < dst.len() {
+        dst[len] = 0;
     }
 }
 
