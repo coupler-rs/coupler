@@ -315,22 +315,6 @@ impl SubAssign<u32x4> for u32x4 {
     }
 }
 
-impl Mul<u32x4> for u32x4 {
-    type Output = u32x4;
-
-    #[inline]
-    fn mul(self, other: u32x4) -> u32x4 {
-        unsafe { u32x4(_mm_mul_epu32(self.0, other.0)) }
-    }
-}
-
-impl MulAssign<u32x4> for u32x4 {
-    #[inline]
-    fn mul_assign(&mut self, other: u32x4) {
-        *self = *self * other;
-    }
-}
-
 impl BitAnd<u32x4> for u32x4 {
     type Output = u32x4;
 
@@ -548,22 +532,6 @@ impl SubAssign<i32x4> for i32x4 {
     #[inline]
     fn sub_assign(&mut self, other: i32x4) {
         *self = *self - other;
-    }
-}
-
-impl Mul<i32x4> for i32x4 {
-    type Output = i32x4;
-
-    #[inline]
-    fn mul(self, other: i32x4) -> i32x4 {
-        unsafe { i32x4(_mm_mul_epi32(self.0, other.0)) }
-    }
-}
-
-impl MulAssign<i32x4> for i32x4 {
-    #[inline]
-    fn mul_assign(&mut self, other: i32x4) {
-        *self = *self * other;
     }
 }
 
