@@ -10,5 +10,6 @@ members = [
     "graphics",
     "plugin",
     "simd",
+    "scripts/gen-uuid",
     "window",
 ]

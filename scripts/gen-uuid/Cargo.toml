@@ -1,0 +1,9 @@
+[package]
+name = "gen-uuid"
+version = "0.1.0"
+authors = ["glowcoil <micahrjohnston@gmail.com>"]
+edition = "2018"
+publish = false
+
+[dependencies]
+uuid = { version = "0.8", features = ["v4"] }
