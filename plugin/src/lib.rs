@@ -1,8 +1,6 @@
 pub mod vst2;
 pub mod vst3;
 
-use std::rc::Rc;
-
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
 pub struct PluginInfo {
@@ -15,8 +13,10 @@ pub struct PluginInfo {
     pub has_editor: bool,
 }
 
+pub type ParamId = u32;
+
 pub struct ParamInfo {
-    pub id: u32,
+    pub id: ParamId,
     pub name: &'static str,
     pub label: &'static str,
     pub steps: Option<u32>,
@@ -27,48 +27,31 @@ pub struct ParamInfo {
     pub from_string: fn(&str) -> f64,
 }
 
-#[allow(unused_variables)]
-pub trait Plugin: Send + Sized {
-    const INFO: PluginInfo;
-    const PARAMS: &'static [ParamInfo];
-
-    type Editor: Editor;
-
-    fn create(editor_context: Rc<dyn EditorContext>) -> (Self, Self::Editor);
-    fn destroy(&mut self, editor: &mut Self::Editor) {}
-    fn process(&mut self, params: &ParamValues, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) {}
+pub struct ParamChange {
+    pub id: ParamId,
+    pub offset: usize,
+    pub value: f64,
 }
 
-#[allow(unused_variables)]
-pub trait Editor: Sized {
-    fn size(&self) -> (f64, f64) {
-        (0.0, 0.0)
+trait EditorContextInner {
+    fn begin_edit(&self, param_id: ParamId);
+    fn perform_edit(&self, param_id: ParamId, value: f64);
+    fn end_edit(&self, param_id: ParamId);
+}
+
+pub struct EditorContext(Box<dyn EditorContextInner>);
+
+impl EditorContext {
+    pub fn begin_edit(&self, param_id: ParamId) {
+        self.0.begin_edit(param_id);
     }
-    fn open(&mut self, parent: Option<&ParentWindow>) {}
-    fn close(&mut self) {}
-    fn poll(&mut self) {}
-    fn raw_window_handle(&self) -> Option<RawWindowHandle> {
-        None
+
+    pub fn perform_edit(&self, param_id: ParamId, value: f64) {
+        self.0.perform_edit(param_id, value);
     }
-    fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
-        None
-    }
-}
 
-pub trait EditorContext {
-    fn get(&self, param_info: &ParamInfo) -> f64;
-    fn set(&self, param_info: &ParamInfo, value: f64);
-    fn begin_edit(&self, param_info: &ParamInfo);
-    fn end_edit(&self, param_info: &ParamInfo);
-}
-
-pub struct ParamValues<'a> {
-    values: &'a [f64],
-}
-
-impl<'a> ParamValues<'a> {
-    pub fn get(&self, param_info: &ParamInfo) -> f64 {
-        self.values[param_info.id as usize]
+    pub fn end_edit(&self, param_id: ParamId) {
+        self.0.end_edit(param_id);
     }
 }
 
@@ -78,4 +61,37 @@ unsafe impl HasRawWindowHandle for ParentWindow {
     fn raw_window_handle(&self) -> RawWindowHandle {
         self.0
     }
+}
+
+pub trait Plugin: Send + Sync + Sized {
+    const INFO: PluginInfo;
+    const PARAMS: &'static [ParamInfo];
+
+    type Processor: Processor;
+    type Editor: Editor;
+
+    fn create() -> Self;
+
+    fn get_param(&self, id: ParamId) -> f64;
+    fn set_param(&self, id: ParamId, value: f64);
+
+    fn processor(&self) -> Self::Processor;
+
+    fn editor_size(&self) -> (f64, f64);
+    fn editor(&self, editor_context: EditorContext, parent: Option<&ParentWindow>) -> Self::Editor;
+}
+
+pub trait Processor: Send + Sized {
+    fn process(
+        &mut self,
+        inputs: &[&[f32]],
+        outputs: &mut [&mut [f32]],
+        param_changes: &[ParamChange],
+    );
+}
+
+pub trait Editor: Sized {
+    fn poll(&mut self);
+    fn raw_window_handle(&self) -> Option<RawWindowHandle>;
+    fn file_descriptor(&self) -> Option<std::os::raw::c_int>;
 }
