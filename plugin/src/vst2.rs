@@ -12,13 +12,11 @@ use raw_window_handle::RawWindowHandle;
 pub use vst2 as vst2_api;
 use vst2::*;
 
-unsafe fn copy_cstring(string: &str, dst: *mut c_char, len: usize) {
-    let name = ffi::CString::new(string).unwrap_or_else(|_| ffi::CString::default());
-    ptr::copy_nonoverlapping(
-        name.as_ptr(),
-        dst as *mut c_char,
-        name.as_bytes_with_nul().len().min(len),
-    );
+fn copy_cstring(src: &str, dst: &mut [c_char]) {
+    let c_string = ffi::CString::new(src).unwrap_or_else(|_| ffi::CString::default());
+    for (src, dst) in c_string.as_bytes_with_nul().iter().zip(dst.iter_mut()) {
+        *dst = *src as c_char;
+    }
 }
 
 #[repr(C)]
@@ -139,11 +137,11 @@ extern "C" fn dispatcher<P: Plugin>(
             GET_PROGRAM_NAME => {}
             GET_PARAM_LABEL => {
                 if let Some(param_info) = P::PARAMS.get(index as usize) {
-                    copy_cstring(
-                        param_info.label,
+                    let dst = slice::from_raw_parts_mut(
                         ptr as *mut c_char,
                         string_constants::MAX_PARAM_STR_LEN,
                     );
+                    copy_cstring(param_info.label, dst);
                 }
                 return 0;
             }
@@ -154,17 +152,21 @@ extern "C" fn dispatcher<P: Plugin>(
                 if let (Some(param), Some(param_info)) = (param, param_info) {
                     let value = f64::from_bits(param.load(Ordering::Relaxed));
                     let display = (param_info.to_string)(value);
-                    copy_cstring(&display, ptr as *mut c_char, string_constants::MAX_PARAM_STR_LEN);
+                    let dst = slice::from_raw_parts_mut(
+                        ptr as *mut c_char,
+                        string_constants::MAX_PARAM_STR_LEN,
+                    );
+                    copy_cstring(&display, dst);
                 }
                 return 0;
             }
             GET_PARAM_NAME => {
                 if let Some(param_info) = P::PARAMS.get(index as usize) {
-                    copy_cstring(
-                        param_info.name,
+                    let dst = slice::from_raw_parts_mut(
                         ptr as *mut c_char,
                         string_constants::MAX_PARAM_STR_LEN,
                     );
+                    copy_cstring(&param_info.name, dst);
                 }
                 return 0;
             }
@@ -266,27 +268,27 @@ extern "C" fn dispatcher<P: Plugin>(
             SET_SPEAKER_ARRANGEMENT => {}
             SET_BYPASS => {}
             GET_EFFECT_NAME => {
-                copy_cstring(
-                    P::INFO.name,
+                let dst = slice::from_raw_parts_mut(
                     ptr as *mut c_char,
                     string_constants::MAX_EFFECT_NAME_LEN,
                 );
+                copy_cstring(P::INFO.name, dst);
                 return 1;
             }
             GET_VENDOR_STRING => {
-                copy_cstring(
-                    P::INFO.vendor,
+                let dst = slice::from_raw_parts_mut(
                     ptr as *mut c_char,
                     string_constants::MAX_VENDOR_STR_LEN,
                 );
+                copy_cstring(P::INFO.vendor, dst);
                 return 1;
             }
             GET_PRODUCT_STRING => {
-                copy_cstring(
-                    P::INFO.name,
+                let dst = slice::from_raw_parts_mut(
                     ptr as *mut c_char,
                     string_constants::MAX_PRODUCT_STR_LEN,
                 );
+                copy_cstring(P::INFO.name, dst);
                 return 1;
             }
             GET_VENDOR_VERSION => {}
