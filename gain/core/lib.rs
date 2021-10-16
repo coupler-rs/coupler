@@ -1,9 +1,9 @@
-use plugin::{Editor, EditorContext, ParamInfo, ParamValues, ParentWindow, Plugin, PluginInfo};
-use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
+use plugin::*;
+use raw_window_handle::RawWindowHandle;
 use window::{Application, Parent, Rect, Window, WindowOptions};
 
-use std::rc::Rc;
 use std::str::FromStr;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const GAIN: ParamInfo = ParamInfo {
     id: 0,
@@ -18,7 +18,17 @@ const GAIN: ParamInfo = ParamInfo {
 };
 
 pub struct Gain {
+    gain: AtomicU64,
+}
+
+pub struct GainProcessor {
     gain: f32,
+}
+
+pub struct GainEditor {
+    #[allow(unused)]
+    application: Application,
+    window: Window,
 }
 
 impl Plugin for Gain {
@@ -34,42 +44,45 @@ impl Plugin for Gain {
 
     const PARAMS: &'static [ParamInfo] = &[GAIN];
 
+    type Processor = GainProcessor;
     type Editor = GainEditor;
 
-    fn create(_editor_context: Rc<dyn EditorContext>) -> (Gain, GainEditor) {
-        let gain = Gain { gain: 0.0 };
-        let gain_editor = GainEditor { application: Application::new().unwrap(), window: None };
-
-        (gain, gain_editor)
+    fn create() -> Gain {
+        Gain { gain: AtomicU64::new(0.0f64.to_bits()) }
     }
 
-    fn process(&mut self, params: &ParamValues, inputs: &[&[f32]], outputs: &mut [&mut [f32]]) {
-        let gain = params.get(&GAIN) as f32;
-        for (input, output) in inputs.iter().zip(outputs.iter_mut()) {
-            for (input_sample, output_sample) in input.iter().zip(output.iter_mut()) {
-                self.gain = 0.9995 * self.gain + 0.0005 * gain;
-                *output_sample = self.gain * *input_sample;
-            }
+    fn get_param(&self, id: ParamId) -> f64 {
+        match id {
+            0 => f64::from_bits(self.gain.load(Ordering::Relaxed)),
+            _ => 0.0,
         }
     }
-}
 
-pub struct GainEditor {
-    application: Application,
-    window: Option<Window>,
-}
-
-impl Editor for GainEditor {
-    fn size(&self) -> (f64, f64) {
-        (512.0, 512.0)
+    fn set_param(&self, id: ParamId, value: f64) {
+        match id {
+            0 => {
+                self.gain.store(value.to_bits(), Ordering::Relaxed);
+            }
+            _ => {}
+        }
     }
 
-    fn open(&mut self, parent: Option<&ParentWindow>) {
+    fn processor(&self) -> Self::Processor {
+        GainProcessor { gain: f64::from_bits(self.gain.load(Ordering::Relaxed)) as f32 }
+    }
+
+    fn editor_size(&self) -> (f64, f64) {
+        (0.0, 0.0)
+    }
+
+    fn editor(&self, _editor_context: EditorContext, parent: Option<&ParentWindow>) -> Self::Editor {
         let parent =
             if let Some(parent) = parent { Parent::Parent(parent) } else { Parent::Detached };
 
+        let application = Application::new().unwrap();
+
         let window = Window::open(
-            &self.application,
+            &application,
             WindowOptions {
                 rect: Rect { x: 0.0, y: 0.0, width: 512.0, height: 512.0 },
                 parent,
@@ -78,30 +91,46 @@ impl Editor for GainEditor {
         )
         .unwrap();
 
-        self.window = Some(window);
+        GainEditor { application, window }
     }
+}
 
-    fn close(&mut self) {
-        if let Some(window) = self.window.take() {
-            let _ = window.close();
+impl Processor for GainProcessor {
+    fn process(
+        &mut self,
+        inputs: &[&[f32]],
+        outputs: &mut [&mut [f32]],
+        param_changes: &[ParamChange],
+    ) {
+        for change in param_changes {
+            match change.id {
+                0 => {
+                    self.gain = change.value as f32;
+                }
+                _ => {}
+            }
+        }
+
+        for (input, output) in inputs.iter().zip(outputs.iter_mut()) {
+            for (input_sample, output_sample) in input.iter().zip(output.iter_mut()) {
+                *output_sample = self.gain * *input_sample;
+            }
         }
     }
+}
 
-    fn poll(&mut self) {
-        if self.window.is_some() {
-            self.application.poll();
-        }
-    }
-
+impl Editor for GainEditor {
+    fn poll(&mut self) {}
     fn raw_window_handle(&self) -> Option<RawWindowHandle> {
-        if let Some(ref window) = self.window {
-            Some(window.raw_window_handle())
-        } else {
-            None
-        }
+        None
     }
-
     fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
-        self.application.file_descriptor()
+        None
+    }
+}
+
+impl Drop for GainEditor {
+    fn drop(&mut self) {
+        self.window.close().unwrap();
     }
 }
