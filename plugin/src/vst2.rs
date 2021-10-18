@@ -30,13 +30,13 @@ struct Wrapper<P: Plugin> {
 
 struct ProcessorState<P: Plugin> {
     param_changes: Vec<ParamChange>,
-    processor: Option<P::Processor>,
+    processor: P::Processor,
 }
 
 struct EditorState<P: Plugin> {
     rect: Rect,
     context: Rc<Vst2EditorContext>,
-    editor: Option<P::Editor>,
+    editor: P::Editor,
 }
 
 struct Vst2EditorContext {
@@ -96,7 +96,7 @@ extern "C" fn dispatcher<P: Plugin>(
     effect: *mut AEffect,
     opcode: i32,
     index: i32,
-    value: isize,
+    _value: isize,
     ptr: *mut std::ffi::c_void,
     _opt: f32,
 ) -> isize {
@@ -154,24 +154,12 @@ extern "C" fn dispatcher<P: Plugin>(
             }
             SET_SAMPLE_RATE => {}
             SET_BLOCK_SIZE => {}
-            MAINS_CHANGED => {
-                let wrapper = &*wrapper_ptr;
-                let processor_state = &mut *wrapper.processor_state.get();
-                match value {
-                    0 => {
-                        processor_state.processor = Some(wrapper.plugin.processor());
-                    }
-                    1 => {
-                        processor_state.processor = None;
-                    }
-                    _ => {}
-                }
-            }
+            MAINS_CHANGED => {}
             EDIT_GET_RECT => {
                 let wrapper = &*wrapper_ptr;
                 let editor_state = &mut *wrapper.editor_state.get();
 
-                let (width, height) = wrapper.plugin.editor_size();
+                let (width, height) = editor_state.editor.size();
                 editor_state.rect.right = width.round() as i16;
                 editor_state.rect.bottom = height.round() as i16;
                 ptr::write(ptr as *mut *const Rect, &mut editor_state.rect);
@@ -203,12 +191,7 @@ extern "C" fn dispatcher<P: Plugin>(
                     RawWindowHandle::Xcb(XcbHandle { window: ptr as u32, ..XcbHandle::empty() })
                 };
 
-                let editor = wrapper.plugin.editor(
-                    EditorContext(editor_state.context.clone()),
-                    Some(&ParentWindow(parent)),
-                );
-
-                editor_state.editor = Some(editor);
+                editor_state.editor.open(Some(&ParentWindow(parent)));
 
                 return 1;
             }
@@ -216,7 +199,7 @@ extern "C" fn dispatcher<P: Plugin>(
                 let wrapper = &*wrapper_ptr;
                 let editor_state = &mut *wrapper.editor_state.get();
 
-                editor_state.editor = None;
+                editor_state.editor.close();
 
                 return 1;
             }
@@ -226,9 +209,7 @@ extern "C" fn dispatcher<P: Plugin>(
                     let wrapper = &*wrapper_ptr;
                     let editor_state = &mut *wrapper.editor_state.get();
 
-                    if let Some(editor) = &mut editor_state.editor {
-                        editor.poll();
-                    }
+                    editor_state.editor.poll();
                 }
                 return 1;
             }
@@ -360,30 +341,32 @@ extern "C" fn process_replacing<P: Plugin>(
         let wrapper = &*(effect as *const Wrapper<P>);
         let processor_state = &mut *wrapper.processor_state.get();
 
-        if let Some(processor) = &mut processor_state.processor {
-            processor_state.param_changes.clear();
-            for param_info in P::PARAMS {
-                processor_state.param_changes.push(ParamChange {
-                    id: param_info.id,
-                    offset: 0,
-                    value: wrapper.plugin.get_param(param_info.id),
-                });
-            }
-
-            let input_ptrs = slice::from_raw_parts(inputs, 2);
-            let input_slices = &[
-                slice::from_raw_parts(input_ptrs[0], sample_frames as usize),
-                slice::from_raw_parts(input_ptrs[1], sample_frames as usize),
-            ];
-
-            let output_ptrs = slice::from_raw_parts(outputs, 2);
-            let output_slices = &mut [
-                slice::from_raw_parts_mut(output_ptrs[0], sample_frames as usize),
-                slice::from_raw_parts_mut(output_ptrs[1], sample_frames as usize),
-            ];
-
-            processor.process(input_slices, output_slices, &processor_state.param_changes[..]);
+        processor_state.param_changes.clear();
+        for param_info in P::PARAMS {
+            processor_state.param_changes.push(ParamChange {
+                id: param_info.id,
+                offset: 0,
+                value: wrapper.plugin.get_param(param_info.id),
+            });
         }
+
+        let input_ptrs = slice::from_raw_parts(inputs, 2);
+        let input_slices = &[
+            slice::from_raw_parts(input_ptrs[0], sample_frames as usize),
+            slice::from_raw_parts(input_ptrs[1], sample_frames as usize),
+        ];
+
+        let output_ptrs = slice::from_raw_parts(outputs, 2);
+        let output_slices = &mut [
+            slice::from_raw_parts_mut(output_ptrs[0], sample_frames as usize),
+            slice::from_raw_parts_mut(output_ptrs[1], sample_frames as usize),
+        ];
+
+        processor_state.processor.process(
+            input_slices,
+            output_slices,
+            &processor_state.param_changes[..],
+        );
     }
 }
 
@@ -396,16 +379,18 @@ extern "C" fn process_replacing_f64(
 }
 
 pub fn plugin_main<P: Plugin>(host_callback: HostCallbackProc) -> *mut AEffect {
-    let mut flags = effect_flags::CAN_REPLACING;
-    if P::INFO.has_editor {
-        flags |= effect_flags::HAS_EDITOR;
-    }
-
     let editor_context = Rc::new(Vst2EditorContext {
         alive: Cell::new(true),
         host_callback,
         effect: Cell::new(ptr::null_mut()),
     });
+
+    let (plugin, processor, editor) = P::create(EditorContext(editor_context.clone()));
+
+    let mut flags = effect_flags::CAN_REPLACING;
+    if P::INFO.has_editor {
+        flags |= effect_flags::HAS_EDITOR;
+    }
 
     let effect = Box::new(Wrapper {
         effect: AEffect {
@@ -438,15 +423,15 @@ pub fn plugin_main<P: Plugin>(host_callback: HostCallbackProc) -> *mut AEffect {
             process_replacing_f64,
             _future: [0; 56],
         },
-        plugin: P::create(),
+        plugin,
         processor_state: UnsafeCell::new(ProcessorState {
             param_changes: Vec::with_capacity(P::PARAMS.len()),
-            processor: None,
+            processor,
         }),
         editor_state: UnsafeCell::new(EditorState {
             rect: Rect { top: 0, left: 0, bottom: 0, right: 0 },
             context: editor_context,
-            editor: None,
+            editor,
         }),
     });
 
