@@ -1,10 +1,11 @@
-use crate::{Editor, EditorContext, ParamInfo, ParamValues, ParentWindow, Plugin};
+use crate::{
+    Editor, EditorContext, EditorContextInner, ParamChange, ParamId, ParentWindow, Plugin,
+    Processor,
+};
 
 use std::cell::{Cell, UnsafeCell};
 use std::os::raw::c_char;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 use std::{ffi, ptr, slice};
 
 use raw_window_handle::RawWindowHandle;
@@ -22,87 +23,70 @@ fn copy_cstring(src: &str, dst: &mut [c_char]) {
 #[repr(C)]
 struct Wrapper<P: Plugin> {
     effect: AEffect,
-    params: Arc<Vec<AtomicU64>>,
-    plugin_state: UnsafeCell<PluginState<P>>,
+    plugin: P,
+    processor_state: UnsafeCell<ProcessorState<P>>,
     editor_state: UnsafeCell<EditorState<P>>,
 }
 
-struct PluginState<P: Plugin> {
-    params: Vec<f64>,
-    plugin: P,
+struct ProcessorState<P: Plugin> {
+    param_changes: Vec<ParamChange>,
+    processor: Option<P::Processor>,
 }
 
 struct EditorState<P: Plugin> {
     rect: Rect,
     context: Rc<Vst2EditorContext>,
-    editor: P::Editor,
+    editor: Option<P::Editor>,
 }
 
 struct Vst2EditorContext {
     alive: Cell<bool>,
     host_callback: HostCallbackProc,
     effect: Cell<*mut AEffect>,
-    params: Arc<Vec<AtomicU64>>,
 }
 
-impl EditorContext for Vst2EditorContext {
-    fn get(&self, param_info: &ParamInfo) -> f64 {
-        if let Some(param) = self.params.get(param_info.id as usize) {
-            f64::from_bits(param.load(Ordering::Relaxed))
-        } else {
-            0.0
-        }
-    }
-
-    fn set(&self, param_info: &ParamInfo, value: f64) {
-        if let Some(param) = self.params.get(param_info.id as usize) {
-            param.store(value.to_bits(), Ordering::Relaxed);
-
-            if self.alive.get() {
-                unsafe {
-                    (self.host_callback)(
-                        self.effect.get(),
-                        host_opcodes::AUTOMATE,
-                        param_info.id as i32,
-                        0,
-                        ptr::null_mut(),
-                        (param_info.to_normal)(value) as f32,
-                    );
-                }
+impl EditorContextInner for Vst2EditorContext {
+    fn begin_edit(&self, param_id: ParamId) {
+        if self.alive.get() {
+            unsafe {
+                (self.host_callback)(
+                    self.effect.get(),
+                    host_opcodes::BEGIN_EDIT,
+                    param_id as i32,
+                    0,
+                    ptr::null_mut(),
+                    0.0,
+                );
             }
         }
     }
 
-    fn begin_edit(&self, param_info: &ParamInfo) {
-        if let Some(_param) = self.params.get(param_info.id as usize) {
-            if self.alive.get() {
-                unsafe {
-                    (self.host_callback)(
-                        self.effect.get(),
-                        host_opcodes::BEGIN_EDIT,
-                        param_info.id as i32,
-                        0,
-                        ptr::null_mut(),
-                        0.0,
-                    );
-                }
+    fn perform_edit(&self, param_id: ParamId, value: f64) {
+        if self.alive.get() {
+            unsafe {
+                (self.host_callback)(
+                    self.effect.get(),
+                    host_opcodes::AUTOMATE,
+                    param_id as i32,
+                    0,
+                    ptr::null_mut(),
+                    value as f32,
+                );
             }
         }
     }
 
-    fn end_edit(&self, param_info: &ParamInfo) {
-        if let Some(_param) = self.params.get(param_info.id as usize) {
-            if self.alive.get() {
-                unsafe {
-                    (self.host_callback)(
-                        self.effect.get(),
-                        host_opcodes::END_EDIT,
-                        param_info.id as i32,
-                        0,
-                        ptr::null_mut(),
-                        0.0,
-                    );
-                }
+    fn end_edit(&self, param_id: ParamId) {
+        if self.alive.get() {
+            unsafe {
+                (self.host_callback)(
+                    self.effect.get(),
+                    host_opcodes::END_EDIT,
+                    param_id as i32,
+                    0,
+                    ptr::null_mut(),
+                    0.0,
+                );
             }
         }
     }
@@ -112,7 +96,7 @@ extern "C" fn dispatcher<P: Plugin>(
     effect: *mut AEffect,
     opcode: i32,
     index: i32,
-    _value: isize,
+    value: isize,
     ptr: *mut std::ffi::c_void,
     _opt: f32,
 ) -> isize {
@@ -146,11 +130,9 @@ extern "C" fn dispatcher<P: Plugin>(
                 return 0;
             }
             GET_PARAM_DISPLAY => {
-                let wrapper = &*wrapper_ptr;
-                let param = wrapper.params.get(index as usize);
-                let param_info = P::PARAMS.get(index as usize);
-                if let (Some(param), Some(param_info)) = (param, param_info) {
-                    let value = f64::from_bits(param.load(Ordering::Relaxed));
+                if let Some(param_info) = P::PARAMS.get(index as usize) {
+                    let wrapper = &*wrapper_ptr;
+                    let value = wrapper.plugin.get_param(param_info.id);
                     let display = (param_info.to_string)(value);
                     let dst = slice::from_raw_parts_mut(
                         ptr as *mut c_char,
@@ -172,15 +154,26 @@ extern "C" fn dispatcher<P: Plugin>(
             }
             SET_SAMPLE_RATE => {}
             SET_BLOCK_SIZE => {}
-            MAINS_CHANGED => {}
+            MAINS_CHANGED => {
+                let wrapper = &*wrapper_ptr;
+                let processor_state = &mut *wrapper.processor_state.get();
+                match value {
+                    0 => {
+                        processor_state.processor = Some(wrapper.plugin.processor());
+                    }
+                    1 => {
+                        processor_state.processor = None;
+                    }
+                    _ => {}
+                }
+            }
             EDIT_GET_RECT => {
                 let wrapper = &*wrapper_ptr;
                 let editor_state = &mut *wrapper.editor_state.get();
 
-                let (width, height) = editor_state.editor.size();
-                let rect = &mut editor_state.rect;
-                rect.right = width.round() as i16;
-                rect.bottom = height.round() as i16;
+                let (width, height) = wrapper.plugin.editor_size();
+                editor_state.rect.right = width.round() as i16;
+                editor_state.rect.bottom = height.round() as i16;
                 ptr::write(ptr as *mut *const Rect, &mut editor_state.rect);
 
                 return 1;
@@ -210,7 +203,12 @@ extern "C" fn dispatcher<P: Plugin>(
                     RawWindowHandle::Xcb(XcbHandle { window: ptr as u32, ..XcbHandle::empty() })
                 };
 
-                editor_state.editor.open(Some(&ParentWindow(parent)));
+                let editor = wrapper.plugin.editor(
+                    EditorContext(editor_state.context.clone()),
+                    Some(&ParentWindow(parent)),
+                );
+
+                editor_state.editor = Some(editor);
 
                 return 1;
             }
@@ -218,7 +216,7 @@ extern "C" fn dispatcher<P: Plugin>(
                 let wrapper = &*wrapper_ptr;
                 let editor_state = &mut *wrapper.editor_state.get();
 
-                editor_state.editor.close();
+                editor_state.editor = None;
 
                 return 1;
             }
@@ -228,7 +226,9 @@ extern "C" fn dispatcher<P: Plugin>(
                     let wrapper = &*wrapper_ptr;
                     let editor_state = &mut *wrapper.editor_state.get();
 
-                    editor_state.editor.poll();
+                    if let Some(editor) = &mut editor_state.editor {
+                        editor.poll();
+                    }
                 }
                 return 1;
             }
@@ -243,18 +243,13 @@ extern "C" fn dispatcher<P: Plugin>(
                 }
             }
             STRING_TO_PARAMETER => {
-                let wrapper = &*wrapper_ptr;
-                let param = wrapper.params.get(index as usize);
-                let param_info = P::PARAMS.get(index as usize);
-                if let (Some(param), Some(param_info)) = (param, param_info) {
-                    if !ptr.is_null() {
-                        let c_str = ffi::CStr::from_ptr(ptr as *const c_char);
-                        if let Ok(string) = c_str.to_str() {
-                            let value = (param_info.from_string)(string);
-                            param.store(value.to_bits(), Ordering::Relaxed);
-                        }
+                if let Some(param_info) = P::PARAMS.get(index as usize) {
+                    let c_str = ffi::CStr::from_ptr(ptr as *const c_char);
+                    if let Ok(string) = c_str.to_str() {
+                        let wrapper = &*wrapper_ptr;
+                        let value = (param_info.from_string)(string);
+                        wrapper.plugin.set_param(param_info.id, value);
                     }
-                    return 1;
                 }
             }
             GET_PROGRAM_NAME_INDEXED => {}
@@ -338,11 +333,8 @@ extern "C" fn process(
 extern "C" fn set_parameter<P: Plugin>(effect: *mut AEffect, index: i32, parameter: f32) {
     unsafe {
         let wrapper = &*(effect as *const Wrapper<P>);
-        let param = wrapper.params.get(index as usize);
-        let param_info = P::PARAMS.get(index as usize);
-        if let (Some(param), Some(param_info)) = (param, param_info) {
-            let value = (param_info.from_normal)(parameter as f64);
-            param.store(value.to_bits(), Ordering::Relaxed);
+        if let Some(param_info) = P::PARAMS.get(index as usize) {
+            wrapper.plugin.set_param(param_info.id, parameter as f64);
         }
     }
 }
@@ -350,11 +342,8 @@ extern "C" fn set_parameter<P: Plugin>(effect: *mut AEffect, index: i32, paramet
 extern "C" fn get_parameter<P: Plugin>(effect: *mut AEffect, index: i32) -> f32 {
     unsafe {
         let wrapper = &*(effect as *const Wrapper<P>);
-        let param = wrapper.params.get(index as usize);
-        let param_info = P::PARAMS.get(index as usize);
-        if let (Some(param), Some(param_info)) = (param, param_info) {
-            let value = f64::from_bits(param.load(Ordering::Relaxed));
-            (param_info.to_normal)(value) as f32
+        if let Some(param_info) = P::PARAMS.get(index as usize) {
+            wrapper.plugin.get_param(param_info.id) as f32
         } else {
             0.0
         }
@@ -369,29 +358,32 @@ extern "C" fn process_replacing<P: Plugin>(
 ) {
     unsafe {
         let wrapper = &*(effect as *const Wrapper<P>);
-        let plugin_state = &mut *wrapper.plugin_state.get();
+        let processor_state = &mut *wrapper.processor_state.get();
 
-        for (i, param) in wrapper.params.iter().enumerate() {
-            plugin_state.params[i] = f64::from_bits(param.load(Ordering::Relaxed));
+        if let Some(processor) = &mut processor_state.processor {
+            processor_state.param_changes.clear();
+            for param_info in P::PARAMS {
+                processor_state.param_changes.push(ParamChange {
+                    id: param_info.id,
+                    offset: 0,
+                    value: wrapper.plugin.get_param(param_info.id),
+                });
+            }
+
+            let input_ptrs = slice::from_raw_parts(inputs, 2);
+            let input_slices = &[
+                slice::from_raw_parts(input_ptrs[0], sample_frames as usize),
+                slice::from_raw_parts(input_ptrs[1], sample_frames as usize),
+            ];
+
+            let output_ptrs = slice::from_raw_parts(outputs, 2);
+            let output_slices = &mut [
+                slice::from_raw_parts_mut(output_ptrs[0], sample_frames as usize),
+                slice::from_raw_parts_mut(output_ptrs[1], sample_frames as usize),
+            ];
+
+            processor.process(input_slices, output_slices, &processor_state.param_changes[..]);
         }
-
-        let input_ptrs = slice::from_raw_parts(inputs, 2);
-        let input_slices = &[
-            slice::from_raw_parts(input_ptrs[0], sample_frames as usize),
-            slice::from_raw_parts(input_ptrs[1], sample_frames as usize),
-        ];
-
-        let output_ptrs = slice::from_raw_parts(outputs, 2);
-        let output_slices = &mut [
-            slice::from_raw_parts_mut(output_ptrs[0], sample_frames as usize),
-            slice::from_raw_parts_mut(output_ptrs[1], sample_frames as usize),
-        ];
-
-        plugin_state.plugin.process(
-            &ParamValues { values: &plugin_state.params },
-            input_slices,
-            output_slices,
-        );
     }
 }
 
@@ -404,25 +396,16 @@ extern "C" fn process_replacing_f64(
 }
 
 pub fn plugin_main<P: Plugin>(host_callback: HostCallbackProc) -> *mut AEffect {
-    let mut params = Vec::with_capacity(P::PARAMS.len());
-    for param_info in P::PARAMS {
-        params.push(AtomicU64::new(param_info.default.to_bits()));
+    let mut flags = effect_flags::CAN_REPLACING;
+    if P::INFO.has_editor {
+        flags |= effect_flags::HAS_EDITOR;
     }
-    let params = Arc::new(params);
 
     let editor_context = Rc::new(Vst2EditorContext {
         alive: Cell::new(true),
         host_callback,
         effect: Cell::new(ptr::null_mut()),
-        params: params.clone(),
     });
-
-    let (plugin, editor) = P::create(editor_context.clone());
-
-    let mut flags = effect_flags::CAN_REPLACING;
-    if P::INFO.has_editor {
-        flags |= effect_flags::HAS_EDITOR;
-    }
 
     let effect = Box::new(Wrapper {
         effect: AEffect {
@@ -455,12 +438,15 @@ pub fn plugin_main<P: Plugin>(host_callback: HostCallbackProc) -> *mut AEffect {
             process_replacing_f64,
             _future: [0; 56],
         },
-        params,
-        plugin_state: UnsafeCell::new(PluginState { params: vec![0.0; P::PARAMS.len()], plugin }),
+        plugin: P::create(),
+        processor_state: UnsafeCell::new(ProcessorState {
+            param_changes: Vec::with_capacity(P::PARAMS.len()),
+            processor: None,
+        }),
         editor_state: UnsafeCell::new(EditorState {
             rect: Rect { top: 0, left: 0, bottom: 0, right: 0 },
             context: editor_context,
-            editor,
+            editor: None,
         }),
     });
 

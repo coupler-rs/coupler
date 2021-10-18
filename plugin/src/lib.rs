@@ -1,6 +1,8 @@
 pub mod vst2;
 pub mod vst3;
 
+use std::rc::Rc;
+
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
 pub struct PluginInfo {
@@ -39,7 +41,7 @@ trait EditorContextInner {
     fn end_edit(&self, param_id: ParamId);
 }
 
-pub struct EditorContext(Box<dyn EditorContextInner>);
+pub struct EditorContext(Rc<dyn EditorContextInner>);
 
 impl EditorContext {
     pub fn begin_edit(&self, param_id: ParamId) {
