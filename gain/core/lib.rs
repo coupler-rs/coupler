@@ -1,9 +1,10 @@
 use plugin::*;
-use raw_window_handle::RawWindowHandle;
 use window::{Application, Parent, Rect, Window, WindowOptions};
 
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
+
+use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
 const GAIN: ParamInfo = ParamInfo {
     id: 0,
@@ -26,9 +27,8 @@ pub struct GainProcessor {
 }
 
 pub struct GainEditor {
-    #[allow(unused)]
-    application: Application,
-    window: Window,
+    application: Option<Application>,
+    window: Option<Window>,
 }
 
 impl Plugin for Gain {
@@ -47,8 +47,12 @@ impl Plugin for Gain {
     type Processor = GainProcessor;
     type Editor = GainEditor;
 
-    fn create() -> Gain {
-        Gain { gain: AtomicU64::new(0.0f64.to_bits()) }
+    fn create(_editor_context: EditorContext) -> (Gain, GainProcessor, GainEditor) {
+        let plugin = Gain { gain: AtomicU64::new(0.0f64.to_bits()) };
+        let processor = GainProcessor { gain: 0.0 };
+        let editor = GainEditor { application: None, window: None };
+
+        (plugin, processor, editor)
     }
 
     fn get_param(&self, id: ParamId) -> f64 {
@@ -65,33 +69,6 @@ impl Plugin for Gain {
             }
             _ => {}
         }
-    }
-
-    fn processor(&self) -> Self::Processor {
-        GainProcessor { gain: f64::from_bits(self.gain.load(Ordering::Relaxed)) as f32 }
-    }
-
-    fn editor_size(&self) -> (f64, f64) {
-        (0.0, 0.0)
-    }
-
-    fn editor(&self, _editor_context: EditorContext, parent: Option<&ParentWindow>) -> Self::Editor {
-        let parent =
-            if let Some(parent) = parent { Parent::Parent(parent) } else { Parent::Detached };
-
-        let application = Application::new().unwrap();
-
-        let window = Window::open(
-            &application,
-            WindowOptions {
-                rect: Rect { x: 0.0, y: 0.0, width: 512.0, height: 512.0 },
-                parent,
-                ..WindowOptions::default()
-            },
-        )
-        .unwrap();
-
-        GainEditor { application, window }
     }
 }
 
@@ -120,17 +97,58 @@ impl Processor for GainProcessor {
 }
 
 impl Editor for GainEditor {
-    fn poll(&mut self) {}
-    fn raw_window_handle(&self) -> Option<RawWindowHandle> {
-        None
+    fn size(&self) -> (f64, f64) {
+        (0.0, 0.0)
     }
-    fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
-        None
-    }
-}
 
-impl Drop for GainEditor {
-    fn drop(&mut self) {
-        self.window.close().unwrap();
+    fn open(&mut self, parent: Option<&ParentWindow>) {
+        let parent =
+            if let Some(parent) = parent { Parent::Parent(parent) } else { Parent::Detached };
+
+        let application = Application::new().unwrap();
+
+        let window = Window::open(
+            &application,
+            WindowOptions {
+                rect: Rect { x: 0.0, y: 0.0, width: 512.0, height: 512.0 },
+                parent,
+                ..WindowOptions::default()
+            },
+        )
+        .unwrap();
+
+        self.application = Some(application);
+        self.window = Some(window);
+    }
+
+    fn close(&mut self) {
+        if let Some(window) = &self.window {
+            window.close().unwrap();
+        }
+
+        self.window = None;
+        self.application = None;
+    }
+
+    fn poll(&mut self) {
+        if let Some(application) = &self.application {
+            application.poll();
+        }
+    }
+
+    fn raw_window_handle(&self) -> Option<RawWindowHandle> {
+        if let Some(window) = &self.window {
+            Some(window.raw_window_handle())
+        } else {
+            None
+        }
+    }
+
+    fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
+        if let Some(application) = &self.application {
+            application.file_descriptor()
+        } else {
+            None
+        }
     }
 }
