@@ -9,6 +9,3 @@ publish = false
 vst2 = { path = "../api/vst2" }
 vst3 = { path = "../api/vst3" }
 raw-window-handle = "0.3.3"
-
-[target.'cfg(target_os="macos")'.dependencies]
-core-foundation = "0.9.1"

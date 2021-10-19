@@ -14,9 +14,6 @@ use std::{ffi, mem, ptr, slice};
 
 use raw_window_handle::RawWindowHandle;
 
-#[cfg(target_os = "macos")]
-pub use core_foundation;
-
 pub use vst3 as vst3_api;
 use vst3::*;
 
@@ -1351,9 +1348,7 @@ macro_rules! vst3 {
 
             #[cfg(target_os = "macos")]
             #[no_mangle]
-            extern "system" fn BundleEntry(
-                _bundle_ref: $crate::vst3::core_foundation::bundle::CFBundleRef,
-            ) -> bool {
+            extern "system" fn BundleEntry(_bundle_ref: *mut c_void) -> bool {
                 true
             }
 
