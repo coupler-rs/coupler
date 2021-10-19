@@ -1,4 +1,7 @@
-use crate::{Editor, EditorContext, ParamInfo, ParamValues, ParentWindow, Plugin};
+use crate::{
+    Editor, EditorContext, EditorContextInner, ParamChange, ParamId, ParentWindow, Plugin,
+    Processor,
+};
 
 use std::cell::{Cell, UnsafeCell};
 use std::ffi::c_void;
@@ -138,23 +141,12 @@ impl<P: Plugin> Factory<P> {
 
         let factory = &*(this as *const Factory<P>);
 
-        let mut plugin_params = Vec::with_capacity(P::PARAMS.len());
-        for param_info in P::PARAMS {
-            plugin_params.push(param_info.default);
-        }
-
-        let mut editor_params = Vec::with_capacity(P::PARAMS.len());
-        for param_info in P::PARAMS {
-            editor_params.push(Cell::new(param_info.default));
-        }
-
         let editor_context = Rc::new(Vst3EditorContext {
             alive: Cell::new(true),
             component_handler: Cell::new(ptr::null_mut()),
-            params: editor_params,
         });
 
-        let (plugin, editor) = P::create(editor_context.clone());
+        let (plugin, processor, editor) = P::create(EditorContext(editor_context.clone()));
 
         *obj = Box::into_raw(Box::new(Wrapper {
             component: factory.component,
@@ -165,7 +157,11 @@ impl<P: Plugin> Factory<P> {
             event_handler: factory.event_handler,
             timer_handler: factory.timer_handler,
             count: AtomicU32::new(1),
-            plugin_state: UnsafeCell::new(PluginState { params: plugin_params, plugin }),
+            plugin,
+            processor_state: UnsafeCell::new(ProcessorState {
+                param_changes: Vec::with_capacity(P::PARAMS.len()),
+                processor,
+            }),
             editor_state: UnsafeCell::new(EditorState {
                 plug_frame: ptr::null_mut(),
                 context: editor_context,
@@ -235,59 +231,36 @@ impl<P: Plugin> Factory<P> {
 struct Vst3EditorContext {
     alive: Cell<bool>,
     component_handler: Cell<*mut *const IComponentHandler>,
-    params: Vec<Cell<f64>>,
 }
 
-impl EditorContext for Vst3EditorContext {
-    fn get(&self, param_info: &ParamInfo) -> f64 {
-        if let Some(param) = self.params.get(param_info.id as usize) {
-            param.get()
-        } else {
-            0.0
-        }
-    }
-
-    fn set(&self, param_info: &ParamInfo, value: f64) {
-        if let Some(param) = self.params.get(param_info.id as usize) {
-            param.set(value);
-
-            let component_handler = self.component_handler.get();
-            if self.alive.get() && !component_handler.is_null() {
-                unsafe {
-                    ((*(*component_handler)).perform_edit)(
-                        component_handler as *mut c_void,
-                        param_info.id,
-                        (param_info.to_normal)(value),
-                    );
-                }
+impl EditorContextInner for Vst3EditorContext {
+    fn begin_edit(&self, param_id: ParamId) {
+        let component_handler = self.component_handler.get();
+        if self.alive.get() && !component_handler.is_null() {
+            unsafe {
+                ((*(*component_handler)).begin_edit)(component_handler as *mut c_void, param_id);
             }
         }
     }
 
-    fn begin_edit(&self, param_info: &ParamInfo) {
-        if let Some(_param) = self.params.get(param_info.id as usize) {
-            let component_handler = self.component_handler.get();
-            if self.alive.get() && !component_handler.is_null() {
-                unsafe {
-                    ((*(*component_handler)).begin_edit)(
-                        component_handler as *mut c_void,
-                        param_info.id,
-                    );
-                }
+    fn perform_edit(&self, param_id: ParamId, value: f64) {
+        let component_handler = self.component_handler.get();
+        if self.alive.get() && !component_handler.is_null() {
+            unsafe {
+                ((*(*component_handler)).perform_edit)(
+                    component_handler as *mut c_void,
+                    param_id,
+                    value,
+                );
             }
         }
     }
 
-    fn end_edit(&self, param_info: &ParamInfo) {
-        if let Some(_param) = self.params.get(param_info.id as usize) {
-            let component_handler = self.component_handler.get();
-            if self.alive.get() && !component_handler.is_null() {
-                unsafe {
-                    ((*(*component_handler)).end_edit)(
-                        component_handler as *mut c_void,
-                        param_info.id,
-                    );
-                }
+    fn end_edit(&self, param_id: ParamId) {
+        let component_handler = self.component_handler.get();
+        if self.alive.get() && !component_handler.is_null() {
+            unsafe {
+                ((*(*component_handler)).end_edit)(component_handler as *mut c_void, param_id);
             }
         }
     }
@@ -303,13 +276,14 @@ pub struct Wrapper<P: Plugin> {
     event_handler: *const IEventHandler,
     timer_handler: *const ITimerHandler,
     count: AtomicU32,
-    plugin_state: UnsafeCell<PluginState<P>>,
+    plugin: P,
+    processor_state: UnsafeCell<ProcessorState<P>>,
     editor_state: UnsafeCell<EditorState<P>>,
 }
 
-struct PluginState<P: Plugin> {
-    params: Vec<f64>,
-    plugin: P,
+struct ProcessorState<P: Plugin> {
+    param_changes: Vec<ParamChange>,
+    processor: P::Processor,
 }
 
 struct EditorState<P: Plugin> {
@@ -343,43 +317,43 @@ impl<P: Plugin> Wrapper<P> {
         let iid = *iid;
 
         if iid == FUnknown::IID || iid == IComponent::IID {
-            Self::component_add_ref(this);
+            Self::add_ref(this);
             *obj = this.offset(Self::COMPONENT_OFFSET);
             return result::OK;
         }
 
         if iid == IAudioProcessor::IID {
-            Self::component_add_ref(this);
+            Self::add_ref(this);
             *obj = this.offset(Self::AUDIO_PROCESSOR_OFFSET);
             return result::OK;
         }
 
         if iid == IProcessContextRequirements::IID {
-            Self::component_add_ref(this);
+            Self::add_ref(this);
             *obj = this.offset(Self::PROCESS_CONTEXT_REQUIREMENTS_OFFSET);
             return result::OK;
         }
 
         if iid == IEditController::IID {
-            Self::component_add_ref(this);
+            Self::add_ref(this);
             *obj = this.offset(Self::EDIT_CONTROLLER_OFFSET);
             return result::OK;
         }
 
         if iid == IPlugView::IID && P::INFO.has_editor {
-            Self::component_add_ref(this);
+            Self::add_ref(this);
             *obj = this.offset(Self::PLUG_VIEW_OFFSET);
             return result::OK;
         }
 
         if iid == IEventHandler::IID {
-            Self::component_add_ref(this);
+            Self::add_ref(this);
             *obj = this.offset(Self::EVENT_HANDLER_OFFSET);
             return result::OK;
         }
 
         if iid == ITimerHandler::IID {
-            Self::component_add_ref(this);
+            Self::add_ref(this);
             *obj = this.offset(Self::TIMER_HANDLER_OFFSET);
             return result::OK;
         }
@@ -627,7 +601,9 @@ impl<P: Plugin> Wrapper<P> {
 
     pub unsafe extern "system" fn process(this: *mut c_void, data: *mut ProcessData) -> TResult {
         let wrapper = &*(this.offset(-Self::AUDIO_PROCESSOR_OFFSET) as *const Wrapper<P>);
-        let plugin_state = &mut *wrapper.plugin_state.get();
+        let processor_state = &mut *wrapper.processor_state.get();
+
+        processor_state.param_changes.clear();
 
         let process_data = &*data;
 
@@ -665,9 +641,7 @@ impl<P: Plugin> Wrapper<P> {
                     continue;
                 }
 
-                if let Some(param_info) = P::PARAMS.get(param_index as usize) {
-                    plugin_state.params[param_id as usize] = (param_info.from_normal)(value);
-                }
+                processor_state.param_changes.push(ParamChange { id: param_id, offset: 0, value });
             }
         }
 
@@ -711,10 +685,10 @@ impl<P: Plugin> Wrapper<P> {
             ),
         ];
 
-        plugin_state.plugin.process(
-            &ParamValues { values: &plugin_state.params },
+        processor_state.processor.process(
             input_slices,
             output_slices,
+            &processor_state.param_changes[..],
         );
 
         result::OK
@@ -894,15 +868,8 @@ impl<P: Plugin> Wrapper<P> {
 
     pub unsafe extern "system" fn get_param_normalized(this: *mut c_void, id: u32) -> f64 {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
-        let editor_state = &*wrapper.editor_state.get();
 
-        let param = editor_state.context.params.get(id as usize);
-        let param_info = P::PARAMS.get(id as usize);
-        if let (Some(param), Some(param_info)) = (param, param_info) {
-            (param_info.to_normal)(param.get())
-        } else {
-            0.0
-        }
+        wrapper.plugin.get_param(id)
     }
 
     pub unsafe extern "system" fn set_param_normalized(
@@ -911,16 +878,10 @@ impl<P: Plugin> Wrapper<P> {
         value: f64,
     ) -> TResult {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
-        let editor_state = &mut *wrapper.editor_state.get();
 
-        let param = editor_state.context.params.get(id as usize);
-        let param_info = P::PARAMS.get(id as usize);
-        if let (Some(param), Some(param_info)) = (param, param_info) {
-            param.set((param_info.from_normal)(value));
-            result::OK
-        } else {
-            result::INVALID_ARGUMENT
-        }
+        wrapper.plugin.set_param(id, value);
+
+        result::OK
     }
 
     pub unsafe extern "system" fn set_component_handler(
