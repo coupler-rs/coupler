@@ -41,6 +41,7 @@ trait EditorContextInner {
     fn end_edit(&self, param_id: ParamId);
 }
 
+#[derive(Clone)]
 pub struct EditorContext(Rc<dyn EditorContextInner>);
 
 impl EditorContext {
