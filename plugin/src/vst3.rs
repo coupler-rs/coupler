@@ -1,6 +1,7 @@
 use crate::{EditorContext, EditorContextInner, ParamChange, ParamId, ParentWindow, Plugin};
 
 use std::cell::{Cell, UnsafeCell};
+use std::collections::HashMap;
 use std::ffi::c_void;
 use std::marker::PhantomData;
 use std::os::raw::{c_char, c_int};
@@ -140,6 +141,11 @@ impl<P: Plugin> Factory<P> {
             component_handler: Cell::new(ptr::null_mut()),
         });
 
+        let mut param_indices = HashMap::with_capacity(P::PARAMS.len());
+        for (index, param) in P::PARAMS.iter().enumerate() {
+            param_indices.insert(param.id, index);
+        }
+
         let (plugin, process_data, editor_data) = P::create(EditorContext(editor_context.clone()));
 
         *obj = Box::into_raw(Box::new(Wrapper {
@@ -151,6 +157,7 @@ impl<P: Plugin> Factory<P> {
             event_handler: factory.event_handler,
             timer_handler: factory.timer_handler,
             count: AtomicU32::new(1),
+            param_indices,
             plugin,
             process_state: UnsafeCell::new(ProcessState {
                 param_changes: Vec::with_capacity(P::PARAMS.len()),
@@ -270,6 +277,7 @@ pub struct Wrapper<P: Plugin> {
     event_handler: *const IEventHandler,
     timer_handler: *const ITimerHandler,
     count: AtomicU32,
+    param_indices: HashMap<u32, usize>,
     plugin: P,
     process_state: UnsafeCell<ProcessState<P>>,
     editor_state: UnsafeCell<EditorState<P>>,
@@ -804,12 +812,15 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn get_param_string_by_value(
-        _this: *mut c_void,
+        this: *mut c_void,
         id: u32,
         value_normalized: f64,
         string: *mut String128,
     ) -> TResult {
-        if let Some(param_info) = P::PARAMS.get(id as usize) {
+        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+
+        if let Some(param_index) = wrapper.param_indices.get(&id) {
+            let param_info = &P::PARAMS[*param_index];
             let display = (param_info.to_string)((param_info.from_normal)(value_normalized));
             copy_wstring(&display, &mut *string);
             result::OK
@@ -819,17 +830,20 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn get_param_value_by_string(
-        _this: *mut c_void,
+        this: *mut c_void,
         id: u32,
         string: *const TChar,
         value_normalized: *mut f64,
     ) -> TResult {
+        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+
         let len = len_wstring(string);
         let string = String::from_utf16(slice::from_raw_parts(string as *const u16, len));
 
-        let param_info = P::PARAMS.get(id as usize);
+        let param_index = wrapper.param_indices.get(&id);
 
-        if let (Ok(string), Some(param_info)) = (string, param_info) {
+        if let (Ok(string), Some(param_index)) = (string, param_index) {
+            let param_info = &P::PARAMS[*param_index];
             *value_normalized = (param_info.from_string)(&string);
             result::OK
         } else {
@@ -838,11 +852,14 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn normalized_param_to_plain(
-        _this: *mut c_void,
+        this: *mut c_void,
         id: u32,
         value_normalized: f64,
     ) -> f64 {
-        if let Some(param_info) = P::PARAMS.get(id as usize) {
+        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+
+        if let Some(param_index) = wrapper.param_indices.get(&id) {
+            let param_info = &P::PARAMS[*param_index];
             (param_info.from_normal)(value_normalized)
         } else {
             0.0
@@ -850,11 +867,14 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn plain_param_to_normalized(
-        _this: *mut c_void,
+        this: *mut c_void,
         id: u32,
         plain_value: f64,
     ) -> f64 {
-        if let Some(param_info) = P::PARAMS.get(id as usize) {
+        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+
+        if let Some(param_index) = wrapper.param_indices.get(&id) {
+            let param_info = &P::PARAMS[*param_index];
             (param_info.to_normal)(plain_value)
         } else {
             0.0
@@ -984,7 +1004,8 @@ impl<P: Plugin> Wrapper<P> {
         wrapper.plugin.editor_open(&mut editor_state.editor_data, Some(&ParentWindow(parent)));
 
         #[cfg(target_os = "linux")]
-        if let Some(file_descriptor) = wrapper.plugin.file_descriptor(&mut editor_state.editor_data) {
+        if let Some(file_descriptor) = wrapper.plugin.file_descriptor(&mut editor_state.editor_data)
+        {
             if !editor_state.plug_frame.is_null() {
                 let mut obj = ptr::null_mut();
                 let result = ((*(*editor_state.plug_frame)).unknown.query_interface)(
