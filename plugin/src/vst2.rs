@@ -351,12 +351,7 @@ extern "C" fn process_replacing<P: Plugin>(
             slice::from_raw_parts_mut(output_ptrs[1], sample_frames as usize),
         ];
 
-        wrapper.plugin.process(
-            &mut process_state.process_data,
-            input_slices,
-            output_slices,
-            &[],
-        );
+        wrapper.plugin.process(&mut process_state.process_data, input_slices, output_slices, &[]);
     }
 }
 
@@ -414,9 +409,7 @@ pub fn plugin_main<P: Plugin>(host_callback: HostCallbackProc) -> *mut AEffect {
             _future: [0; 56],
         },
         plugin,
-        process_state: UnsafeCell::new(ProcessState {
-            process_data,
-        }),
+        process_state: UnsafeCell::new(ProcessState { process_data }),
         editor_state: UnsafeCell::new(EditorState {
             rect: Rect { top: 0, left: 0, bottom: 0, right: 0 },
             context: editor_context,
