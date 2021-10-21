@@ -1,4 +1,4 @@
-use crate::{EditorContext, EditorContextInner, ParamChange, ParamId, ParentWindow, Plugin};
+use crate::{EditorContext, EditorContextInner, ParamId, ParentWindow, Plugin};
 
 use std::cell::{Cell, UnsafeCell};
 use std::os::raw::c_char;
@@ -26,7 +26,6 @@ struct Wrapper<P: Plugin> {
 }
 
 struct ProcessState<P: Plugin> {
-    param_changes: Vec<ParamChange>,
     process_data: P::ProcessData,
 }
 
@@ -340,15 +339,6 @@ extern "C" fn process_replacing<P: Plugin>(
         let wrapper = &*(effect as *const Wrapper<P>);
         let process_state = &mut *wrapper.process_state.get();
 
-        process_state.param_changes.clear();
-        for param_info in P::PARAMS {
-            process_state.param_changes.push(ParamChange {
-                id: param_info.id,
-                offset: 0,
-                value: wrapper.plugin.get_param(param_info.id),
-            });
-        }
-
         let input_ptrs = slice::from_raw_parts(inputs, 2);
         let input_slices = &[
             slice::from_raw_parts(input_ptrs[0], sample_frames as usize),
@@ -365,7 +355,7 @@ extern "C" fn process_replacing<P: Plugin>(
             &mut process_state.process_data,
             input_slices,
             output_slices,
-            &process_state.param_changes[..],
+            &[],
         );
     }
 }
@@ -425,7 +415,6 @@ pub fn plugin_main<P: Plugin>(host_callback: HostCallbackProc) -> *mut AEffect {
         },
         plugin,
         process_state: UnsafeCell::new(ProcessState {
-            param_changes: Vec::with_capacity(P::PARAMS.len()),
             process_data,
         }),
         editor_state: UnsafeCell::new(EditorState {

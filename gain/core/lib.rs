@@ -78,10 +78,12 @@ impl Plugin for Gain {
         outputs: &mut [&mut [f32]],
         param_changes: &[ParamChange],
     ) {
+        let mut gain = f64::from_bits(self.gain.load(Ordering::Relaxed)) as f32;
+
         for change in param_changes {
             match change.id {
                 0 => {
-                    process_data.gain = change.value as f32;
+                    gain = change.value as f32;
                 }
                 _ => {}
             }
@@ -89,9 +91,12 @@ impl Plugin for Gain {
 
         for (input, output) in inputs.iter().zip(outputs.iter_mut()) {
             for (input_sample, output_sample) in input.iter().zip(output.iter_mut()) {
+                process_data.gain = 0.9995 * process_data.gain + 0.0005 * gain;
                 *output_sample = process_data.gain * *input_sample;
             }
         }
+
+        self.gain.store((gain as f64).to_bits(), Ordering::Relaxed);
     }
 
     fn editor_size(&self, _editor_data: &GainEditor) -> (f64, f64) {
