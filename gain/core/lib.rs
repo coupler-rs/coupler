@@ -22,7 +22,7 @@ pub struct Gain {
     gain: AtomicU64,
 }
 
-pub struct GainProcessor {
+pub struct GainProcess {
     gain: f32,
 }
 
@@ -39,17 +39,17 @@ impl Plugin for Gain {
         email: "micah@glowcoil.com",
         unique_id: *b"asdf",
         uid: [0x84B4DD04, 0x0D964565, 0x97AC3AAA, 0x87C5CCA7],
-        has_editor: true,
+        has_editor: false,
     };
 
     const PARAMS: &'static [ParamInfo] = &[GAIN];
 
-    type Processor = GainProcessor;
-    type Editor = GainEditor;
+    type ProcessData = GainProcess;
+    type EditorData = GainEditor;
 
-    fn create(_editor_context: EditorContext) -> (Gain, GainProcessor, GainEditor) {
+    fn create(_editor_context: EditorContext) -> (Gain, GainProcess, GainEditor) {
         let plugin = Gain { gain: AtomicU64::new(0.0f64.to_bits()) };
-        let processor = GainProcessor { gain: 0.0 };
+        let processor = GainProcess { gain: 0.0 };
         let editor = GainEditor { application: None, window: None };
 
         (plugin, processor, editor)
@@ -70,11 +70,10 @@ impl Plugin for Gain {
             _ => {}
         }
     }
-}
 
-impl Processor for GainProcessor {
     fn process(
-        &mut self,
+        &self,
+        process_data: &mut GainProcess,
         inputs: &[&[f32]],
         outputs: &mut [&mut [f32]],
         param_changes: &[ParamChange],
@@ -82,7 +81,7 @@ impl Processor for GainProcessor {
         for change in param_changes {
             match change.id {
                 0 => {
-                    self.gain = change.value as f32;
+                    process_data.gain = change.value as f32;
                 }
                 _ => {}
             }
@@ -90,18 +89,16 @@ impl Processor for GainProcessor {
 
         for (input, output) in inputs.iter().zip(outputs.iter_mut()) {
             for (input_sample, output_sample) in input.iter().zip(output.iter_mut()) {
-                *output_sample = self.gain * *input_sample;
+                *output_sample = process_data.gain * *input_sample;
             }
         }
     }
-}
 
-impl Editor for GainEditor {
-    fn size(&self) -> (f64, f64) {
+    fn editor_size(&self, _editor_data: &GainEditor) -> (f64, f64) {
         (0.0, 0.0)
     }
 
-    fn open(&mut self, parent: Option<&ParentWindow>) {
+    fn editor_open(&self, editor_data: &mut GainEditor, parent: Option<&ParentWindow>) {
         let parent =
             if let Some(parent) = parent { Parent::Parent(parent) } else { Parent::Detached };
 
@@ -117,35 +114,35 @@ impl Editor for GainEditor {
         )
         .unwrap();
 
-        self.application = Some(application);
-        self.window = Some(window);
+        editor_data.application = Some(application);
+        editor_data.window = Some(window);
     }
 
-    fn close(&mut self) {
-        if let Some(window) = &self.window {
+    fn editor_close(&self, editor_data: &mut GainEditor) {
+        if let Some(window) = &editor_data.window {
             window.close().unwrap();
         }
 
-        self.window = None;
-        self.application = None;
+        editor_data.window = None;
+        editor_data.application = None;
     }
 
-    fn poll(&mut self) {
-        if let Some(application) = &self.application {
+    fn editor_poll(&self, editor_data: &mut GainEditor) {
+        if let Some(application) = &editor_data.application {
             application.poll();
         }
     }
 
-    fn raw_window_handle(&self) -> Option<RawWindowHandle> {
-        if let Some(window) = &self.window {
+    fn raw_window_handle(&self, editor_data: &GainEditor) -> Option<RawWindowHandle> {
+        if let Some(window) = &editor_data.window {
             Some(window.raw_window_handle())
         } else {
             None
         }
     }
 
-    fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
-        if let Some(application) = &self.application {
+    fn file_descriptor(&self, editor_data: &GainEditor) -> Option<std::os::raw::c_int> {
+        if let Some(application) = &editor_data.application {
             application.file_descriptor()
         } else {
             None

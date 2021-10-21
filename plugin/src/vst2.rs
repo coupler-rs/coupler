@@ -1,7 +1,4 @@
-use crate::{
-    Editor, EditorContext, EditorContextInner, ParamChange, ParamId, ParentWindow, Plugin,
-    Processor,
-};
+use crate::{EditorContext, EditorContextInner, ParamChange, ParamId, ParentWindow, Plugin};
 
 use std::cell::{Cell, UnsafeCell};
 use std::os::raw::c_char;
@@ -24,19 +21,19 @@ fn copy_cstring(src: &str, dst: &mut [c_char]) {
 struct Wrapper<P: Plugin> {
     effect: AEffect,
     plugin: P,
-    processor_state: UnsafeCell<ProcessorState<P>>,
+    process_state: UnsafeCell<ProcessState<P>>,
     editor_state: UnsafeCell<EditorState<P>>,
 }
 
-struct ProcessorState<P: Plugin> {
+struct ProcessState<P: Plugin> {
     param_changes: Vec<ParamChange>,
-    processor: P::Processor,
+    process_data: P::ProcessData,
 }
 
 struct EditorState<P: Plugin> {
     rect: Rect,
     context: Rc<Vst2EditorContext>,
-    editor: P::Editor,
+    editor_data: P::EditorData,
 }
 
 struct Vst2EditorContext {
@@ -159,7 +156,7 @@ extern "C" fn dispatcher<P: Plugin>(
                 let wrapper = &*wrapper_ptr;
                 let editor_state = &mut *wrapper.editor_state.get();
 
-                let (width, height) = editor_state.editor.size();
+                let (width, height) = wrapper.plugin.editor_size(&editor_state.editor_data);
                 editor_state.rect.right = width.round() as i16;
                 editor_state.rect.bottom = height.round() as i16;
                 ptr::write(ptr as *mut *const Rect, &mut editor_state.rect);
@@ -191,7 +188,9 @@ extern "C" fn dispatcher<P: Plugin>(
                     RawWindowHandle::Xcb(XcbHandle { window: ptr as u32, ..XcbHandle::empty() })
                 };
 
-                editor_state.editor.open(Some(&ParentWindow(parent)));
+                wrapper
+                    .plugin
+                    .editor_open(&mut editor_state.editor_data, Some(&ParentWindow(parent)));
 
                 return 1;
             }
@@ -199,7 +198,7 @@ extern "C" fn dispatcher<P: Plugin>(
                 let wrapper = &*wrapper_ptr;
                 let editor_state = &mut *wrapper.editor_state.get();
 
-                editor_state.editor.close();
+                wrapper.plugin.editor_close(&mut editor_state.editor_data);
 
                 return 1;
             }
@@ -339,11 +338,11 @@ extern "C" fn process_replacing<P: Plugin>(
 ) {
     unsafe {
         let wrapper = &*(effect as *const Wrapper<P>);
-        let processor_state = &mut *wrapper.processor_state.get();
+        let process_state = &mut *wrapper.process_state.get();
 
-        processor_state.param_changes.clear();
+        process_state.param_changes.clear();
         for param_info in P::PARAMS {
-            processor_state.param_changes.push(ParamChange {
+            process_state.param_changes.push(ParamChange {
                 id: param_info.id,
                 offset: 0,
                 value: wrapper.plugin.get_param(param_info.id),
@@ -362,10 +361,11 @@ extern "C" fn process_replacing<P: Plugin>(
             slice::from_raw_parts_mut(output_ptrs[1], sample_frames as usize),
         ];
 
-        processor_state.processor.process(
+        wrapper.plugin.process(
+            &mut process_state.process_data,
             input_slices,
             output_slices,
-            &processor_state.param_changes[..],
+            &process_state.param_changes[..],
         );
     }
 }
@@ -385,7 +385,7 @@ pub fn plugin_main<P: Plugin>(host_callback: HostCallbackProc) -> *mut AEffect {
         effect: Cell::new(ptr::null_mut()),
     });
 
-    let (plugin, processor, editor) = P::create(EditorContext(editor_context.clone()));
+    let (plugin, process_data, editor_data) = P::create(EditorContext(editor_context.clone()));
 
     let mut flags = effect_flags::CAN_REPLACING;
     if P::INFO.has_editor {
@@ -424,14 +424,14 @@ pub fn plugin_main<P: Plugin>(host_callback: HostCallbackProc) -> *mut AEffect {
             _future: [0; 56],
         },
         plugin,
-        processor_state: UnsafeCell::new(ProcessorState {
+        process_state: UnsafeCell::new(ProcessState {
             param_changes: Vec::with_capacity(P::PARAMS.len()),
-            processor,
+            process_data,
         }),
         editor_state: UnsafeCell::new(EditorState {
             rect: Rect { top: 0, left: 0, bottom: 0, right: 0 },
             context: editor_context,
-            editor,
+            editor_data,
         }),
     });
 
