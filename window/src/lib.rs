@@ -85,7 +85,7 @@ pub struct Rect {
     pub height: f64,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum MouseButton {
     Left,
     Middle,
