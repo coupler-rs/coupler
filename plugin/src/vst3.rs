@@ -984,7 +984,7 @@ impl<P: Plugin> Wrapper<P> {
         wrapper.plugin.editor_open(&mut editor_state.editor_data, Some(&ParentWindow(parent)));
 
         #[cfg(target_os = "linux")]
-        if let Some(file_descriptor) = editor_state.editor.file_descriptor() {
+        if let Some(file_descriptor) = wrapper.plugin.file_descriptor(&mut editor_state.editor_data) {
             if !editor_state.plug_frame.is_null() {
                 let mut obj = ptr::null_mut();
                 let result = ((*(*editor_state.plug_frame)).unknown.query_interface)(

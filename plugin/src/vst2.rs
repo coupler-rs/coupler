@@ -207,7 +207,7 @@ extern "C" fn dispatcher<P: Plugin>(
                     let wrapper = &*wrapper_ptr;
                     let editor_state = &mut *wrapper.editor_state.get();
 
-                    editor_state.editor.poll();
+                    wrapper.plugin.editor_poll(&mut editor_state.editor_data);
                 }
                 return 1;
             }
