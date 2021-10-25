@@ -1,4 +1,7 @@
-use crate::{EditorContext, EditorContextInner, ParamChange, ParamId, ParentWindow, Plugin};
+use crate::{
+    Editor, EditorContext, EditorContextInner, ParamChange, ParamId, ParentWindow, Plugin,
+    Processor,
+};
 
 use std::cell::{Cell, UnsafeCell};
 use std::collections::HashMap;
@@ -146,7 +149,7 @@ impl<P: Plugin> Factory<P> {
             param_indices.insert(param.id, index);
         }
 
-        let (plugin, process_data, editor_data) = P::create(EditorContext(editor_context.clone()));
+        let (plugin, processor, editor) = P::create(EditorContext(editor_context.clone()));
 
         *obj = Box::into_raw(Box::new(Wrapper {
             component: factory.component,
@@ -159,14 +162,14 @@ impl<P: Plugin> Factory<P> {
             count: AtomicU32::new(1),
             param_indices,
             plugin,
-            process_state: UnsafeCell::new(ProcessState {
+            processor_state: UnsafeCell::new(ProcessorState {
                 param_changes: Vec::with_capacity(P::PARAMS.len()),
-                process_data,
+                processor,
             }),
             editor_state: UnsafeCell::new(EditorState {
                 plug_frame: ptr::null_mut(),
                 context: editor_context,
-                editor_data,
+                editor,
             }),
         })) as *mut c_void;
 
@@ -279,19 +282,19 @@ pub struct Wrapper<P: Plugin> {
     count: AtomicU32,
     param_indices: HashMap<u32, usize>,
     plugin: P,
-    process_state: UnsafeCell<ProcessState<P>>,
+    processor_state: UnsafeCell<ProcessorState<P>>,
     editor_state: UnsafeCell<EditorState<P>>,
 }
 
-struct ProcessState<P: Plugin> {
+struct ProcessorState<P: Plugin> {
     param_changes: Vec<ParamChange>,
-    process_data: P::ProcessData,
+    processor: P::Processor,
 }
 
 struct EditorState<P: Plugin> {
     plug_frame: *mut *const IPlugFrame,
     context: Rc<Vst3EditorContext>,
-    editor_data: P::EditorData,
+    editor: P::Editor,
 }
 
 unsafe impl<P: Plugin> Sync for Wrapper<P> {}
@@ -603,13 +606,13 @@ impl<P: Plugin> Wrapper<P> {
 
     pub unsafe extern "system" fn process(this: *mut c_void, data: *mut ProcessData) -> TResult {
         let wrapper = &*(this.offset(-Self::AUDIO_PROCESSOR_OFFSET) as *const Wrapper<P>);
-        let process_state = &mut *wrapper.process_state.get();
+        let processor_state = &mut *wrapper.processor_state.get();
 
-        process_state.param_changes.clear();
+        processor_state.param_changes.clear();
 
-        let process_data = &*data;
+        let processor = &*data;
 
-        let param_changes = process_data.input_parameter_changes;
+        let param_changes = processor.input_parameter_changes;
         if !param_changes.is_null() {
             let param_count =
                 ((*(*param_changes)).get_parameter_count)(param_changes as *mut c_void);
@@ -643,16 +646,16 @@ impl<P: Plugin> Wrapper<P> {
                     continue;
                 }
 
-                process_state.param_changes.push(ParamChange { id: param_id, offset: 0, value });
+                processor_state.param_changes.push(ParamChange { id: param_id, offset: 0, value });
             }
         }
 
-        if process_data.num_inputs != 1 || process_data.num_outputs != 1 {
+        if processor.num_inputs != 1 || processor.num_outputs != 1 {
             return result::OK;
         }
 
-        let input_bus = &*process_data.inputs;
-        let output_bus = &*process_data.outputs;
+        let input_bus = &*processor.inputs;
+        let output_bus = &*processor.outputs;
 
         if input_bus.num_channels != 2 || output_bus.num_channels != 2 {
             return result::OK;
@@ -672,26 +675,19 @@ impl<P: Plugin> Wrapper<P> {
         }
 
         let input_slices = &[
-            slice::from_raw_parts(input_ptrs[0] as *const f32, process_data.num_samples as usize),
-            slice::from_raw_parts(input_ptrs[1] as *const f32, process_data.num_samples as usize),
+            slice::from_raw_parts(input_ptrs[0] as *const f32, processor.num_samples as usize),
+            slice::from_raw_parts(input_ptrs[1] as *const f32, processor.num_samples as usize),
         ];
 
         let output_slices = &mut [
-            slice::from_raw_parts_mut(
-                output_ptrs[0] as *mut f32,
-                process_data.num_samples as usize,
-            ),
-            slice::from_raw_parts_mut(
-                output_ptrs[1] as *mut f32,
-                process_data.num_samples as usize,
-            ),
+            slice::from_raw_parts_mut(output_ptrs[0] as *mut f32, processor.num_samples as usize),
+            slice::from_raw_parts_mut(output_ptrs[1] as *mut f32, processor.num_samples as usize),
         ];
 
-        wrapper.plugin.process(
-            &mut process_state.process_data,
+        processor_state.processor.process(
             input_slices,
             output_slices,
-            &process_state.param_changes[..],
+            &processor_state.param_changes[..],
         );
 
         result::OK
@@ -1001,11 +997,10 @@ impl<P: Plugin> Wrapper<P> {
             RawWindowHandle::Xcb(XcbHandle { window: parent as u32, ..XcbHandle::empty() })
         };
 
-        wrapper.plugin.editor_open(&mut editor_state.editor_data, Some(&ParentWindow(parent)));
+        editor_state.editor.open(Some(&ParentWindow(parent)));
 
         #[cfg(target_os = "linux")]
-        if let Some(file_descriptor) = wrapper.plugin.file_descriptor(&mut editor_state.editor_data)
-        {
+        if let Some(file_descriptor) = editor_state.editor.file_descriptor() {
             if !editor_state.plug_frame.is_null() {
                 let mut obj = ptr::null_mut();
                 let result = ((*(*editor_state.plug_frame)).unknown.query_interface)(
@@ -1042,7 +1037,7 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::PLUG_VIEW_OFFSET) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
-        wrapper.plugin.editor_close(&mut editor_state.editor_data);
+        editor_state.editor.close();
 
         #[cfg(target_os = "linux")]
         {
@@ -1103,7 +1098,7 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::PLUG_VIEW_OFFSET) as *const Wrapper<P>);
         let editor_state = &*wrapper.editor_state.get();
 
-        let (width, height) = wrapper.plugin.editor_size(&editor_state.editor_data);
+        let (width, height) = editor_state.editor.size();
 
         let size = &mut *size;
         size.left = 0;
@@ -1174,7 +1169,7 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EVENT_HANDLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
-        wrapper.plugin.editor_poll(&mut editor_state.editor_data);
+        editor_state.editor.poll();
     }
 
     pub unsafe extern "system" fn timer_handler_query_interface(
@@ -1197,7 +1192,7 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::TIMER_HANDLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
-        wrapper.plugin.editor_poll(&mut editor_state.editor_data);
+        editor_state.editor.poll();
     }
 }
 

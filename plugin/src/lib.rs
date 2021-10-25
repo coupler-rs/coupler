@@ -70,26 +70,29 @@ pub trait Plugin: Send + Sync + Sized {
     const INFO: PluginInfo;
     const PARAMS: &'static [ParamInfo];
 
-    type ProcessData: Send + Sized;
-    type EditorData: Sized;
+    type Processor: Processor;
+    type Editor: Editor;
 
-    fn create(editor_context: EditorContext) -> (Self, Self::ProcessData, Self::EditorData);
+    fn create(editor_context: EditorContext) -> (Self, Self::Processor, Self::Editor);
 
     fn get_param(&self, id: ParamId) -> f64;
     fn set_param(&self, id: ParamId, value: f64);
+}
 
+pub trait Processor: Send + Sized {
     fn process(
-        &self,
-        process_data: &mut Self::ProcessData,
+        &mut self,
         inputs: &[&[f32]],
         outputs: &mut [&mut [f32]],
         param_changes: &[ParamChange],
     );
+}
 
-    fn editor_size(&self, editor_data: &Self::EditorData) -> (f64, f64);
-    fn editor_open(&self, editor_data: &mut Self::EditorData, parent: Option<&ParentWindow>);
-    fn editor_close(&self, editor_data: &mut Self::EditorData);
-    fn editor_poll(&self, editor_data: &mut Self::EditorData);
-    fn raw_window_handle(&self, editor_data: &Self::EditorData) -> Option<RawWindowHandle>;
-    fn file_descriptor(&self, editor_data: &Self::EditorData) -> Option<std::os::raw::c_int>;
+pub trait Editor: Sized {
+    fn size(&self) -> (f64, f64);
+    fn open(&mut self, parent: Option<&ParentWindow>);
+    fn close(&mut self);
+    fn poll(&mut self);
+    fn raw_window_handle(&self) -> Option<RawWindowHandle>;
+    fn file_descriptor(&self) -> Option<std::os::raw::c_int>;
 }

@@ -1,4 +1,4 @@
-use crate::{EditorContext, EditorContextInner, ParamId, ParentWindow, Plugin};
+use crate::{Editor, EditorContext, EditorContextInner, ParamId, ParentWindow, Plugin, Processor};
 
 use std::cell::{Cell, UnsafeCell};
 use std::os::raw::c_char;
@@ -21,18 +21,18 @@ fn copy_cstring(src: &str, dst: &mut [c_char]) {
 struct Wrapper<P: Plugin> {
     effect: AEffect,
     plugin: P,
-    process_state: UnsafeCell<ProcessState<P>>,
+    processor_state: UnsafeCell<ProcessorState<P>>,
     editor_state: UnsafeCell<EditorState<P>>,
 }
 
-struct ProcessState<P: Plugin> {
-    process_data: P::ProcessData,
+struct ProcessorState<P: Plugin> {
+    processor: P::Processor,
 }
 
 struct EditorState<P: Plugin> {
     rect: Rect,
     context: Rc<Vst2EditorContext>,
-    editor_data: P::EditorData,
+    editor: P::Editor,
 }
 
 struct Vst2EditorContext {
@@ -155,7 +155,7 @@ extern "C" fn dispatcher<P: Plugin>(
                 let wrapper = &*wrapper_ptr;
                 let editor_state = &mut *wrapper.editor_state.get();
 
-                let (width, height) = wrapper.plugin.editor_size(&editor_state.editor_data);
+                let (width, height) = editor_state.editor.size();
                 editor_state.rect.right = width.round() as i16;
                 editor_state.rect.bottom = height.round() as i16;
                 ptr::write(ptr as *mut *const Rect, &mut editor_state.rect);
@@ -187,9 +187,7 @@ extern "C" fn dispatcher<P: Plugin>(
                     RawWindowHandle::Xcb(XcbHandle { window: ptr as u32, ..XcbHandle::empty() })
                 };
 
-                wrapper
-                    .plugin
-                    .editor_open(&mut editor_state.editor_data, Some(&ParentWindow(parent)));
+                editor_state.editor.open(Some(&ParentWindow(parent)));
 
                 return 1;
             }
@@ -197,7 +195,7 @@ extern "C" fn dispatcher<P: Plugin>(
                 let wrapper = &*wrapper_ptr;
                 let editor_state = &mut *wrapper.editor_state.get();
 
-                wrapper.plugin.editor_close(&mut editor_state.editor_data);
+                editor_state.editor.close();
 
                 return 1;
             }
@@ -207,7 +205,7 @@ extern "C" fn dispatcher<P: Plugin>(
                     let wrapper = &*wrapper_ptr;
                     let editor_state = &mut *wrapper.editor_state.get();
 
-                    wrapper.plugin.editor_poll(&mut editor_state.editor_data);
+                    editor_state.editor.poll();
                 }
                 return 1;
             }
@@ -337,7 +335,7 @@ extern "C" fn process_replacing<P: Plugin>(
 ) {
     unsafe {
         let wrapper = &*(effect as *const Wrapper<P>);
-        let process_state = &mut *wrapper.process_state.get();
+        let processor_state = &mut *wrapper.processor_state.get();
 
         let input_ptrs = slice::from_raw_parts(inputs, 2);
         let input_slices = &[
@@ -351,7 +349,7 @@ extern "C" fn process_replacing<P: Plugin>(
             slice::from_raw_parts_mut(output_ptrs[1], sample_frames as usize),
         ];
 
-        wrapper.plugin.process(&mut process_state.process_data, input_slices, output_slices, &[]);
+        processor_state.processor.process(input_slices, output_slices, &[]);
     }
 }
 
@@ -370,7 +368,7 @@ pub fn plugin_main<P: Plugin>(host_callback: HostCallbackProc) -> *mut AEffect {
         effect: Cell::new(ptr::null_mut()),
     });
 
-    let (plugin, process_data, editor_data) = P::create(EditorContext(editor_context.clone()));
+    let (plugin, processor, editor) = P::create(EditorContext(editor_context.clone()));
 
     let mut flags = effect_flags::CAN_REPLACING;
     if P::INFO.has_editor {
@@ -409,11 +407,11 @@ pub fn plugin_main<P: Plugin>(host_callback: HostCallbackProc) -> *mut AEffect {
             _future: [0; 56],
         },
         plugin,
-        process_state: UnsafeCell::new(ProcessState { process_data }),
+        processor_state: UnsafeCell::new(ProcessorState { processor }),
         editor_state: UnsafeCell::new(EditorState {
             rect: Rect { top: 0, left: 0, bottom: 0, right: 0 },
             context: editor_context,
-            editor_data,
+            editor,
         }),
     });
 

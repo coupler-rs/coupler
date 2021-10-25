@@ -23,18 +23,18 @@ const GAIN: ParamInfo = ParamInfo {
     from_string: |s| f64::from_str(s).unwrap_or(0.0),
 };
 
+pub struct GainParams {
+    gain: AtomicU64,
+}
+
+impl GainParams {
+    fn new() -> GainParams {
+        GainParams { gain: AtomicU64::new(0.0f64.to_bits()) }
+    }
+}
+
 pub struct Gain {
-    gain: Arc<AtomicU64>,
-}
-
-pub struct GainProcess {
-    gain: f32,
-}
-
-pub struct GainEditor {
-    editor_context: EditorContext,
-    application: Option<Application>,
-    window: Option<Window>,
+    params: Arc<GainParams>,
 }
 
 impl Plugin for Gain {
@@ -50,20 +50,23 @@ impl Plugin for Gain {
 
     const PARAMS: &'static [ParamInfo] = &[GAIN];
 
-    type ProcessData = GainProcess;
-    type EditorData = GainEditor;
+    type Processor = GainProcessor;
+    type Editor = GainEditor;
 
-    fn create(editor_context: EditorContext) -> (Gain, GainProcess, GainEditor) {
-        let plugin = Gain { gain: Arc::new(AtomicU64::new(0.0f64.to_bits())) };
-        let processor = GainProcess { gain: 0.0 };
-        let editor = GainEditor { editor_context, application: None, window: None };
+    fn create(editor_context: EditorContext) -> (Gain, GainProcessor, GainEditor) {
+        let params = Arc::new(GainParams::new());
+
+        let plugin = Gain { params: params.clone() };
+        let processor = GainProcessor { params: params.clone(), gain: 0.0 };
+        let editor =
+            GainEditor { editor_context, params: params.clone(), application: None, window: None };
 
         (plugin, processor, editor)
     }
 
     fn get_param(&self, id: ParamId) -> f64 {
         match id {
-            0 => f64::from_bits(self.gain.load(Ordering::Relaxed)),
+            0 => f64::from_bits(self.params.gain.load(Ordering::Relaxed)),
             _ => 0.0,
         }
     }
@@ -71,20 +74,26 @@ impl Plugin for Gain {
     fn set_param(&self, id: ParamId, value: f64) {
         match id {
             0 => {
-                self.gain.store(value.to_bits(), Ordering::Relaxed);
+                self.params.gain.store(value.to_bits(), Ordering::Relaxed);
             }
             _ => {}
         }
     }
+}
 
+pub struct GainProcessor {
+    params: Arc<GainParams>,
+    gain: f32,
+}
+
+impl Processor for GainProcessor {
     fn process(
-        &self,
-        process_data: &mut GainProcess,
+        &mut self,
         inputs: &[&[f32]],
         outputs: &mut [&mut [f32]],
         param_changes: &[ParamChange],
     ) {
-        let mut gain = f64::from_bits(self.gain.load(Ordering::Relaxed)) as f32;
+        let mut gain = f64::from_bits(self.params.gain.load(Ordering::Relaxed)) as f32;
 
         for change in param_changes {
             match change.id {
@@ -97,19 +106,28 @@ impl Plugin for Gain {
 
         for (input, output) in inputs.iter().zip(outputs.iter_mut()) {
             for (input_sample, output_sample) in input.iter().zip(output.iter_mut()) {
-                process_data.gain = 0.9995 * process_data.gain + 0.0005 * gain;
-                *output_sample = process_data.gain * *input_sample;
+                self.gain = 0.9995 * self.gain + 0.0005 * gain;
+                *output_sample = self.gain * *input_sample;
             }
         }
 
-        self.gain.store((gain as f64).to_bits(), Ordering::Relaxed);
+        self.params.gain.store((gain as f64).to_bits(), Ordering::Relaxed);
     }
+}
 
-    fn editor_size(&self, _editor_data: &GainEditor) -> (f64, f64) {
+pub struct GainEditor {
+    editor_context: EditorContext,
+    params: Arc<GainParams>,
+    application: Option<Application>,
+    window: Option<Window>,
+}
+
+impl Editor for GainEditor {
+    fn size(&self) -> (f64, f64) {
         (256.0, 256.0)
     }
 
-    fn editor_open(&self, editor_data: &mut GainEditor, parent: Option<&ParentWindow>) {
+    fn open(&mut self, parent: Option<&ParentWindow>) {
         let parent =
             if let Some(parent) = parent { Parent::Parent(parent) } else { Parent::Detached };
 
@@ -121,43 +139,43 @@ impl Plugin for Gain {
                 rect: Rect { x: 0.0, y: 0.0, width: 512.0, height: 512.0 },
                 parent,
                 handler: Box::new(GainWindowHandler::new(
-                    editor_data.editor_context.clone(),
-                    self.gain.clone(),
+                    self.editor_context.clone(),
+                    self.params.clone(),
                 )),
                 ..WindowOptions::default()
             },
         )
         .unwrap();
 
-        editor_data.application = Some(application);
-        editor_data.window = Some(window);
+        self.application = Some(application);
+        self.window = Some(window);
     }
 
-    fn editor_close(&self, editor_data: &mut GainEditor) {
-        if let Some(window) = &editor_data.window {
+    fn close(&mut self) {
+        if let Some(window) = &self.window {
             window.close().unwrap();
         }
 
-        editor_data.window = None;
-        editor_data.application = None;
+        self.window = None;
+        self.application = None;
     }
 
-    fn editor_poll(&self, editor_data: &mut GainEditor) {
-        if let Some(application) = &editor_data.application {
+    fn poll(&mut self) {
+        if let Some(application) = &self.application {
             application.poll();
         }
     }
 
-    fn raw_window_handle(&self, editor_data: &GainEditor) -> Option<RawWindowHandle> {
-        if let Some(window) = &editor_data.window {
+    fn raw_window_handle(&self) -> Option<RawWindowHandle> {
+        if let Some(window) = &self.window {
             Some(window.raw_window_handle())
         } else {
             None
         }
     }
 
-    fn file_descriptor(&self, editor_data: &GainEditor) -> Option<std::os::raw::c_int> {
-        if let Some(application) = &editor_data.application {
+    fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
+        if let Some(application) = &self.application {
             application.file_descriptor()
         } else {
             None
@@ -167,17 +185,17 @@ impl Plugin for Gain {
 
 struct GainWindowHandler {
     editor_context: EditorContext,
-    gain: Arc<AtomicU64>,
+    params: Arc<GainParams>,
     canvas: RefCell<Canvas>,
     mouse: Cell<Point>,
     down: Cell<Option<Point>>,
 }
 
 impl GainWindowHandler {
-    fn new(editor_context: EditorContext, gain: Arc<AtomicU64>) -> GainWindowHandler {
+    fn new(editor_context: EditorContext, params: Arc<GainParams>) -> GainWindowHandler {
         GainWindowHandler {
             editor_context,
-            gain,
+            params,
             canvas: RefCell::new(Canvas::with_size(256, 256)),
             mouse: Cell::new(Point { x: -1.0, y: -1.0 }),
             down: Cell::new(None),
@@ -195,7 +213,7 @@ impl WindowHandler for GainWindowHandler {
 
         canvas.clear(Color::rgba(21, 26, 31, 255));
 
-        let value = f64::from_bits(self.gain.load(Ordering::Relaxed));
+        let value = f64::from_bits(self.params.gain.load(Ordering::Relaxed));
 
         let center = Vec2::new(128.0, 128.0);
         let radius = 32.0;
@@ -230,9 +248,9 @@ impl WindowHandler for GainWindowHandler {
         if let Some(start_position) = self.down.get() {
             window.set_mouse_position(start_position);
 
-            let value = f64::from_bits(self.gain.load(Ordering::Relaxed));
+            let value = f64::from_bits(self.params.gain.load(Ordering::Relaxed));
             let new_value = (value - 0.005 * (position.y - start_position.y)).max(0.0).min(1.0);
-            self.gain.store(new_value.to_bits(), Ordering::Relaxed);
+            self.params.gain.store(new_value.to_bits(), Ordering::Relaxed);
             self.editor_context.perform_edit(GAIN.id, new_value);
         } else {
             self.mouse.set(position);
