@@ -368,7 +368,9 @@ pub fn plugin_main<P: Plugin>(host_callback: HostCallbackProc) -> *mut AEffect {
         effect: Cell::new(ptr::null_mut()),
     });
 
-    let (plugin, processor, editor) = P::create(EditorContext(editor_context.clone()));
+    let plugin = P::create();
+    let processor = plugin.processor();
+    let editor = plugin.editor(EditorContext(editor_context.clone()));
 
     let mut flags = effect_flags::CAN_REPLACING;
     if P::INFO.has_editor {

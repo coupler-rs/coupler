@@ -73,7 +73,9 @@ pub trait Plugin: Send + Sync + Sized {
     type Processor: Processor;
     type Editor: Editor;
 
-    fn create(editor_context: EditorContext) -> (Self, Self::Processor, Self::Editor);
+    fn create() -> Self;
+    fn processor(&self) -> Self::Processor;
+    fn editor(&self, editor_context: EditorContext) -> Self::Editor;
 
     fn get_param(&self, id: ParamId) -> f64;
     fn set_param(&self, id: ParamId, value: f64);

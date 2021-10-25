@@ -53,15 +53,16 @@ impl Plugin for Gain {
     type Processor = GainProcessor;
     type Editor = GainEditor;
 
-    fn create(editor_context: EditorContext) -> (Gain, GainProcessor, GainEditor) {
-        let params = Arc::new(GainParams::new());
+    fn create() -> Gain {
+        Gain { params: Arc::new(GainParams::new()) }
+    }
 
-        let plugin = Gain { params: params.clone() };
-        let processor = GainProcessor { params: params.clone(), gain: 0.0 };
-        let editor =
-            GainEditor { editor_context, params: params.clone(), application: None, window: None };
+    fn processor(&self) -> GainProcessor {
+        GainProcessor { params: self.params.clone(), gain: 0.0 }
+    }
 
-        (plugin, processor, editor)
+    fn editor(&self, editor_context: EditorContext) -> GainEditor {
+        GainEditor { editor_context, params: self.params.clone(), application: None, window: None }
     }
 
     fn get_param(&self, id: ParamId) -> f64 {

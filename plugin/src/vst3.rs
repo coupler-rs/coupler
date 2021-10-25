@@ -149,7 +149,9 @@ impl<P: Plugin> Factory<P> {
             param_indices.insert(param.id, index);
         }
 
-        let (plugin, processor, editor) = P::create(EditorContext(editor_context.clone()));
+        let plugin = P::create();
+        let processor = plugin.processor();
+        let editor = plugin.editor(EditorContext(editor_context.clone()));
 
         *obj = Box::into_raw(Box::new(Wrapper {
             component: factory.component,
