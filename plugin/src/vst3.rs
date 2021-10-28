@@ -612,9 +612,9 @@ impl<P: Plugin> Wrapper<P> {
 
         processor_state.param_changes.clear();
 
-        let processor = &*data;
+        let process_data = &*data;
 
-        let param_changes = processor.input_parameter_changes;
+        let param_changes = process_data.input_parameter_changes;
         if !param_changes.is_null() {
             let param_count =
                 ((*(*param_changes)).get_parameter_count)(param_changes as *mut c_void);
@@ -652,12 +652,12 @@ impl<P: Plugin> Wrapper<P> {
             }
         }
 
-        if processor.num_inputs != 1 || processor.num_outputs != 1 {
+        if process_data.num_inputs != 1 || process_data.num_outputs != 1 {
             return result::OK;
         }
 
-        let input_bus = &*processor.inputs;
-        let output_bus = &*processor.outputs;
+        let input_bus = &*process_data.inputs;
+        let output_bus = &*process_data.outputs;
 
         if input_bus.num_channels != 2 || output_bus.num_channels != 2 {
             return result::OK;
@@ -677,13 +677,13 @@ impl<P: Plugin> Wrapper<P> {
         }
 
         let input_slices = &[
-            slice::from_raw_parts(input_ptrs[0] as *const f32, processor.num_samples as usize),
-            slice::from_raw_parts(input_ptrs[1] as *const f32, processor.num_samples as usize),
+            slice::from_raw_parts(input_ptrs[0] as *const f32, process_data.num_samples as usize),
+            slice::from_raw_parts(input_ptrs[1] as *const f32, process_data.num_samples as usize),
         ];
 
         let output_slices = &mut [
-            slice::from_raw_parts_mut(output_ptrs[0] as *mut f32, processor.num_samples as usize),
-            slice::from_raw_parts_mut(output_ptrs[1] as *mut f32, processor.num_samples as usize),
+            slice::from_raw_parts_mut(output_ptrs[0] as *mut f32, process_data.num_samples as usize),
+            slice::from_raw_parts_mut(output_ptrs[1] as *mut f32, process_data.num_samples as usize),
         ];
 
         processor_state.processor.process(
