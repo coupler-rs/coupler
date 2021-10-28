@@ -1,6 +1,6 @@
 use crate::{
-    Editor, EditorContext, EditorContextInner, ParamChange, ParamId, ParentWindow, Plugin,
-    Processor,
+    AudioBuses, Editor, EditorContext, EditorContextInner, ParamChange, ParamId, ParentWindow,
+    Plugin, Processor,
 };
 
 use std::cell::{Cell, UnsafeCell};
@@ -664,9 +664,9 @@ impl<P: Plugin> Wrapper<P> {
         }
 
         let input_ptrs =
-            slice::from_raw_parts(input_bus.channel_buffers, input_bus.num_channels as usize);
+            slice::from_raw_parts(input_bus.channel_buffers as *mut *const f32, input_bus.num_channels as usize);
         let output_ptrs =
-            slice::from_raw_parts(output_bus.channel_buffers, output_bus.num_channels as usize);
+            slice::from_raw_parts(output_bus.channel_buffers as *mut *mut f32, output_bus.num_channels as usize);
 
         if input_ptrs[0].is_null()
             || input_ptrs[1].is_null()
@@ -676,21 +676,15 @@ impl<P: Plugin> Wrapper<P> {
             return result::OK;
         }
 
-        let input_slices = &[
-            slice::from_raw_parts(input_ptrs[0] as *const f32, process_data.num_samples as usize),
-            slice::from_raw_parts(input_ptrs[1] as *const f32, process_data.num_samples as usize),
-        ];
+        let mut audio_buses = AudioBuses {
+            frames: process_data.num_samples as usize,
+            input_buses: &[(0, 2)],
+            input_channels: input_ptrs,
+            output_buses: &[(0, 2)],
+            output_channels: output_ptrs,
+        };
 
-        let output_slices = &mut [
-            slice::from_raw_parts_mut(output_ptrs[0] as *mut f32, process_data.num_samples as usize),
-            slice::from_raw_parts_mut(output_ptrs[1] as *mut f32, process_data.num_samples as usize),
-        ];
-
-        processor_state.processor.process(
-            input_slices,
-            output_slices,
-            &processor_state.param_changes[..],
-        );
+        processor_state.processor.process(&mut audio_buses, &processor_state.param_changes[..]);
 
         result::OK
     }

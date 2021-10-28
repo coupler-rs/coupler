@@ -88,12 +88,7 @@ pub struct GainProcessor {
 }
 
 impl Processor for GainProcessor {
-    fn process(
-        &mut self,
-        inputs: &[&[f32]],
-        outputs: &mut [&mut [f32]],
-        param_changes: &[ParamChange],
-    ) {
+    fn process(&mut self, audio_buses: &mut AudioBuses, param_changes: &[ParamChange]) {
         let mut gain = f64::from_bits(self.params.gain.load(Ordering::Relaxed)) as f32;
 
         for change in param_changes {
@@ -105,10 +100,12 @@ impl Processor for GainProcessor {
             }
         }
 
-        for (input, output) in inputs.iter().zip(outputs.iter_mut()) {
-            for (input_sample, output_sample) in input.iter().zip(output.iter_mut()) {
-                self.gain = 0.9995 * self.gain + 0.0005 * gain;
-                *output_sample = self.gain * *input_sample;
+        for i in 0..audio_buses.frames() {
+            self.gain = 0.9995 * self.gain + 0.0005 * gain;
+
+            for channel in 0..2 {
+                let input_sample = audio_buses.input(0).unwrap().channel(channel).unwrap()[i];
+                audio_buses.output(0).unwrap().channel_mut(channel).unwrap()[i] = self.gain * input_sample;
             }
         }
 

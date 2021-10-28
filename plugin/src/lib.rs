@@ -1,5 +1,8 @@
+mod audio_buses;
 pub mod vst2;
 pub mod vst3;
+
+pub use audio_buses::*;
 
 use std::rc::Rc;
 
@@ -82,12 +85,7 @@ pub trait Plugin: Send + Sync + Sized {
 }
 
 pub trait Processor: Send + Sized {
-    fn process(
-        &mut self,
-        inputs: &[&[f32]],
-        outputs: &mut [&mut [f32]],
-        param_changes: &[ParamChange],
-    );
+    fn process(&mut self, audio_buses: &mut AudioBuses, param_changes: &[ParamChange]);
 }
 
 pub trait Editor: Sized {

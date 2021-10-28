@@ -1,4 +1,6 @@
-use crate::{Editor, EditorContext, EditorContextInner, ParamId, ParentWindow, Plugin, Processor};
+use crate::{
+    AudioBuses, Editor, EditorContext, EditorContextInner, ParamId, ParentWindow, Plugin, Processor,
+};
 
 use std::cell::{Cell, UnsafeCell};
 use std::os::raw::c_char;
@@ -338,18 +340,17 @@ extern "C" fn process_replacing<P: Plugin>(
         let processor_state = &mut *wrapper.processor_state.get();
 
         let input_ptrs = slice::from_raw_parts(inputs, 2);
-        let input_slices = &[
-            slice::from_raw_parts(input_ptrs[0], sample_frames as usize),
-            slice::from_raw_parts(input_ptrs[1], sample_frames as usize),
-        ];
-
         let output_ptrs = slice::from_raw_parts(outputs, 2);
-        let output_slices = &mut [
-            slice::from_raw_parts_mut(output_ptrs[0], sample_frames as usize),
-            slice::from_raw_parts_mut(output_ptrs[1], sample_frames as usize),
-        ];
 
-        processor_state.processor.process(input_slices, output_slices, &[]);
+        let mut audio_buses = AudioBuses {
+            frames: sample_frames as usize,
+            input_buses: &[(0, 2)],
+            input_channels: input_ptrs,
+            output_buses: &[(0, 2)],
+            output_channels: output_ptrs,
+        };
+
+        processor_state.processor.process(&mut audio_buses, &[]);
     }
 }
 
