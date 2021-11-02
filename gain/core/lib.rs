@@ -211,12 +211,12 @@ impl WindowHandler for GainWindowHandler {
 
         canvas.clear(Color::rgba(21, 26, 31, 255));
 
-        let value = f64::from_bits(self.params.gain.load(Ordering::Relaxed));
+        let value = f64::from_bits(self.params.gain.load(Ordering::Relaxed)) as f32;
 
         let center = Vec2::new(128.0, 128.0);
         let radius = 32.0;
-        let angle1 = 0.75 * std::f64::consts::PI;
-        let angle2 = angle1 + value * 1.5 * std::f64::consts::PI;
+        let angle1 = 0.75 * std::f32::consts::PI;
+        let angle2 = angle1 + value * 1.5 * std::f32::consts::PI;
         let mut path = Path::builder();
         path.move_to(center + radius * Vec2::new(angle1.cos(), angle1.sin()));
         path.arc(radius, angle1, angle2);
@@ -228,8 +228,8 @@ impl WindowHandler for GainWindowHandler {
 
         let center = Vec2::new(128.0, 128.0);
         let radius = 32.0;
-        let angle = 0.75 * std::f64::consts::PI;
-        let span = 1.5 * std::f64::consts::PI;
+        let angle = 0.75 * std::f32::consts::PI;
+        let span = 1.5 * std::f32::consts::PI;
         let mut path = Path::builder();
         path.move_to(center + radius * Vec2::new(angle.cos(), angle.sin()));
         path.arc(radius, angle, angle + span);

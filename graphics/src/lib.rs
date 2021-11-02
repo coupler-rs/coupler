@@ -135,18 +135,18 @@ impl Canvas {
                 let dtdy = 1.0 / (p2.y - p1.y);
                 let mut x = p1.x.floor() as isize;
                 let mut y = p1.y.floor() as isize;
-                let mut row_t0: f64 = 0.0;
-                let mut col_t0: f64 = 0.0;
+                let mut row_t0: f32 = 0.0;
+                let mut col_t0: f32 = 0.0;
                 let mut row_t1 = if p1.y == p2.y {
-                    std::f64::INFINITY
+                    std::f32::INFINITY
                 } else {
-                    let next_y = if p2.y > p1.y { (y + 1) as f64 } else { y as f64 };
+                    let next_y = if p2.y > p1.y { (y + 1) as f32 } else { y as f32 };
                     (dtdy * (next_y - p1.y)).min(1.0)
                 };
                 let mut col_t1 = if p1.x == p2.x {
-                    std::f64::INFINITY
+                    std::f32::INFINITY
                 } else {
-                    let next_x = if p2.x > p1.x { (x + 1) as f64 } else { x as f64 };
+                    let next_x = if p2.x > p1.x { (x + 1) as f32 } else { x as f32 };
                     (dtdx * (next_x - p1.x)).min(1.0)
                 };
                 let x_step = dtdx.abs();
@@ -158,7 +158,7 @@ impl Canvas {
                     let t1 = row_t1.min(col_t1);
                     let next = (1.0 - t1) * p1 + t1 * p2;
                     let height = (next.y - prev.y) as f32;
-                    let right_edge = (x + 1) as f64;
+                    let right_edge = (x + 1) as f32;
                     let area =
                         0.5 * height * ((right_edge - prev.x) + (right_edge - next.x)) as f32;
 
@@ -282,7 +282,7 @@ impl Canvas {
         }
     }
 
-    pub fn stroke_path(&mut self, path: &Path, width: f64, color: Color) {
+    pub fn stroke_path(&mut self, path: &Path, width: f32, color: Color) {
         self.fill_path(&path.stroke(width), color);
     }
 

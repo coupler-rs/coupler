@@ -1,6 +1,6 @@
 use crate::geom::*;
 
-const TOLERANCE: f64 = 0.1;
+const TOLERANCE: f32 = 0.1;
 
 #[derive(Clone)]
 pub struct Path {
@@ -56,7 +56,7 @@ impl PathBuilder {
         self
     }
 
-    pub fn arc(&mut self, radius: f64, start_angle: f64, end_angle: f64) -> &mut Self {
+    pub fn arc(&mut self, radius: f32, start_angle: f32, end_angle: f32) -> &mut Self {
         let mut last = self.points.last().cloned().unwrap_or(Vec2::new(0.0, 0.0));
         let mut vector = Vec2::new(start_angle.cos(), start_angle.sin());
         let mut angle = 0.0;
@@ -66,7 +66,7 @@ impl PathBuilder {
         let total_angle = (end_angle - start_angle).abs();
 
         // approximate quarter-circle arcs with cubics
-        let quarter_circle = 0.5 * std::f64::consts::PI;
+        let quarter_circle = 0.5 * std::f32::consts::PI;
         let k = (4.0 / 3.0) * (0.25 * quarter_circle).tan();
         while angle + quarter_circle < total_angle {
             let tangent = winding * Vec2::new(-vector.y, vector.x);
@@ -144,7 +144,7 @@ impl Path {
                     let a = -1.0 * last + 3.0 * control1 - 3.0 * control2 + point;
                     let b = 3.0 * (last - 2.0 * control1 + control2);
                     let conc = b.length().max((a + b).length());
-                    let dt = ((8.0f64.sqrt() * TOLERANCE) / conc).sqrt();
+                    let dt = ((8.0f32.sqrt() * TOLERANCE) / conc).sqrt();
                     let mut t = 0.0;
                     while t < 1.0 {
                         t = (t + dt).min(1.0);
@@ -165,11 +165,11 @@ impl Path {
         path.build()
     }
 
-    pub(crate) fn stroke(&self, width: f64) -> Path {
+    pub(crate) fn stroke(&self, width: f32) -> Path {
         #[inline]
         fn join(
             path: &mut PathBuilder,
-            width: f64,
+            width: f32,
             prev_normal: Vec2,
             next_normal: Vec2,
             point: Vec2,
@@ -186,7 +186,7 @@ impl Path {
         #[inline]
         fn offset(
             path: &mut PathBuilder,
-            width: f64,
+            width: f32,
             contour: &[Vec2],
             closed: bool,
             reverse: bool,
