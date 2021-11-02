@@ -285,6 +285,4 @@ impl Canvas {
     pub fn stroke_path(&mut self, path: &Path, width: f32, color: Color) {
         self.fill_path(&path.stroke(width), color);
     }
-
-
 }
