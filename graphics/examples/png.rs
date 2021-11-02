@@ -46,7 +46,7 @@ fn main() {
                     if let usvg::Paint::Color(color) = fill.paint {
                         let color =
                             Color::rgba(color.red, color.green, color.blue, fill.opacity.to_u8());
-                        canvas.fill(&path, color);
+                        canvas.fill_path(&path, color);
                     }
                 }
 
@@ -54,7 +54,7 @@ fn main() {
                     if let usvg::Paint::Color(color) = stroke.paint {
                         let color =
                             Color::rgba(color.red, color.green, color.blue, stroke.opacity.to_u8());
-                        canvas.stroke(&path, stroke.width.value() * 1.0, color);
+                        canvas.stroke_path(&path, stroke.width.value() * 1.0, color);
                     }
                 }
             }

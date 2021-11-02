@@ -72,7 +72,7 @@ impl Canvas {
         }
     }
 
-    pub fn fill(&mut self, path: &Path, color: Color) {
+    pub fn fill_path(&mut self, path: &Path, color: Color) {
         if path.points.is_empty() {
             return;
         }
@@ -282,7 +282,9 @@ impl Canvas {
         }
     }
 
-    pub fn stroke(&mut self, path: &Path, width: f64, color: Color) {
-        self.fill(&path.stroke(width), color);
+    pub fn stroke_path(&mut self, path: &Path, width: f64, color: Color) {
+        self.fill_path(&path.stroke(width), color);
     }
+
+
 }

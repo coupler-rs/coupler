@@ -23,7 +23,7 @@ impl WindowHandler for Handler {
             .cubic_to(Vec2::new(350.0, 150.0), Vec2::new(100.0, 250.0), Vec2::new(400.0, 300.0));
         let path = path.build();
 
-        self.canvas.borrow_mut().fill(&path, Color::rgba(255, 0, 255, 255));
+        self.canvas.borrow_mut().fill_path(&path, Color::rgba(255, 0, 255, 255));
 
         window.update_contents(
             self.canvas.borrow().data(),

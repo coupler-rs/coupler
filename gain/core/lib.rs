@@ -224,7 +224,7 @@ impl WindowHandler for GainWindowHandler {
         path.arc(radius - 4.0, angle2, angle1);
         path.close();
         let path = path.build();
-        canvas.fill(&path, Color::rgba(240, 240, 245, 255));
+        canvas.fill_path(&path, Color::rgba(240, 240, 245, 255));
 
         let center = Vec2::new(128.0, 128.0);
         let radius = 32.0;
@@ -237,7 +237,7 @@ impl WindowHandler for GainWindowHandler {
         path.arc(radius - 4.0, angle + span, angle);
         path.close();
         let path = path.build();
-        canvas.stroke(&path, 1.0, Color::rgba(240, 240, 245, 255));
+        canvas.stroke_path(&path, 1.0, Color::rgba(240, 240, 245, 255));
 
         window.update_contents(canvas.data(), 256, 256);
     }
