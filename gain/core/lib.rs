@@ -187,7 +187,7 @@ struct GainWindowHandler {
     params: Arc<GainParams>,
     canvas: RefCell<Canvas>,
     mouse: Cell<Point>,
-    down: Cell<Option<Point>>,
+    down: Cell<Option<(Point, f64)>>,
 }
 
 impl GainWindowHandler {
@@ -198,6 +198,15 @@ impl GainWindowHandler {
             canvas: RefCell::new(Canvas::with_size(256, 256)),
             mouse: Cell::new(Point { x: -1.0, y: -1.0 }),
             down: Cell::new(None),
+        }
+    }
+
+    fn update_cursor(&self, window: &Window) {
+        let position = self.mouse.get();
+        if position.x >= 96.0 && position.x < 160.0 && position.y >= 96.0 && position.y < 160.0 {
+            window.set_cursor(Cursor::SizeNs);
+        } else {
+            window.set_cursor(Cursor::Arrow);
         }
     }
 }
@@ -244,22 +253,14 @@ impl WindowHandler for GainWindowHandler {
     }
 
     fn mouse_move(&self, window: &Window, position: Point) {
-        if let Some(start_position) = self.down.get() {
-            window.set_mouse_position(start_position);
-
-            let value = f64::from_bits(self.params.gain.load(Ordering::Relaxed));
-            let new_value = (value - 0.005 * (position.y - start_position.y)).max(0.0).min(1.0);
+        self.mouse.set(position);
+        if let Some((start_position, start_value)) = self.down.get() {
+            let new_value =
+                (start_value - 0.005 * (position.y - start_position.y)).max(0.0).min(1.0);
             self.params.gain.store(new_value.to_bits(), Ordering::Relaxed);
             self.editor_context.perform_edit(GAIN.id, new_value);
         } else {
-            self.mouse.set(position);
-
-            if position.x >= 96.0 && position.x < 160.0 && position.y >= 96.0 && position.y < 160.0
-            {
-                window.set_cursor(Cursor::SizeNs);
-            } else {
-                window.set_cursor(Cursor::Arrow);
-            }
+            self.update_cursor(window);
         }
     }
 
@@ -268,10 +269,11 @@ impl WindowHandler for GainWindowHandler {
             let position = self.mouse.get();
             if position.x >= 96.0 && position.x < 160.0 && position.y >= 96.0 && position.y < 160.0
             {
-                window.set_cursor(Cursor::None);
-
+                window.set_cursor(Cursor::SizeNs);
                 self.editor_context.begin_edit(GAIN.id);
-                self.down.set(Some(position));
+                let value = f64::from_bits(self.params.gain.load(Ordering::Relaxed));
+                self.editor_context.perform_edit(GAIN.id, value);
+                self.down.set(Some((position, value)));
                 return true;
             }
         }
@@ -279,11 +281,12 @@ impl WindowHandler for GainWindowHandler {
         false
     }
 
-    fn mouse_up(&self, _window: &Window, button: MouseButton) -> bool {
+    fn mouse_up(&self, window: &Window, button: MouseButton) -> bool {
         if button == MouseButton::Left {
             if self.down.get().is_some() {
                 self.editor_context.end_edit(GAIN.id);
                 self.down.set(None);
+                self.update_cursor(window);
                 return true;
             }
         }
