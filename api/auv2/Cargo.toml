@@ -1,8 +1,0 @@
-[package]
-name = "auv2"
-version = "0.1.0"
-authors = ["micah <micah@glowcoil.com>"]
-edition = "2018"
-publish = false
-
-[dependencies]

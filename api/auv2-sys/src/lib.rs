@@ -30,6 +30,8 @@ pub type CFDictionaryRef = *const CFDictionary__;
 pub enum CFURL__ {}
 pub type CFURLRef = *const CFURL__;
 
+pub const noErr: OSStatus = 0;
+
 // CoreAudioBaseTypes.h
 
 #[repr(C)]
@@ -930,9 +932,9 @@ pub const kAudioUnitComplexRenderSelect: SInt16 = 0x0013;
 pub const kAudioUnitProcessSelect: SInt16 = 0x0014;
 pub const kAudioUnitProcessMultipleSelect: SInt16 = 0x0015;
 
-pub type AudioUnitInitializeProc = Option<unsafe extern "C" fn(self_: *mut c_void)>;
+pub type AudioUnitInitializeProc = Option<unsafe extern "C" fn(self_: *mut c_void) -> OSStatus>;
 
-pub type AudioUnitUninitializeProc = Option<unsafe extern "C" fn(self_: *mut c_void)>;
+pub type AudioUnitUninitializeProc = Option<unsafe extern "C" fn(self_: *mut c_void) -> OSStatus>;
 
 pub type AudioUnitGetPropertyInfoProc = Option<
     unsafe extern "C" fn(
@@ -942,7 +944,7 @@ pub type AudioUnitGetPropertyInfoProc = Option<
         elem: AudioUnitElement,
         outDataSize: *mut UInt32,
         outWritable: *mut Boolean,
-    ),
+    ) -> OSStatus,
 >;
 
 pub type AudioUnitGetPropertyProc = Option<
@@ -953,7 +955,7 @@ pub type AudioUnitGetPropertyProc = Option<
         inElement: AudioUnitElement,
         outData: *mut c_void,
         ioDataSize: *mut UInt32,
-    ),
+    ) -> OSStatus,
 >;
 
 pub type AudioUnitSetPropertyProc = Option<
@@ -964,7 +966,7 @@ pub type AudioUnitSetPropertyProc = Option<
         inElement: AudioUnitElement,
         inData: *const c_void,
         inDataSize: UInt32,
-    ),
+    ) -> OSStatus,
 >;
 
 pub type AudioUnitAddPropertyListenerProc = Option<
@@ -973,7 +975,7 @@ pub type AudioUnitAddPropertyListenerProc = Option<
         prop: AudioUnitPropertyID,
         proc: AudioUnitPropertyListenerProc,
         userData: *mut c_void,
-    ),
+    ) -> OSStatus,
 >;
 
 pub type AudioUnitRemovePropertyListenerProc = Option<
@@ -981,7 +983,7 @@ pub type AudioUnitRemovePropertyListenerProc = Option<
         self_: *mut c_void,
         prop: AudioUnitPropertyID,
         proc: AudioUnitPropertyListenerProc,
-    ),
+    ) -> OSStatus,
 >;
 
 pub type AudioUnitRemovePropertyListenerWithUserDataProc = Option<
@@ -990,25 +992,39 @@ pub type AudioUnitRemovePropertyListenerWithUserDataProc = Option<
         prop: AudioUnitPropertyID,
         proc: AudioUnitPropertyListenerProc,
         userData: *mut c_void,
-    ),
+    ) -> OSStatus,
 >;
 
-pub type AudioUnitAddRenderNotifyProc =
-    Option<unsafe extern "C" fn(self_: *mut c_void, proc: AURenderCallback, userData: *mut c_void)>;
+pub type AudioUnitAddRenderNotifyProc = Option<
+    unsafe extern "C" fn(
+        self_: *mut c_void,
+        proc: AURenderCallback,
+        userData: *mut c_void,
+    ) -> OSStatus,
+>;
 
-pub type AudioUnitRemoveRenderNotifyProc =
-    Option<unsafe extern "C" fn(self_: *mut c_void, proc: AURenderCallback, userData: *mut c_void)>;
+pub type AudioUnitRemoveRenderNotifyProc = Option<
+    unsafe extern "C" fn(
+        self_: *mut c_void,
+        proc: AURenderCallback,
+        userData: *mut c_void,
+    ) -> OSStatus,
+>;
 
 pub type AudioUnitScheduleParametersProc = Option<
     unsafe extern "C" fn(
         self_: *mut c_void,
         events: *const AudioUnitParameterEvent,
         numEvents: UInt32,
-    ),
+    ) -> OSStatus,
 >;
 
 pub type AudioUnitResetProc = Option<
-    unsafe extern "C" fn(self_: *mut c_void, inScope: AudioUnitScope, inElement: AudioUnitElement),
+    unsafe extern "C" fn(
+        self_: *mut c_void,
+        inScope: AudioUnitScope,
+        inElement: AudioUnitElement,
+    ) -> OSStatus,
 >;
 
 pub type AudioUnitComplexRenderProc = Option<
@@ -1023,7 +1039,7 @@ pub type AudioUnitComplexRenderProc = Option<
         ioData: *mut AudioBufferList,
         outMetadata: *mut c_void,
         outMetadataByteSize: *mut UInt32,
-    ),
+    ) -> OSStatus,
 >;
 
 pub type AudioUnitProcessProc = Option<
@@ -1033,7 +1049,7 @@ pub type AudioUnitProcessProc = Option<
         nTimeStamp: *const AudioTimeStamp,
         inNumberFrames: UInt32,
         ioData: *mut AudioBufferList,
-    ),
+    ) -> OSStatus,
 >;
 
 pub type AudioUnitProcessMultipleProc = Option<
@@ -1046,7 +1062,7 @@ pub type AudioUnitProcessMultipleProc = Option<
         inInputBufferLists: *const *const AudioBufferList,
         inNumberOutputBufferLists: UInt32,
         ioOutputBufferLists: *mut *mut AudioBufferList,
-    ),
+    ) -> OSStatus,
 >;
 
 pub type AudioUnitGetParameterProc = Option<
@@ -1056,7 +1072,7 @@ pub type AudioUnitGetParameterProc = Option<
         inScope: AudioUnitScope,
         inElement: AudioUnitElement,
         outValue: *mut AudioUnitParameterValue,
-    ),
+    ) -> OSStatus,
 >;
 
 pub type AudioUnitSetParameterProc = Option<
@@ -1067,7 +1083,7 @@ pub type AudioUnitSetParameterProc = Option<
         inElement: AudioUnitElement,
         inValue: AudioUnitParameterValue,
         inBufferOffsetInFrames: UInt32,
-    ),
+    ) -> OSStatus,
 >;
 
 pub type AudioUnitRenderProc = Option<
@@ -1078,7 +1094,7 @@ pub type AudioUnitRenderProc = Option<
         inOutputBusNumber: UInt32,
         inNumberFrames: UInt32,
         ioData: *mut AudioBufferList,
-    ),
+    ) -> OSStatus,
 >;
 
 // AudioOutputUnit.h
