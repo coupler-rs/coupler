@@ -6,6 +6,5 @@ edition = "2018"
 publish = false
 
 [dependencies]
-vst2 = { path = "../api/vst2" }
 vst3-sys = { path = "../api/vst3-sys" }
 raw-window-handle = "0.3.3"

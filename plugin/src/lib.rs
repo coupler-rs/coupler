@@ -1,5 +1,4 @@
 mod audio_buses;
-pub mod vst2;
 pub mod vst3;
 
 pub use audio_buses::*;

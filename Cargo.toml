@@ -2,10 +2,6 @@
 
 members = [
     "api/auv2",
-    "api/vst2",
-    "api/vst2-test",
-    "api/vst3",
-    "api/vst3-test",
     "api/vst3-sys",
     "gain/*",
     "graphics",
