@@ -15,8 +15,8 @@ use std::{ffi, mem, ptr, slice};
 
 use raw_window_handle::RawWindowHandle;
 
-pub use vst3 as vst3_api;
-use vst3::*;
+pub use vst3_sys;
+use vst3_sys::*;
 
 fn copy_cstring(src: &str, dst: &mut [c_char]) {
     let c_string = ffi::CString::new(src).unwrap_or_else(|_| ffi::CString::default());
@@ -116,7 +116,7 @@ impl<P: Plugin> Factory<P> {
 
         let info = &mut *info;
 
-        info.cid = iid(P::INFO.uid[0], P::INFO.uid[1], P::INFO.uid[2], P::INFO.uid[3]);
+        info.cid = uid(P::INFO.uid[0], P::INFO.uid[1], P::INFO.uid[2], P::INFO.uid[3]);
         info.cardinality = PClassInfo::MANY_INSTANCES;
         copy_cstring("Audio Module Class", &mut info.category);
         copy_cstring(P::INFO.name, &mut info.name);
@@ -132,7 +132,7 @@ impl<P: Plugin> Factory<P> {
     ) -> TResult {
         let cid = *(cid as *const TUID);
         let iid = *(iid as *const TUID);
-        let wrapper_cid = vst3::iid(P::INFO.uid[0], P::INFO.uid[1], P::INFO.uid[2], P::INFO.uid[3]);
+        let wrapper_cid = uid(P::INFO.uid[0], P::INFO.uid[1], P::INFO.uid[2], P::INFO.uid[3]);
         if cid != wrapper_cid || iid != IComponent::IID {
             return result::INVALID_ARGUMENT;
         }
@@ -189,7 +189,7 @@ impl<P: Plugin> Factory<P> {
 
         let info = &mut *info;
 
-        info.cid = iid(P::INFO.uid[0], P::INFO.uid[1], P::INFO.uid[2], P::INFO.uid[3]);
+        info.cid = uid(P::INFO.uid[0], P::INFO.uid[1], P::INFO.uid[2], P::INFO.uid[3]);
         info.cardinality = PClassInfo::MANY_INSTANCES;
         copy_cstring("Audio Module Class", &mut info.category);
         copy_cstring(P::INFO.name, &mut info.name);
@@ -213,7 +213,7 @@ impl<P: Plugin> Factory<P> {
 
         let info = &mut *info;
 
-        info.cid = iid(P::INFO.uid[0], P::INFO.uid[1], P::INFO.uid[2], P::INFO.uid[3]);
+        info.cid = uid(P::INFO.uid[0], P::INFO.uid[1], P::INFO.uid[2], P::INFO.uid[3]);
         info.cardinality = PClassInfo::MANY_INSTANCES;
         copy_cstring("Audio Module Class", &mut info.category);
         copy_wstring(P::INFO.name, &mut info.name);
@@ -412,7 +412,7 @@ impl<P: Plugin> Wrapper<P> {
 
     pub unsafe extern "system" fn get_controller_class_id(
         _this: *mut c_void,
-        _class_id: *const TUID,
+        _class_id: *mut TUID,
     ) -> TResult {
         result::NOT_IMPLEMENTED
     }
@@ -1203,7 +1203,7 @@ macro_rules! vst3 {
             use std::ffi::c_void;
             use std::marker::PhantomData;
 
-            use $crate::vst3::vst3_api::*;
+            use $crate::vst3::vst3_sys::*;
             use $crate::vst3::*;
 
             static PLUGIN_FACTORY_3_VTABLE: IPluginFactory3 = IPluginFactory3 {

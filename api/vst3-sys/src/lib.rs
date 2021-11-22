@@ -4,7 +4,7 @@ use std::os::raw::{c_char, c_int};
 pub type TUID = [u8; 16];
 
 #[cfg(target_os = "windows")]
-pub const fn iid(a: u32, b: u32, c: u32, d: u32) -> TUID {
+pub const fn uid(a: u32, b: u32, c: u32, d: u32) -> TUID {
     [
         ((a & 0x000000FF) >> 0) as u8,
         ((a & 0x0000FF00) >> 8) as u8,
@@ -26,7 +26,7 @@ pub const fn iid(a: u32, b: u32, c: u32, d: u32) -> TUID {
 }
 
 #[cfg(not(target_os = "windows"))]
-pub const fn iid(a: u32, b: u32, c: u32, d: u32) -> TUID {
+pub const fn uid(a: u32, b: u32, c: u32, d: u32) -> TUID {
     [
         ((a & 0xFF000000) >> 24) as u8,
         ((a & 0x00FF0000) >> 16) as u8,
@@ -92,7 +92,7 @@ pub struct FUnknown {
 }
 
 impl FUnknown {
-    pub const IID: TUID = iid(0x00000000, 0x00000000, 0xC0000000, 0x00000046);
+    pub const IID: TUID = uid(0x00000000, 0x00000000, 0xC0000000, 0x00000046);
 }
 
 #[repr(C)]
@@ -113,7 +113,7 @@ pub struct IBStream {
 }
 
 impl IBStream {
-    pub const IID: TUID = iid(0xC3BF6EA2, 0x30994752, 0x9B6BF990, 0x1EE33E9B);
+    pub const IID: TUID = uid(0xC3BF6EA2, 0x30994752, 0x9B6BF990, 0x1EE33E9B);
 
     pub const SEEK_SET: i32 = 0;
     pub const SEEK_CUR: i32 = 1;
@@ -167,7 +167,7 @@ pub struct IPluginFactory {
 }
 
 impl IPluginFactory {
-    pub const IID: TUID = iid(0x7A4D811C, 0x52114A1F, 0xAED9D2EE, 0x0B43BF9F);
+    pub const IID: TUID = uid(0x7A4D811C, 0x52114A1F, 0xAED9D2EE, 0x0B43BF9F);
 }
 
 pub mod component_flags {
@@ -197,7 +197,7 @@ pub struct IPluginFactory2 {
 }
 
 impl IPluginFactory2 {
-    pub const IID: TUID = iid(0x0007B650, 0xF24B4C0B, 0xA464EDB9, 0xF00B2ABB);
+    pub const IID: TUID = uid(0x0007B650, 0xF24B4C0B, 0xA464EDB9, 0xF00B2ABB);
 }
 
 #[repr(C)]
@@ -224,7 +224,7 @@ pub struct IPluginFactory3 {
 }
 
 impl IPluginFactory3 {
-    pub const IID: TUID = iid(0x4555A2AB, 0xC1234E57, 0x9B122910, 0x36878931);
+    pub const IID: TUID = uid(0x4555A2AB, 0xC1234E57, 0x9B122910, 0x36878931);
 }
 
 #[repr(C)]
@@ -235,7 +235,7 @@ pub struct IPluginBase {
 }
 
 impl IPluginBase {
-    pub const IID: TUID = iid(0x22888DDB, 0x156E45AE, 0x8358B348, 0x08190625);
+    pub const IID: TUID = uid(0x22888DDB, 0x156E45AE, 0x8358B348, 0x08190625);
 }
 
 pub type TChar = i16;
@@ -323,7 +323,7 @@ pub struct RoutingInfo {
 pub struct IComponent {
     pub plugin_base: IPluginBase,
     pub get_controller_class_id:
-        unsafe extern "system" fn(this: *mut c_void, class_id: *const TUID) -> TResult,
+        unsafe extern "system" fn(this: *mut c_void, class_id: *mut TUID) -> TResult,
     pub set_io_mode: unsafe extern "system" fn(this: *mut c_void, mode: IoMode) -> TResult,
     pub get_bus_count: unsafe extern "system" fn(
         this: *mut c_void,
@@ -355,7 +355,7 @@ pub struct IComponent {
 }
 
 impl IComponent {
-    pub const IID: TUID = iid(0xE831FF31, 0xF2D54301, 0x928EBBEE, 0x25697802);
+    pub const IID: TUID = uid(0xE831FF31, 0xF2D54301, 0x928EBBEE, 0x25697802);
 }
 
 pub mod symbolic_sample_sizes {
@@ -473,7 +473,7 @@ pub struct IParamValueQueue {
 }
 
 impl IParamValueQueue {
-    pub const IID: TUID = iid(0x01263A18, 0xED074F6F, 0x98C9D356, 0x4686F9BA);
+    pub const IID: TUID = uid(0x01263A18, 0xED074F6F, 0x98C9D356, 0x4686F9BA);
 }
 
 #[repr(C)]
@@ -490,7 +490,7 @@ pub struct IParameterChanges {
 }
 
 impl IParameterChanges {
-    pub const IID: TUID = iid(0xA4779663, 0x0BB64A56, 0xB44384A8, 0x466FEB9D);
+    pub const IID: TUID = uid(0xA4779663, 0x0BB64A56, 0xB44384A8, 0x466FEB9D);
 }
 
 #[repr(C)]
@@ -645,7 +645,7 @@ pub struct IEventList {
 }
 
 impl IEventList {
-    pub const IID: TUID = iid(0x3A2C4214, 0x346349FE, 0xB2C4F397, 0xB9695A44);
+    pub const IID: TUID = uid(0x3A2C4214, 0x346349FE, 0xB2C4F397, 0xB9695A44);
 }
 
 #[repr(C)]
@@ -692,7 +692,7 @@ pub struct IAudioProcessor {
 }
 
 impl IAudioProcessor {
-    pub const IID: TUID = iid(0x42043F99, 0xB7DA453C, 0xA569E79D, 0x9AAEC33D);
+    pub const IID: TUID = uid(0x42043F99, 0xB7DA453C, 0xA569E79D, 0x9AAEC33D);
 }
 
 #[repr(C)]
@@ -707,7 +707,7 @@ pub struct IAudioPresentationLatency {
 }
 
 impl IAudioPresentationLatency {
-    pub const IID: TUID = iid(0x309ECE78, 0xEB7D4fae, 0x8B2225D9, 0x09FD08B6);
+    pub const IID: TUID = uid(0x309ECE78, 0xEB7D4fae, 0x8B2225D9, 0x09FD08B6);
 }
 
 #[repr(C)]
@@ -717,7 +717,7 @@ pub struct IProcessContextRequirements {
 }
 
 impl IProcessContextRequirements {
-    pub const IID: TUID = iid(0x2A654303, 0xEF764E3D, 0x95B5FE83, 0x730EF6D0);
+    pub const IID: TUID = uid(0x2A654303, 0xEF764E3D, 0x95B5FE83, 0x730EF6D0);
 
     pub const SYSTEM_TIME: u32 = 1 << 0;
     pub const CONTINUOUS_TIME_SAMPLES: u32 = 1 << 1;
@@ -778,7 +778,7 @@ pub struct IComponentHandler {
 }
 
 impl IComponentHandler {
-    pub const IID: TUID = iid(0x93A0BEA3, 0x0BD045DB, 0x8E890B0C, 0xC1E46AC6);
+    pub const IID: TUID = uid(0x93A0BEA3, 0x0BD045DB, 0x8E890B0C, 0xC1E46AC6);
 }
 
 #[repr(C)]
@@ -792,7 +792,7 @@ pub struct IComponentHandler2 {
 }
 
 impl IComponentHandler2 {
-    pub const IID: TUID = iid(0xF040B4B3, 0xA36045EC, 0xABCDC045, 0xB4D5A2CC);
+    pub const IID: TUID = uid(0xF040B4B3, 0xA36045EC, 0xABCDC045, 0xB4D5A2CC);
 }
 
 pub mod view_types {
@@ -843,7 +843,7 @@ pub struct IEditController {
 }
 
 impl IEditController {
-    pub const IID: TUID = iid(0xDCD7BBE3, 0x7742448D, 0xA874AACC, 0x979C759E);
+    pub const IID: TUID = uid(0xDCD7BBE3, 0x7742448D, 0xA874AACC, 0x979C759E);
 }
 
 #[repr(C)]
@@ -927,7 +927,7 @@ pub struct IUnitInfo {
 }
 
 impl IUnitInfo {
-    pub const IID: TUID = iid(0x3D4BD6B5, 0x913A4FD2, 0xA886E768, 0xA5EB92C1);
+    pub const IID: TUID = uid(0x3D4BD6B5, 0x913A4FD2, 0xA886E768, 0xA5EB92C1);
 }
 
 #[repr(C)]
@@ -983,7 +983,7 @@ pub struct IPlugView {
 }
 
 impl IPlugView {
-    pub const IID: TUID = iid(0x5BC32507, 0xD06049EA, 0xA6151B52, 0x2B755B29);
+    pub const IID: TUID = uid(0x5BC32507, 0xD06049EA, 0xA6151B52, 0x2B755B29);
 }
 
 #[repr(C)]
@@ -994,7 +994,7 @@ pub struct IPlugViewContentScaleSupport {
 }
 
 impl IPlugViewContentScaleSupport {
-    pub const IID: TUID = iid(0x65ED9690, 0x8AC44525, 0x8AADEF7A, 0x72EA703F);
+    pub const IID: TUID = uid(0x65ED9690, 0x8AC44525, 0x8AADEF7A, 0x72EA703F);
 }
 
 #[repr(C)]
@@ -1008,7 +1008,7 @@ pub struct IPlugFrame {
 }
 
 impl IPlugFrame {
-    pub const IID: TUID = iid(0x367FAF01, 0xAFA94693, 0x8D4DA2A0, 0xED0882A3);
+    pub const IID: TUID = uid(0x367FAF01, 0xAFA94693, 0x8D4DA2A0, 0xED0882A3);
 }
 
 #[repr(C)]
@@ -1018,7 +1018,7 @@ pub struct IEventHandler {
 }
 
 impl IEventHandler {
-    pub const IID: TUID = iid(0x561E65C9, 0x13A0496F, 0x813A2C35, 0x654D7983);
+    pub const IID: TUID = uid(0x561E65C9, 0x13A0496F, 0x813A2C35, 0x654D7983);
 }
 
 #[repr(C)]
@@ -1028,7 +1028,7 @@ pub struct ITimerHandler {
 }
 
 impl ITimerHandler {
-    pub const IID: TUID = iid(0x10BDD94F, 0x41424774, 0x821FAD8F, 0xECA72CA9);
+    pub const IID: TUID = uid(0x10BDD94F, 0x41424774, 0x821FAD8F, 0xECA72CA9);
 }
 
 #[repr(C)]
@@ -1051,5 +1051,5 @@ pub struct IRunLoop {
 }
 
 impl IRunLoop {
-    pub const IID: TUID = iid(0x18C35366, 0x97764F1A, 0x9C5B8385, 0x7A871389);
+    pub const IID: TUID = uid(0x18C35366, 0x97764F1A, 0x9C5B8385, 0x7A871389);
 }
