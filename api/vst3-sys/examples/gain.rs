@@ -410,8 +410,8 @@ impl GainProcessor {
         let output_r = slice::from_raw_parts_mut(output_channels[1], num_samples);
 
         for i in 0..num_samples {
-             output_l[i] = gain * input_l[i];
-             output_r[i] = gain * input_r[i];
+            output_l[i] = gain * input_l[i];
+            output_r[i] = gain * input_r[i];
         }
 
         result::OK
