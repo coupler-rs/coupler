@@ -5,7 +5,7 @@ use crate::{
 
 use std::cell::{Cell, UnsafeCell};
 use std::collections::HashMap;
-use std::ffi::c_void;
+use std::ffi::{c_void, CString};
 use std::marker::PhantomData;
 use std::os::raw::{c_char, c_int};
 use std::rc::Rc;
@@ -19,9 +19,17 @@ pub use vst3_sys;
 use vst3_sys::*;
 
 fn copy_cstring(src: &str, dst: &mut [c_char]) {
-    let c_string = ffi::CString::new(src).unwrap_or_else(|_| ffi::CString::default());
-    for (src, dst) in c_string.as_bytes_with_nul().iter().zip(dst.iter_mut()) {
+    let c_string = CString::new(src).unwrap_or_else(|_| CString::default());
+    let bytes = c_string.as_bytes_with_nul();
+
+    for (src, dst) in bytes.iter().zip(dst.iter_mut()) {
         *dst = *src as c_char;
+    }
+
+    if bytes.len() > dst.len() {
+        if let Some(last) = dst.last_mut() {
+            *last = 0;
+        }
     }
 }
 
@@ -31,16 +39,21 @@ fn copy_wstring(src: &str, dst: &mut [i16]) {
         *dst = src as i16;
         len += 1;
     }
+
     if len < dst.len() {
         dst[len] = 0;
+    } else if let Some(last) = dst.last_mut() {
+        *last = 0;
     }
 }
 
 unsafe fn len_wstring(string: *const i16) -> usize {
     let mut len = 0;
+
     while *string.offset(len) != 0 {
         len += 1;
     }
+
     len as usize
 }
 
