@@ -67,6 +67,7 @@ pub struct Factory<P> {
     pub plug_view: *const IPlugView,
     pub event_handler: *const IEventHandler,
     pub timer_handler: *const ITimerHandler,
+    pub uid: TUID,
     pub phantom: PhantomData<P>,
 }
 
@@ -119,17 +120,19 @@ impl<P: Plugin> Factory<P> {
     }
 
     pub unsafe extern "system" fn get_class_info(
-        _this: *mut c_void,
+        this: *mut c_void,
         index: i32,
         info: *mut PClassInfo,
     ) -> TResult {
+        let factory = &*(this as *const Factory<P>);
+
         if index != 0 {
             return result::INVALID_ARGUMENT;
         }
 
         let info = &mut *info;
 
-        info.cid = uid(P::INFO.uid[0], P::INFO.uid[1], P::INFO.uid[2], P::INFO.uid[3]);
+        info.cid = factory.uid;
         info.cardinality = PClassInfo::MANY_INSTANCES;
         copy_cstring("Audio Module Class", &mut info.category);
         copy_cstring(P::INFO.name, &mut info.name);
@@ -143,14 +146,13 @@ impl<P: Plugin> Factory<P> {
         iid: *const c_char,
         obj: *mut *mut c_void,
     ) -> TResult {
+        let factory = &*(this as *const Factory<P>);
+
         let cid = *(cid as *const TUID);
         let iid = *(iid as *const TUID);
-        let wrapper_cid = uid(P::INFO.uid[0], P::INFO.uid[1], P::INFO.uid[2], P::INFO.uid[3]);
-        if cid != wrapper_cid || iid != IComponent::IID {
+        if cid != factory.uid || iid != IComponent::IID {
             return result::INVALID_ARGUMENT;
         }
-
-        let factory = &*(this as *const Factory<P>);
 
         let editor_context = Rc::new(Vst3EditorContext {
             alive: Cell::new(true),
@@ -192,17 +194,19 @@ impl<P: Plugin> Factory<P> {
     }
 
     pub unsafe extern "system" fn get_class_info_2(
-        _this: *mut c_void,
+        this: *mut c_void,
         index: i32,
         info: *mut PClassInfo2,
     ) -> TResult {
+        let factory = &*(this as *const Factory<P>);
+
         if index != 0 {
             return result::INVALID_ARGUMENT;
         }
 
         let info = &mut *info;
 
-        info.cid = uid(P::INFO.uid[0], P::INFO.uid[1], P::INFO.uid[2], P::INFO.uid[3]);
+        info.cid = factory.uid;
         info.cardinality = PClassInfo::MANY_INSTANCES;
         copy_cstring("Audio Module Class", &mut info.category);
         copy_cstring(P::INFO.name, &mut info.name);
@@ -216,17 +220,19 @@ impl<P: Plugin> Factory<P> {
     }
 
     pub unsafe extern "system" fn get_class_info_unicode(
-        _this: *mut c_void,
+        this: *mut c_void,
         index: i32,
         info: *mut PClassInfoW,
     ) -> TResult {
+        let factory = &*(this as *const Factory<P>);
+
         if index != 0 {
             return result::INVALID_ARGUMENT;
         }
 
         let info = &mut *info;
 
-        info.cid = uid(P::INFO.uid[0], P::INFO.uid[1], P::INFO.uid[2], P::INFO.uid[3]);
+        info.cid = factory.uid;
         info.cardinality = PClassInfo::MANY_INSTANCES;
         copy_cstring("Audio Module Class", &mut info.category);
         copy_wstring(P::INFO.name, &mut info.name);
@@ -1211,7 +1217,7 @@ impl<P: Plugin> Wrapper<P> {
 
 #[macro_export]
 macro_rules! vst3 {
-    ($plugin:ty) => {
+    ($plugin:ty, $uid:expr) => {
         mod vst3_impl {
             use std::ffi::c_void;
             use std::marker::PhantomData;
@@ -1359,6 +1365,7 @@ macro_rules! vst3 {
                 plug_view: &PLUG_VIEW_VTABLE,
                 event_handler: &EVENT_HANDLER_VTABLE,
                 timer_handler: &TIMER_HANDLER_VTABLE,
+                uid: uid($uid[0], $uid[1], $uid[2], $uid[3]),
                 phantom: PhantomData,
             };
 

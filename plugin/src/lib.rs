@@ -12,7 +12,6 @@ pub struct PluginInfo {
     pub vendor: &'static str,
     pub url: &'static str,
     pub email: &'static str,
-    pub uid: [u32; 4],
     pub has_editor: bool,
 }
 
