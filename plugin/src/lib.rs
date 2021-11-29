@@ -3,6 +3,7 @@ pub mod vst3;
 
 pub use audio_buses::*;
 
+use std::fmt::Write;
 use std::rc::Rc;
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
@@ -23,10 +24,6 @@ pub struct ParamInfo {
     pub label: &'static str,
     pub steps: Option<u32>,
     pub default: f64,
-    pub to_normal: fn(f64) -> f64,
-    pub from_normal: fn(f64) -> f64,
-    pub to_string: fn(f64) -> String,
-    pub from_string: fn(&str) -> f64,
 }
 
 pub struct ParamChange {
@@ -79,6 +76,10 @@ pub trait Plugin: Send + Sync + Sized {
 
     fn get_param(&self, id: ParamId) -> f64;
     fn set_param(&self, id: ParamId, value: f64);
+    fn display_param(&self, id: ParamId, value: f64, write: &mut impl Write);
+    fn parse_param(&self, id: ParamId, string: &str) -> Result<f64, ()>;
+    fn normalize_param(&self, id: ParamId, value: f64) -> f64;
+    fn denormalize_param(&self, id: ParamId, value: f64) -> f64;
 }
 
 pub trait Processor: Send + Sized {

@@ -5,23 +5,13 @@ use window::{
 };
 
 use std::cell::{Cell, RefCell};
-use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::fmt::Write;
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
-const GAIN: ParamInfo = ParamInfo {
-    id: 0,
-    name: "gain",
-    label: "dB",
-    steps: None,
-    default: 1.0,
-    to_normal: |x| x,
-    from_normal: |x| x,
-    to_string: |x| x.to_string(),
-    from_string: |s| f64::from_str(s).unwrap_or(0.0),
-};
+const GAIN: ParamInfo = ParamInfo { id: 0, name: "gain", label: "dB", steps: None, default: 1.0 };
 
 pub struct GainParams {
     gain: AtomicU64,
@@ -76,6 +66,36 @@ impl Plugin for Gain {
                 self.params.gain.store(value.to_bits(), Ordering::Relaxed);
             }
             _ => {}
+        }
+    }
+
+    fn display_param(&self, id: ParamId, value: f64, write: &mut impl Write) {
+        match id {
+            0 => {
+                let _ = write!(write, "{}", value);
+            }
+            _ => {}
+        }
+    }
+
+    fn parse_param(&self, id: ParamId, string: &str) -> Result<f64, ()> {
+        match id {
+            0 => string.parse().map_err(|_| ()),
+            _ => Err(()),
+        }
+    }
+
+    fn normalize_param(&self, id: ParamId, value: f64) -> f64 {
+        match id {
+            0 => value,
+            _ => 0.0,
+        }
+    }
+
+    fn denormalize_param(&self, id: ParamId, value: f64) -> f64 {
+        match id {
+            0 => value,
+            _ => 0.0,
         }
     }
 }
