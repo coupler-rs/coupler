@@ -11,7 +11,7 @@ use std::os::raw::{c_char, c_int};
 use std::rc::Rc;
 use std::sync::atomic;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::{ffi, mem, ptr, slice};
+use std::{ffi, io, mem, ptr, slice};
 
 use raw_window_handle::RawWindowHandle;
 
@@ -525,17 +525,75 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn component_set_state(
-        _this: *mut c_void,
-        _state: *mut *const IBStream,
+        this: *mut c_void,
+        state: *mut *const IBStream,
     ) -> TResult {
-        result::OK
+        struct StreamReader(*mut *const IBStream);
+
+        impl io::Read for StreamReader {
+            fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+                let mut bytes: i32 = 0;
+                let result = unsafe {
+                    ((*(*self.0)).read)(
+                        self.0 as *mut c_void,
+                        buf.as_mut_ptr() as *mut c_void,
+                        buf.len() as i32,
+                        &mut bytes,
+                    )
+                };
+
+                if result == result::OK {
+                    Ok(bytes as usize)
+                } else {
+                    Err(io::Error::new(io::ErrorKind::Other, "Failed to read from stream"))
+                }
+            }
+        }
+
+        let wrapper = &*(this.offset(-Self::COMPONENT_OFFSET) as *const Wrapper<P>);
+
+        match wrapper.plugin.deserialize(&mut StreamReader(state)) {
+            Ok(_) => result::OK,
+            Err(_) => result::FALSE,
+        }
     }
 
     pub unsafe extern "system" fn component_get_state(
-        _this: *mut c_void,
-        _state: *mut *const IBStream,
+        this: *mut c_void,
+        state: *mut *const IBStream,
     ) -> TResult {
-        result::OK
+        struct StreamWriter(*mut *const IBStream);
+
+        impl io::Write for StreamWriter {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                let mut bytes: i32 = 0;
+                let result = unsafe {
+                    ((*(*self.0)).write)(
+                        self.0 as *mut c_void,
+                        buf.as_ptr() as *mut c_void,
+                        buf.len() as i32,
+                        &mut bytes,
+                    )
+                };
+
+                if result == result::OK {
+                    Ok(bytes as usize)
+                } else {
+                    Err(io::Error::new(io::ErrorKind::Other, "Failed to write to stream"))
+                }
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let wrapper = &*(this.offset(-Self::COMPONENT_OFFSET) as *const Wrapper<P>);
+
+        match wrapper.plugin.serialize(&mut StreamWriter(state)) {
+            Ok(_) => result::OK,
+            Err(_) => result::FALSE,
+        }
     }
 
     pub unsafe extern "system" fn audio_processor_query_interface(

@@ -3,7 +3,6 @@ pub mod vst3;
 
 pub use audio_buses::*;
 
-use std::fmt::Write;
 use std::rc::Rc;
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
@@ -76,10 +75,13 @@ pub trait Plugin: Send + Sync + Sized {
 
     fn get_param(&self, id: ParamId) -> f64;
     fn set_param(&self, id: ParamId, value: f64);
-    fn display_param(&self, id: ParamId, value: f64, write: &mut impl Write);
+    fn display_param(&self, id: ParamId, value: f64, write: &mut impl std::fmt::Write);
     fn parse_param(&self, id: ParamId, string: &str) -> Result<f64, ()>;
     fn normalize_param(&self, id: ParamId, value: f64) -> f64;
     fn denormalize_param(&self, id: ParamId, value: f64) -> f64;
+
+    fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()>;
+    fn deserialize(&self, read: &mut impl std::io::Read) -> Result<(), ()>;
 }
 
 pub trait Processor: Send + Sized {

@@ -7,7 +7,6 @@ use window::{
 use std::cell::{Cell, RefCell};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::fmt::Write;
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
@@ -69,7 +68,7 @@ impl Plugin for Gain {
         }
     }
 
-    fn display_param(&self, id: ParamId, value: f64, write: &mut impl Write) {
+    fn display_param(&self, id: ParamId, value: f64, write: &mut impl std::fmt::Write) {
         match id {
             0 => {
                 let _ = write!(write, "{}", value);
@@ -96,6 +95,21 @@ impl Plugin for Gain {
         match id {
             0 => value,
             _ => 0.0,
+        }
+    }
+
+    fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()> {
+        let gain = self.params.gain.load(Ordering::Relaxed);
+        write.write(&gain.to_le_bytes()).map(|_| ()).map_err(|_| ())
+    }
+
+    fn deserialize(&self, read: &mut impl std::io::Read) -> Result<(), ()> {
+        let mut buf = [0; std::mem::size_of::<u64>()];
+        if read.read(&mut buf).is_ok() {
+            self.params.gain.store(u64::from_le_bytes(buf), Ordering::Relaxed);
+            Ok(())
+        } else {
+            Err(())
         }
     }
 }
