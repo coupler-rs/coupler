@@ -99,11 +99,13 @@ impl FUnknown {
 pub struct IBStream {
     pub unknown: FUnknown,
     pub read: unsafe extern "system" fn(
+        this: *mut c_void,
         buffer: *mut c_void,
         num_bytes: i32,
         num_bytes_read: *mut i32,
     ) -> TResult,
     pub write: unsafe extern "system" fn(
+        this: *mut c_void,
         buffer: *const c_void,
         num_bytes: i32,
         num_bytes_written: *mut i32,
