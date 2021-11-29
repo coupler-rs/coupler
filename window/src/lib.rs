@@ -60,7 +60,8 @@ impl Application {
         self.application.poll();
     }
 
-    pub fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
+    #[cfg(target_os = "linux")]
+    pub fn file_descriptor(&self) -> std::os::raw::c_int {
         self.application.file_descriptor()
     }
 }

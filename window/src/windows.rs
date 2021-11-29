@@ -123,10 +123,6 @@ impl Application {
             }
         }
     }
-
-    pub fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
-        None
-    }
 }
 
 impl Drop for ApplicationInner {

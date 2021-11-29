@@ -303,8 +303,8 @@ impl Application {
         libc::free(event as *mut ffi::c_void);
     }
 
-    pub fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
-        unsafe { Some(xcb::xcb_get_file_descriptor(self.inner.connection)) }
+    pub fn file_descriptor(&self) -> std::os::raw::c_int {
+        unsafe { xcb::xcb_get_file_descriptor(self.inner.connection) }
     }
 }
 

@@ -1184,12 +1184,16 @@ impl<P: Plugin> Wrapper<P> {
         Self::release(this.offset(-Self::EVENT_HANDLER_OFFSET))
     }
 
+    #[cfg(target_os = "linux")]
     pub unsafe extern "system" fn on_fd_is_set(this: *mut c_void, _fd: c_int) {
         let wrapper = &*(this.offset(-Self::EVENT_HANDLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
         editor_state.editor.poll();
     }
+
+    #[cfg(not(target_os = "linux"))]
+    pub unsafe extern "system" fn on_fd_is_set(_this: *mut c_void, _fd: c_int) {}
 
     pub unsafe extern "system" fn timer_handler_query_interface(
         this: *mut c_void,
@@ -1207,12 +1211,16 @@ impl<P: Plugin> Wrapper<P> {
         Self::release(this.offset(-Self::TIMER_HANDLER_OFFSET))
     }
 
+    #[cfg(target_os = "linux")]
     pub unsafe extern "system" fn on_timer(this: *mut c_void) {
         let wrapper = &*(this.offset(-Self::TIMER_HANDLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
         editor_state.editor.poll();
     }
+
+    #[cfg(not(target_os = "linux"))]
+    pub unsafe extern "system" fn on_timer(_this: *mut c_void) {}
 }
 
 #[macro_export]

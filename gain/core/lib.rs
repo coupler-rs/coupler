@@ -157,6 +157,7 @@ impl Editor for GainEditor {
         self.application = None;
     }
 
+    #[cfg(target_os = "linux")]
     fn poll(&mut self) {
         if let Some(application) = &self.application {
             application.poll();
@@ -171,9 +172,10 @@ impl Editor for GainEditor {
         }
     }
 
+    #[cfg(target_os = "linux")]
     fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
         if let Some(application) = &self.application {
-            application.file_descriptor()
+            Some(application.file_descriptor())
         } else {
             None
         }

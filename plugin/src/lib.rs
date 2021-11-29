@@ -89,7 +89,10 @@ pub trait Editor: Sized {
     fn size(&self) -> (f64, f64);
     fn open(&mut self, parent: Option<&ParentWindow>);
     fn close(&mut self);
-    fn poll(&mut self);
     fn raw_window_handle(&self) -> Option<RawWindowHandle>;
+
+    #[cfg(target_os = "linux")]
     fn file_descriptor(&self) -> Option<std::os::raw::c_int>;
+    #[cfg(target_os = "linux")]
+    fn poll(&mut self);
 }
