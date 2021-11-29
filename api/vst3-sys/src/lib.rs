@@ -350,8 +350,10 @@ pub struct IComponent {
         state: TBool,
     ) -> TResult,
     pub set_active: unsafe extern "system" fn(this: *mut c_void, state: TBool) -> TResult,
-    pub set_state: unsafe extern "system" fn(this: *mut c_void, state: *mut IBStream) -> TResult,
-    pub get_state: unsafe extern "system" fn(this: *mut c_void, state: *mut IBStream) -> TResult,
+    pub set_state:
+        unsafe extern "system" fn(this: *mut c_void, state: *mut *const IBStream) -> TResult,
+    pub get_state:
+        unsafe extern "system" fn(this: *mut c_void, state: *mut *const IBStream) -> TResult,
 }
 
 impl IComponent {

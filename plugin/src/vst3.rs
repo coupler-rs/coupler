@@ -526,14 +526,14 @@ impl<P: Plugin> Wrapper<P> {
 
     pub unsafe extern "system" fn component_set_state(
         _this: *mut c_void,
-        _state: *mut IBStream,
+        _state: *mut *const IBStream,
     ) -> TResult {
         result::OK
     }
 
     pub unsafe extern "system" fn component_get_state(
         _this: *mut c_void,
-        _state: *mut IBStream,
+        _state: *mut *const IBStream,
     ) -> TResult {
         result::OK
     }

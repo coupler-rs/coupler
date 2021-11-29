@@ -241,11 +241,17 @@ impl GainProcessor {
         result::OK
     }
 
-    unsafe extern "system" fn set_state(_this: *mut c_void, _state: *mut IBStream) -> TResult {
+    unsafe extern "system" fn set_state(
+        _this: *mut c_void,
+        _state: *mut *const IBStream,
+    ) -> TResult {
         result::OK
     }
 
-    unsafe extern "system" fn get_state(_this: *mut c_void, _state: *mut IBStream) -> TResult {
+    unsafe extern "system" fn get_state(
+        _this: *mut c_void,
+        _state: *mut *const IBStream,
+    ) -> TResult {
         result::OK
     }
 
