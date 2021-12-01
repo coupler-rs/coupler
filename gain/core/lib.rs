@@ -37,6 +37,10 @@ impl Plugin for Gain {
 
     const PARAMS: &'static [ParamInfo] = &[GAIN];
 
+    const INPUTS: &'static [BusInfo] = &[BusInfo { name: "Input" }];
+
+    const OUTPUTS: &'static [BusInfo] = &[BusInfo { name: "Output" }];
+
     type Processor = GainProcessor;
     type Editor = GainEditor;
 

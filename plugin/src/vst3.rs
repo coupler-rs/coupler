@@ -447,8 +447,8 @@ impl<P: Plugin> Wrapper<P> {
     ) -> i32 {
         match media_type {
             media_types::AUDIO => match dir {
-                bus_directions::INPUT => 1,
-                bus_directions::OUTPUT => 1,
+                bus_directions::INPUT => P::INPUTS.len() as i32,
+                bus_directions::OUTPUT => P::OUTPUTS.len() as i32,
                 _ => 0,
             },
             media_types::EVENT => 0,
@@ -464,42 +464,31 @@ impl<P: Plugin> Wrapper<P> {
         bus: *mut BusInfo,
     ) -> TResult {
         match media_type {
-            media_types::AUDIO => match dir {
-                bus_directions::INPUT => match index {
-                    0 => {
-                        let bus = &mut *bus;
+            media_types::AUDIO => {
+                let bus_info = match dir {
+                    bus_directions::INPUT => P::INPUTS.get(index as usize),
+                    bus_directions::OUTPUT => P::OUTPUTS.get(index as usize),
+                    _ => None,
+                };
 
-                        bus.media_type = media_types::AUDIO;
-                        bus.direction = bus_directions::INPUT;
-                        bus.channel_count = 2;
-                        copy_wstring("input", &mut bus.name);
-                        bus.bus_type = bus_types::MAIN;
-                        bus.flags = BusInfo::DEFAULT_ACTIVE;
+                if let Some(bus_info) = bus_info {
+                    let bus = &mut *bus;
 
-                        result::OK
-                    }
-                    _ => result::INVALID_ARGUMENT,
-                },
-                bus_directions::OUTPUT => match index {
-                    0 => {
-                        let bus = &mut *bus;
+                    bus.media_type = media_types::AUDIO;
+                    bus.direction = dir;
+                    bus.channel_count = 2;
+                    copy_wstring(bus_info.name, &mut bus.name);
+                    bus.bus_type = if index == 0 { bus_types::MAIN } else { bus_types::AUX };
+                    bus.flags = BusInfo::DEFAULT_ACTIVE;
 
-                        bus.media_type = media_types::AUDIO;
-                        bus.direction = bus_directions::OUTPUT;
-                        bus.channel_count = 2;
-                        copy_wstring("output", &mut bus.name);
-                        bus.bus_type = bus_types::MAIN;
-                        bus.flags = BusInfo::DEFAULT_ACTIVE;
-
-                        result::OK
-                    }
-                    _ => result::INVALID_ARGUMENT,
-                },
-                _ => result::INVALID_ARGUMENT,
-            },
-            media_types::EVENT => result::INVALID_ARGUMENT,
-            _ => result::INVALID_ARGUMENT,
+                    return result::OK;
+                }
+            }
+            media_types::EVENT => {}
+            _ => {}
         }
+
+        result::INVALID_ARGUMENT
     }
 
     pub unsafe extern "system" fn get_routing_info(

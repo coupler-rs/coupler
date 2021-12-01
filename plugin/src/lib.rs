@@ -31,6 +31,10 @@ pub struct ParamChange {
     pub value: f64,
 }
 
+pub struct BusInfo {
+    pub name: &'static str,
+}
+
 trait EditorContextInner {
     fn begin_edit(&self, param_id: ParamId);
     fn perform_edit(&self, param_id: ParamId, value: f64);
@@ -65,6 +69,8 @@ unsafe impl HasRawWindowHandle for ParentWindow {
 pub trait Plugin: Send + Sync + Sized {
     const INFO: PluginInfo;
     const PARAMS: &'static [ParamInfo];
+    const INPUTS: &'static [BusInfo];
+    const OUTPUTS: &'static [BusInfo];
 
     type Processor: Processor;
     type Editor: Editor;
