@@ -164,6 +164,20 @@ impl<P: Plugin> Factory<P> {
             param_indices.insert(param.id, index);
         }
 
+        let mut input_bus_states = Vec::with_capacity(P::INPUTS.len());
+        for _bus_info in P::INPUTS {
+            input_bus_states.push(BusState {
+                enabled: true,
+            });
+        }
+
+        let mut output_bus_states = Vec::with_capacity(P::OUTPUTS.len());
+        for _bus_info in P::OUTPUTS {
+            output_bus_states.push(BusState {
+                enabled: true,
+            });
+        }
+
         let plugin = P::create();
         let processor = plugin.processor();
         let editor = plugin.editor(EditorContext(editor_context.clone()));
@@ -180,6 +194,8 @@ impl<P: Plugin> Factory<P> {
             param_indices,
             plugin,
             processor_state: UnsafeCell::new(ProcessorState {
+                input_bus_states,
+                output_bus_states,
                 param_changes: Vec::with_capacity(P::PARAMS.len()),
                 processor,
             }),
@@ -308,6 +324,8 @@ pub struct Wrapper<P: Plugin> {
 }
 
 struct ProcessorState<P: Plugin> {
+    input_bus_states: Vec<BusState>,
+    output_bus_states: Vec<BusState>,
     param_changes: Vec<ParamChange>,
     processor: P::Processor,
 }
@@ -316,6 +334,10 @@ struct EditorState<P: Plugin> {
     plug_frame: *mut *const IPlugFrame,
     context: Rc<Vst3EditorContext>,
     editor: P::Editor,
+}
+
+struct BusState {
+    enabled: bool,
 }
 
 unsafe impl<P: Plugin> Sync for Wrapper<P> {}
@@ -500,13 +522,33 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn activate_bus(
-        _this: *mut c_void,
-        _media_type: MediaType,
-        _dir: BusDirection,
-        _index: i32,
-        _state: TBool,
+        this: *mut c_void,
+        media_type: MediaType,
+        dir: BusDirection,
+        index: i32,
+        state: TBool,
     ) -> TResult {
-        result::OK
+        let wrapper = &*(this.offset(-Self::COMPONENT_OFFSET) as *const Wrapper<P>);
+        let processor_state = &mut *wrapper.processor_state.get();
+
+        match media_type {
+            media_types::AUDIO => {
+                let bus_state = match dir {
+                    bus_directions::INPUT => processor_state.input_bus_states.get_mut(index as usize),
+                    bus_directions::OUTPUT => processor_state.output_bus_states.get_mut(index as usize),
+                    _ => None,
+                };
+
+                if let Some(bus_state) = bus_state {
+                    bus_state.enabled = if state == 0 { false } else { true };
+                    return result::OK;
+                }
+            }
+            media_types::EVENT => {}
+            _ => {}
+        }
+
+        result::INVALID_ARGUMENT
     }
 
     pub unsafe extern "system" fn set_active(_this: *mut c_void, _state: TBool) -> TResult {
