@@ -164,18 +164,14 @@ impl<P: Plugin> Factory<P> {
             param_indices.insert(param.id, index);
         }
 
-        let mut input_bus_states = Vec::with_capacity(P::INPUTS.len());
+        let mut inputs = Vec::with_capacity(P::INPUTS.len());
         for _bus_info in P::INPUTS {
-            input_bus_states.push(BusState {
-                enabled: true,
-            });
+            inputs.push(BusState { enabled: true });
         }
 
-        let mut output_bus_states = Vec::with_capacity(P::OUTPUTS.len());
+        let mut outputs = Vec::with_capacity(P::OUTPUTS.len());
         for _bus_info in P::OUTPUTS {
-            output_bus_states.push(BusState {
-                enabled: true,
-            });
+            outputs.push(BusState { enabled: true });
         }
 
         let plugin = P::create();
@@ -191,11 +187,10 @@ impl<P: Plugin> Factory<P> {
             event_handler: factory.event_handler,
             timer_handler: factory.timer_handler,
             count: AtomicU32::new(1),
+            bus_states: UnsafeCell::new(BusStates { inputs, outputs }),
             param_indices,
             plugin,
             processor_state: UnsafeCell::new(ProcessorState {
-                input_bus_states,
-                output_bus_states,
                 param_changes: Vec::with_capacity(P::PARAMS.len()),
                 processor,
             }),
@@ -317,15 +312,26 @@ pub struct Wrapper<P: Plugin> {
     event_handler: *const IEventHandler,
     timer_handler: *const ITimerHandler,
     count: AtomicU32,
+    // We only form an &mut to bus_states in set_bus_arrangements and
+    // activate_bus, which aren't called concurrently with any other methods on
+    // IComponent or IAudioProcessor per the spec.
+    bus_states: UnsafeCell<BusStates>,
     param_indices: HashMap<u32, usize>,
     plugin: P,
     processor_state: UnsafeCell<ProcessorState<P>>,
     editor_state: UnsafeCell<EditorState<P>>,
 }
 
+struct BusStates {
+    inputs: Vec<BusState>,
+    outputs: Vec<BusState>,
+}
+
+struct BusState {
+    enabled: bool,
+}
+
 struct ProcessorState<P: Plugin> {
-    input_bus_states: Vec<BusState>,
-    output_bus_states: Vec<BusState>,
     param_changes: Vec<ParamChange>,
     processor: P::Processor,
 }
@@ -334,10 +340,6 @@ struct EditorState<P: Plugin> {
     plug_frame: *mut *const IPlugFrame,
     context: Rc<Vst3EditorContext>,
     editor: P::Editor,
-}
-
-struct BusState {
-    enabled: bool,
 }
 
 unsafe impl<P: Plugin> Sync for Wrapper<P> {}
@@ -529,13 +531,13 @@ impl<P: Plugin> Wrapper<P> {
         state: TBool,
     ) -> TResult {
         let wrapper = &*(this.offset(-Self::COMPONENT_OFFSET) as *const Wrapper<P>);
-        let processor_state = &mut *wrapper.processor_state.get();
+        let bus_states = &mut *wrapper.bus_states.get();
 
         match media_type {
             media_types::AUDIO => {
                 let bus_state = match dir {
-                    bus_directions::INPUT => processor_state.input_bus_states.get_mut(index as usize),
-                    bus_directions::OUTPUT => processor_state.output_bus_states.get_mut(index as usize),
+                    bus_directions::INPUT => bus_states.inputs.get_mut(index as usize),
+                    bus_directions::OUTPUT => bus_states.outputs.get_mut(index as usize),
                     _ => None,
                 };
 
