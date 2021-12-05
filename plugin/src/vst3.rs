@@ -9,8 +9,7 @@ use std::ffi::{c_void, CString};
 use std::marker::PhantomData;
 use std::os::raw::{c_char, c_int};
 use std::rc::Rc;
-use std::sync::atomic;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 use std::{ffi, io, mem, ptr, slice};
 
 use raw_window_handle::RawWindowHandle;
@@ -178,7 +177,7 @@ impl<P: Plugin> Factory<P> {
         let processor = plugin.processor();
         let editor = plugin.editor(EditorContext(editor_context.clone()));
 
-        *obj = Box::into_raw(Box::new(Wrapper {
+        *obj = Arc::into_raw(Arc::new(Wrapper {
             component: factory.component,
             audio_processor: factory.audio_processor,
             process_context_requirements: factory.process_context_requirements,
@@ -186,7 +185,6 @@ impl<P: Plugin> Factory<P> {
             plug_view: factory.plug_view,
             event_handler: factory.event_handler,
             timer_handler: factory.timer_handler,
-            count: AtomicU32::new(1),
             bus_states: UnsafeCell::new(BusStates { inputs, outputs }),
             param_indices,
             plugin,
@@ -311,7 +309,6 @@ pub struct Wrapper<P: Plugin> {
     plug_view: *const IPlugView,
     event_handler: *const IEventHandler,
     timer_handler: *const ITimerHandler,
-    count: AtomicU32,
     // We only form an &mut to bus_states in set_bus_arrangements and
     // activate_bus, which aren't called concurrently with any other methods on
     // IComponent or IAudioProcessor per the spec.
@@ -412,18 +409,20 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     unsafe fn add_ref(this: *mut c_void) -> u32 {
-        (*(this as *const Wrapper<P>)).count.fetch_add(1, Ordering::Relaxed) + 1
+        let wrapper = Arc::from_raw(this as *const Wrapper<P>);
+        Arc::into_raw(wrapper.clone());
+        let count = Arc::strong_count(&wrapper);
+        Arc::into_raw(wrapper);
+
+        count as u32
     }
 
     unsafe fn release(this: *mut c_void) -> u32 {
-        let count = (*(this as *const Wrapper<P>)).count.fetch_sub(1, Ordering::Release) - 1;
+        let wrapper = Arc::from_raw(this as *const Wrapper<P>);
+        let count = Arc::strong_count(&wrapper) - 1;
+        drop(wrapper);
 
-        if count == 0 {
-            atomic::fence(Ordering::Acquire);
-            drop(Box::from_raw(this as *mut Wrapper<P>));
-        }
-
-        count
+        count as u32
     }
 
     pub unsafe extern "system" fn component_query_interface(
