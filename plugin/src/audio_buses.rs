@@ -1,93 +1,74 @@
+use std::marker::PhantomData;
+use std::ops::{Deref, DerefMut};
 use std::slice;
 
+pub struct BusLayout {}
+
 pub struct AudioBuses<'a> {
-    pub(crate) frames: usize,
-    pub(crate) input_buses: &'a [(usize, usize)],
-    pub(crate) input_channels: &'a [*const f32],
-    pub(crate) output_buses: &'a [(usize, usize)],
-    pub(crate) output_channels: &'a [*mut f32],
+    pub(crate) samples: usize,
+    pub(crate) inputs: &'a [AudioBus<'a>],
+    pub(crate) outputs: &'a mut [AudioBus<'a>],
 }
 
 impl<'a> AudioBuses<'a> {
-    pub fn frames(&self) -> usize {
-        self.frames
+    pub fn samples(&self) -> usize {
+        self.samples
     }
 
-    pub fn input_count(&self) -> usize {
-        self.input_buses.len()
+    pub fn inputs(&self) -> &[AudioBus<'a>] {
+        self.inputs
     }
 
-    pub fn output_count(&self) -> usize {
-        self.output_buses.len()
-    }
-
-    pub fn input(&self, index: usize) -> Option<InputBus<'a>> {
-        if let Some(&(start, end)) = self.input_buses.get(index) {
-            Some(InputBus { frames: self.frames, channels: &self.input_channels[start..end] })
-        } else {
-            None
-        }
-    }
-
-    pub fn output(&mut self, index: usize) -> Option<OutputBus<'a>> {
-        if let Some(&(start, end)) = self.input_buses.get(index) {
-            Some(OutputBus { frames: self.frames, channels: &self.output_channels[start..end] })
-        } else {
-            None
-        }
+    pub fn outputs(&mut self) -> &mut [AudioBus<'a>] {
+        self.outputs
     }
 }
 
-pub struct InputBus<'a> {
-    frames: usize,
-    channels: &'a [*const f32],
+pub struct AudioBus<'a> {
+    pub(crate) enabled: bool,
+    pub(crate) layout: &'a BusLayout,
+    pub(crate) samples: usize,
+    pub(crate) channels: &'a mut [AudioBuffer<'a>],
 }
 
-impl<'a> InputBus<'a> {
-    pub fn frames(&self) -> usize {
-        self.frames
+impl<'a> AudioBus<'a> {
+    pub fn enabled(&self) -> bool {
+        self.enabled
     }
 
-    pub fn channel_count(&self) -> usize {
-        self.channels.len()
+    pub fn layout(&self) -> &BusLayout {
+        self.layout
     }
 
-    pub fn channel(&self, index: usize) -> Option<&[f32]> {
-        if let Some(&ptr) = self.channels.get(index) {
-            Some(unsafe { slice::from_raw_parts(ptr, self.frames) })
-        } else {
-            None
-        }
+    pub fn samples(&self) -> usize {
+        self.samples
+    }
+
+    pub fn channels(&self) -> &[AudioBuffer<'a>] {
+        self.channels
+    }
+
+    pub fn channels_mut(&mut self) -> &mut [AudioBuffer<'a>] {
+        self.channels
     }
 }
 
-pub struct OutputBus<'a> {
-    frames: usize,
-    channels: &'a [*mut f32],
+pub struct AudioBuffer<'a> {
+    pub(crate) ptr: *mut f32,
+    pub(crate) len: usize,
+    pub(crate) phantom: PhantomData<&'a ()>,
 }
 
-impl<'a> OutputBus<'a> {
-    pub fn frames(&self) -> usize {
-        self.frames
-    }
+impl<'a> Deref for AudioBuffer<'a> {
+    type Target = [f32];
 
-    pub fn channel_count(&self) -> usize {
-        self.channels.len()
+    fn deref(&self) -> &'a [f32] {
+        unsafe { slice::from_raw_parts(self.ptr, self.len) }
     }
+}
 
-    pub fn channel(&self, index: usize) -> Option<&'a [f32]> {
-        if let Some(&ptr) = self.channels.get(index) {
-            Some(unsafe { slice::from_raw_parts(ptr, self.frames) })
-        } else {
-            None
-        }
-    }
-
-    pub fn channel_mut(&mut self, index: usize) -> Option<&'a mut [f32]> {
-        if let Some(&ptr) = self.channels.get(index) {
-            Some(unsafe { slice::from_raw_parts_mut(ptr, self.frames) })
-        } else {
-            None
-        }
+impl<'a> DerefMut for AudioBuffer<'a> {
+    fn deref_mut(&mut self) -> &'a mut [f32] {
+        unsafe { slice::from_raw_parts_mut(self.ptr, self.len) }
     }
 }

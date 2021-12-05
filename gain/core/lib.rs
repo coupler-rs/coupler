@@ -136,13 +136,12 @@ impl Processor for GainProcessor {
             }
         }
 
-        for i in 0..audio_buses.frames() {
+        for i in 0..audio_buses.samples() {
             self.gain = 0.9995 * self.gain + 0.0005 * gain;
 
             for channel in 0..2 {
-                let input_sample = audio_buses.input(0).unwrap().channel(channel).unwrap()[i];
-                audio_buses.output(0).unwrap().channel_mut(channel).unwrap()[i] =
-                    self.gain * input_sample;
+                let input_sample = audio_buses.inputs()[0].channels()[channel][i];
+                audio_buses.outputs()[0].channels_mut()[channel][i] = self.gain * input_sample;
             }
         }
 

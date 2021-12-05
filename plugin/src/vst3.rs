@@ -1,6 +1,6 @@
 use crate::{
-    AudioBuses, Editor, EditorContext, EditorContextInner, ParamChange, ParamId, ParentWindow,
-    Plugin, Processor,
+    AudioBuffer, AudioBus, AudioBuses, BusLayout, Editor, EditorContext, EditorContextInner,
+    ParamChange, ParamId, ParentWindow, Plugin, Processor,
 };
 
 use std::cell::{Cell, UnsafeCell};
@@ -790,12 +790,46 @@ impl<P: Plugin> Wrapper<P> {
             return result::OK;
         }
 
+        let input_left = AudioBuffer {
+            ptr: input_ptrs[0] as *mut f32,
+            len: process_data.num_samples as usize,
+            phantom: PhantomData,
+        };
+        let input_right = AudioBuffer {
+            ptr: input_ptrs[1] as *mut f32,
+            len: process_data.num_samples as usize,
+            phantom: PhantomData,
+        };
+
+        let input = AudioBus {
+            enabled: true,
+            layout: &BusLayout {},
+            samples: process_data.num_samples as usize,
+            channels: &mut [input_left, input_right],
+        };
+
+        let output_left = AudioBuffer {
+            ptr: output_ptrs[0] as *mut f32,
+            len: process_data.num_samples as usize,
+            phantom: PhantomData,
+        };
+        let output_right = AudioBuffer {
+            ptr: output_ptrs[1] as *mut f32,
+            len: process_data.num_samples as usize,
+            phantom: PhantomData,
+        };
+
+        let output = AudioBus {
+            enabled: true,
+            layout: &BusLayout {},
+            samples: process_data.num_samples as usize,
+            channels: &mut [output_left, output_right],
+        };
+
         let mut audio_buses = AudioBuses {
-            frames: process_data.num_samples as usize,
-            input_buses: &[(0, 2)],
-            input_channels: input_ptrs,
-            output_buses: &[(0, 2)],
-            output_channels: output_ptrs,
+            samples: process_data.num_samples as usize,
+            inputs: &[input],
+            outputs: &mut [output],
         };
 
         processor_state.processor.process(&mut audio_buses, &processor_state.param_changes[..]);
