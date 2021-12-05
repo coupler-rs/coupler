@@ -770,6 +770,7 @@ impl<P: Plugin> Wrapper<P> {
 
     pub unsafe extern "system" fn process(this: *mut c_void, data: *mut ProcessData) -> TResult {
         let wrapper = &*(this.offset(-Self::AUDIO_PROCESSOR_OFFSET) as *const Wrapper<P>);
+        let bus_states = &*wrapper.bus_states.get();
         let processor_state = &mut *wrapper.processor_state.get();
 
         processor_state.param_changes.clear();
@@ -814,75 +815,107 @@ impl<P: Plugin> Wrapper<P> {
             }
         }
 
-        if process_data.num_inputs != 1 || process_data.num_outputs != 1 {
-            return result::OK;
-        }
-
-        let input_bus = &*process_data.inputs;
-        let output_bus = &*process_data.outputs;
-
-        if input_bus.num_channels != 2 || output_bus.num_channels != 2 {
-            return result::OK;
-        }
-
-        let input_ptrs = slice::from_raw_parts(
-            input_bus.channel_buffers as *mut *const f32,
-            input_bus.num_channels as usize,
-        );
-        let output_ptrs = slice::from_raw_parts(
-            output_bus.channel_buffers as *mut *mut f32,
-            output_bus.num_channels as usize,
-        );
-
-        if input_ptrs[0].is_null()
-            || input_ptrs[1].is_null()
-            || output_ptrs[0].is_null()
-            || output_ptrs[1].is_null()
+        if process_data.num_inputs as usize != P::INPUTS.len()
+            || process_data.num_outputs as usize != P::OUTPUTS.len()
         {
-            return result::OK;
+            return result::INVALID_ARGUMENT;
         }
 
-        let input_left = AudioBuffer {
-            ptr: input_ptrs[0] as *mut f32,
-            len: process_data.num_samples as usize,
-            phantom: PhantomData,
-        };
-        let input_right = AudioBuffer {
-            ptr: input_ptrs[1] as *mut f32,
-            len: process_data.num_samples as usize,
-            phantom: PhantomData,
-        };
+        let mut buffers = Vec::new();
 
-        let input = AudioBus {
-            enabled: true,
-            layout: &BusLayout::Stereo,
-            samples: process_data.num_samples as usize,
-            channels: &mut [input_left, input_right],
-        };
+        let inputs = slice::from_raw_parts(process_data.inputs, process_data.num_inputs as usize);
+        for (input, bus_state) in inputs.iter().zip(bus_states.inputs.iter()) {
+            if !bus_state.enabled || input.num_channels == 0 {
+                continue;
+            }
 
-        let output_left = AudioBuffer {
-            ptr: output_ptrs[0] as *mut f32,
-            len: process_data.num_samples as usize,
-            phantom: PhantomData,
-        };
-        let output_right = AudioBuffer {
-            ptr: output_ptrs[1] as *mut f32,
-            len: process_data.num_samples as usize,
-            phantom: PhantomData,
-        };
+            if input.num_channels as usize != bus_state.layout.channels() {
+                return result::INVALID_ARGUMENT;
+            }
 
-        let output = AudioBus {
-            enabled: true,
-            layout: &BusLayout::Stereo,
-            samples: process_data.num_samples as usize,
-            channels: &mut [output_left, output_right],
-        };
+            let input_ptrs = slice::from_raw_parts(
+                input.channel_buffers as *mut *mut f32,
+                input.num_channels as usize,
+            );
 
-        let mut audio_buses = AudioBuses {
-            samples: process_data.num_samples as usize,
-            inputs: &[input],
-            outputs: &mut [output],
-        };
+            for &ptr in input_ptrs {
+                // AudioBuffer holds the raw parts of a slice, and we shouldn't
+                // use from_raw_parts for zero-length inputs since the pointer
+                // may be null or unaligned
+                let len = process_data.num_samples as usize;
+                let ptr = if len > 0 { ptr } else { (&mut []).as_mut_ptr() };
+                buffers.push(AudioBuffer { ptr, len, phantom: PhantomData });
+            }
+        }
+
+        let outputs =
+            slice::from_raw_parts(process_data.outputs, process_data.num_outputs as usize);
+        for (output, bus_state) in outputs.iter().zip(bus_states.outputs.iter()) {
+            if !bus_state.enabled || output.num_channels == 0 {
+                continue;
+            }
+
+            if output.num_channels as usize != bus_state.layout.channels() {
+                return result::INVALID_ARGUMENT;
+            }
+
+            let output_ptrs = slice::from_raw_parts(
+                output.channel_buffers as *mut *mut f32,
+                output.num_channels as usize,
+            );
+
+            for &ptr in output_ptrs {
+                // AudioBuffer holds the raw parts of a slice, and we shouldn't
+                // use from_raw_parts for zero-length inputs since the pointer
+                // may be null or unaligned
+                let len = process_data.num_samples as usize;
+                let ptr = if len > 0 { ptr } else { (&mut []).as_mut_ptr() };
+                buffers.push(AudioBuffer { ptr, len, phantom: PhantomData });
+            }
+        }
+
+        let mut buses = Vec::new();
+
+        let mut buffers_slice = &mut buffers[..];
+
+        for (input, bus_state) in inputs.iter().zip(bus_states.inputs.iter()) {
+            let channels = if bus_state.enabled && input.num_channels != 0 {
+                let (channels, remainder) = buffers_slice.split_at_mut(bus_state.layout.channels());
+                buffers_slice = remainder;
+                channels
+            } else {
+                &mut []
+            };
+
+            buses.push(AudioBus {
+                enabled: bus_state.enabled,
+                layout: &bus_state.layout,
+                samples: process_data.num_samples as usize,
+                channels,
+            });
+        }
+
+        for (output, bus_state) in outputs.iter().zip(bus_states.outputs.iter()) {
+            let channels = if bus_state.enabled && output.num_channels != 0 {
+                let (channels, remainder) = buffers_slice.split_at_mut(bus_state.layout.channels());
+                buffers_slice = remainder;
+                channels
+            } else {
+                &mut []
+            };
+
+            buses.push(AudioBus {
+                enabled: bus_state.enabled,
+                layout: &bus_state.layout,
+                samples: process_data.num_samples as usize,
+                channels,
+            });
+        }
+
+        let (inputs, outputs) = buses.split_at_mut(P::INPUTS.len());
+
+        let mut audio_buses =
+            AudioBuses { samples: process_data.num_samples as usize, inputs, outputs };
 
         processor_state.processor.process(&mut audio_buses, &processor_state.param_changes[..]);
 
