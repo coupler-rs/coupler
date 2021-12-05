@@ -37,9 +37,11 @@ impl Plugin for Gain {
 
     const PARAMS: &'static [ParamInfo] = &[GAIN];
 
-    const INPUTS: &'static [BusInfo] = &[BusInfo { name: "Input" }];
+    const INPUTS: &'static [BusInfo] =
+        &[BusInfo { name: "Input", default_layout: BusLayout::Stereo }];
 
-    const OUTPUTS: &'static [BusInfo] = &[BusInfo { name: "Output" }];
+    const OUTPUTS: &'static [BusInfo] =
+        &[BusInfo { name: "Output", default_layout: BusLayout::Stereo }];
 
     type Processor = GainProcessor;
     type Editor = GainEditor;
@@ -115,6 +117,10 @@ impl Plugin for Gain {
         } else {
             Err(())
         }
+    }
+
+    fn supports_layout(inputs: &[BusLayout], outputs: &[BusLayout]) -> bool {
+        inputs[0] == BusLayout::Stereo && outputs[0] == BusLayout::Stereo
     }
 }
 

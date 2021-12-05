@@ -2,7 +2,18 @@ use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::slice;
 
-pub struct BusLayout {}
+#[derive(Eq, PartialEq, Clone)]
+pub enum BusLayout {
+    Stereo,
+}
+
+impl BusLayout {
+    pub fn channel_count(&self) -> usize {
+        match self {
+            BusLayout::Stereo => 2,
+        }
+    }
+}
 
 pub struct AudioBuses<'a> {
     pub(crate) samples: usize,

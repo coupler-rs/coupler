@@ -56,6 +56,19 @@ unsafe fn len_wstring(string: *const i16) -> usize {
     len as usize
 }
 
+fn bus_layout_to_speaker_arrangement(bus_layout: &BusLayout) -> SpeakerArrangement {
+    match bus_layout {
+        BusLayout::Stereo => speaker_arrangements::STEREO,
+    }
+}
+
+fn speaker_arrangement_to_bus_layout(speaker_arrangement: SpeakerArrangement) -> Option<BusLayout> {
+    match speaker_arrangement {
+        speaker_arrangements::STEREO => Some(BusLayout::Stereo),
+        _ => None,
+    }
+}
+
 #[repr(C)]
 pub struct Factory<P> {
     pub plugin_factory_3: *const IPluginFactory3,
@@ -164,13 +177,13 @@ impl<P: Plugin> Factory<P> {
         }
 
         let mut inputs = Vec::with_capacity(P::INPUTS.len());
-        for _bus_info in P::INPUTS {
-            inputs.push(BusState { enabled: true });
+        for bus_info in P::INPUTS {
+            inputs.push(BusState { enabled: true, layout: bus_info.default_layout.clone() });
         }
 
         let mut outputs = Vec::with_capacity(P::OUTPUTS.len());
-        for _bus_info in P::OUTPUTS {
-            outputs.push(BusState { enabled: true });
+        for bus_info in P::OUTPUTS {
+            outputs.push(BusState { enabled: true, layout: bus_info.default_layout.clone() });
         }
 
         let plugin = P::create();
@@ -326,6 +339,7 @@ struct BusStates {
 
 struct BusState {
     enabled: bool,
+    layout: BusLayout,
 }
 
 struct ProcessorState<P: Plugin> {
@@ -480,12 +494,15 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn get_bus_info(
-        _this: *mut c_void,
+        this: *mut c_void,
         media_type: MediaType,
         dir: BusDirection,
         index: i32,
         bus: *mut BusInfo,
     ) -> TResult {
+        let wrapper = &*(this.offset(-Self::COMPONENT_OFFSET) as *const Wrapper<P>);
+        let bus_states = &*wrapper.bus_states.get();
+
         match media_type {
             media_types::AUDIO => {
                 let bus_info = match dir {
@@ -494,12 +511,18 @@ impl<P: Plugin> Wrapper<P> {
                     _ => None,
                 };
 
-                if let Some(bus_info) = bus_info {
+                let bus_state = match dir {
+                    bus_directions::INPUT => bus_states.inputs.get(index as usize),
+                    bus_directions::OUTPUT => bus_states.outputs.get(index as usize),
+                    _ => None,
+                };
+
+                if let (Some(bus_info), Some(bus_state)) = (bus_info, bus_state) {
                     let bus = &mut *bus;
 
                     bus.media_type = media_types::AUDIO;
                     bus.direction = dir;
-                    bus.channel_count = 2;
+                    bus.channel_count = bus_state.layout.channel_count() as i32;
                     copy_wstring(bus_info.name, &mut bus.name);
                     bus.bus_type = if index == 0 { bus_types::MAIN } else { bus_types::AUX };
                     bus.flags = BusInfo::DEFAULT_ACTIVE;
@@ -645,48 +668,72 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn set_bus_arrangements(
-        _this: *mut c_void,
+        this: *mut c_void,
         inputs: *const SpeakerArrangement,
         num_ins: i32,
         outputs: *const SpeakerArrangement,
         num_outs: i32,
     ) -> TResult {
-        if num_ins != 1 || num_outs != 1 {
+        let wrapper = &*(this.offset(-Self::AUDIO_PROCESSOR_OFFSET) as *const Wrapper<P>);
+        let bus_states = &mut *wrapper.bus_states.get();
+
+        if num_ins as usize != P::INPUTS.len() || num_outs as usize != P::OUTPUTS.len() {
             return result::FALSE;
         }
 
-        if *inputs != speaker_arrangements::STEREO || *outputs != speaker_arrangements::STEREO {
-            return result::FALSE;
+        let inputs = slice::from_raw_parts(inputs, num_ins as usize);
+        let mut candidate_inputs = Vec::with_capacity(num_ins as usize);
+        for input in inputs {
+            if let Some(bus_layout) = speaker_arrangement_to_bus_layout(*input) {
+                candidate_inputs.push(bus_layout);
+            } else {
+                return result::FALSE;
+            }
+        }
+
+        let outputs = slice::from_raw_parts(outputs, num_outs as usize);
+        let mut candidate_outputs = Vec::with_capacity(num_outs as usize);
+        for output in outputs {
+            if let Some(bus_layout) = speaker_arrangement_to_bus_layout(*output) {
+                candidate_outputs.push(bus_layout);
+            } else {
+                return result::FALSE;
+            }
+        }
+
+        if P::supports_layout(&candidate_inputs[..], &candidate_outputs[..]) {
+            for (i, input) in candidate_inputs.into_iter().enumerate() {
+                bus_states.inputs[i].layout = input;
+            }
+            for (i, output) in candidate_outputs.into_iter().enumerate() {
+                bus_states.outputs[i].layout = output;
+            }
         }
 
         result::TRUE
     }
 
     pub unsafe extern "system" fn get_bus_arrangement(
-        _this: *mut c_void,
+        this: *mut c_void,
         dir: BusDirection,
         index: i32,
         arr: *mut SpeakerArrangement,
     ) -> TResult {
-        match dir {
-            bus_directions::INPUT => {
-                if index == 0 {
-                    *arr = speaker_arrangements::STEREO;
-                    result::OK
-                } else {
-                    result::INVALID_ARGUMENT
-                }
-            }
-            bus_directions::OUTPUT => {
-                if index == 0 {
-                    *arr = speaker_arrangements::STEREO;
-                    result::OK
-                } else {
-                    result::INVALID_ARGUMENT
-                }
-            }
-            _ => result::INVALID_ARGUMENT,
+        let wrapper = &*(this.offset(-Self::AUDIO_PROCESSOR_OFFSET) as *const Wrapper<P>);
+        let bus_states = &*wrapper.bus_states.get();
+
+        let bus_state = match dir {
+            bus_directions::INPUT => bus_states.inputs.get(index as usize),
+            bus_directions::OUTPUT => bus_states.outputs.get(index as usize),
+            _ => None,
+        };
+
+        if let Some(bus_state) = bus_state {
+            *arr = bus_layout_to_speaker_arrangement(&bus_state.layout);
+            return result::OK;
         }
+
+        result::INVALID_ARGUMENT
     }
 
     pub unsafe extern "system" fn can_process_sample_size(
@@ -802,7 +849,7 @@ impl<P: Plugin> Wrapper<P> {
 
         let input = AudioBus {
             enabled: true,
-            layout: &BusLayout {},
+            layout: &BusLayout::Stereo,
             samples: process_data.num_samples as usize,
             channels: &mut [input_left, input_right],
         };
@@ -820,7 +867,7 @@ impl<P: Plugin> Wrapper<P> {
 
         let output = AudioBus {
             enabled: true,
-            layout: &BusLayout {},
+            layout: &BusLayout::Stereo,
             samples: process_data.num_samples as usize,
             channels: &mut [output_left, output_right],
         };

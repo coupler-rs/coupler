@@ -33,6 +33,7 @@ pub struct ParamChange {
 
 pub struct BusInfo {
     pub name: &'static str,
+    pub default_layout: BusLayout,
 }
 
 trait EditorContextInner {
@@ -88,6 +89,8 @@ pub trait Plugin: Send + Sync + Sized {
 
     fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()>;
     fn deserialize(&self, read: &mut impl std::io::Read) -> Result<(), ()>;
+
+    fn supports_layout(inputs: &[BusLayout], outputs: &[BusLayout]) -> bool;
 }
 
 pub trait Processor: Send + Sized {
