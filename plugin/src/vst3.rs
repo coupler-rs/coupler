@@ -186,6 +186,14 @@ impl<P: Plugin> Factory<P> {
             outputs.push(BusState { enabled: true, layout: bus_info.default_layout.clone() });
         }
 
+        let mut audio_buffers_capacity = 0;
+        for bus_info in P::INPUTS {
+            audio_buffers_capacity += bus_info.default_layout.channels();
+        }
+        for bus_info in P::OUTPUTS {
+            audio_buffers_capacity += bus_info.default_layout.channels();
+        }
+
         let plugin = P::create();
         let processor = plugin.processor();
         let editor = plugin.editor(EditorContext(editor_context.clone()));
@@ -203,6 +211,8 @@ impl<P: Plugin> Factory<P> {
             plugin,
             processor_state: UnsafeCell::new(ProcessorState {
                 param_changes: Vec::with_capacity(P::PARAMS.len()),
+                audio_buses: Vec::with_capacity(P::INPUTS.len() + P::OUTPUTS.len()),
+                audio_buffers: Vec::with_capacity(audio_buffers_capacity),
                 processor,
             }),
             editor_state: UnsafeCell::new(EditorState {
@@ -344,6 +354,8 @@ struct BusState {
 
 struct ProcessorState<P: Plugin> {
     param_changes: Vec<ParamChange>,
+    audio_buses: Vec<AudioBus<'static, 'static>>,
+    audio_buffers: Vec<AudioBuffer<'static>>,
     processor: P::Processor,
 }
 
@@ -676,6 +688,7 @@ impl<P: Plugin> Wrapper<P> {
     ) -> TResult {
         let wrapper = &*(this.offset(-Self::AUDIO_PROCESSOR_OFFSET) as *const Wrapper<P>);
         let bus_states = &mut *wrapper.bus_states.get();
+        let processor_state = &mut *wrapper.processor_state.get();
 
         if num_ins as usize != P::INPUTS.len() || num_outs as usize != P::OUTPUTS.len() {
             return result::FALSE;
@@ -714,6 +727,17 @@ impl<P: Plugin> Wrapper<P> {
             for (i, output) in candidate_outputs.into_iter().enumerate() {
                 bus_states.outputs[i].layout = output;
             }
+
+            let mut audio_buffers_capacity = 0;
+            for bus_info in P::INPUTS {
+                audio_buffers_capacity += bus_info.default_layout.channels();
+            }
+            for bus_info in P::OUTPUTS {
+                audio_buffers_capacity += bus_info.default_layout.channels();
+            }
+            processor_state.audio_buffers.clear();
+            processor_state.audio_buffers.shrink_to(audio_buffers_capacity);
+            processor_state.audio_buffers.reserve_exact(audio_buffers_capacity);
         }
 
         result::TRUE
@@ -821,16 +845,44 @@ impl<P: Plugin> Wrapper<P> {
             return result::INVALID_ARGUMENT;
         }
 
-        let mut buffers = Vec::new();
+        let inputs = slice::from_raw_parts(process_data.inputs, process_data.num_inputs as usize);
+        for (input, bus_state) in inputs.iter().zip(bus_states.inputs.iter()) {
+            if input.num_channels != 0 && input.num_channels as usize != bus_state.layout.channels() {
+                return result::INVALID_ARGUMENT;
+            }
+        }
+
+        let outputs =
+            slice::from_raw_parts(process_data.outputs, process_data.num_outputs as usize);
+        for (output, bus_state) in outputs.iter().zip(bus_states.outputs.iter()) {
+            if output.num_channels != 0 && output.num_channels as usize != bus_state.layout.channels() {
+                return result::INVALID_ARGUMENT;
+            }
+        }
+
+        // To avoid allocating in process(), we hold onto preallocated vectors
+        // of AudioBus<'static, 'static> and AudioBuffer<'static>. However,
+        // their lifetime parameters need to be shorter than 'static for the
+        // duration of this method, so we transmute them to have the necessary
+        // lifetime. For safety, we ensure that the vectors are empty before
+        // transmuting and again before transmuting back.
+
+        processor_state.audio_buses.clear();
+        let mut buses: Vec<AudioBus<'_, '_>> =
+            mem::transmute(mem::replace(&mut processor_state.audio_buses, Vec::new()));
+
+        processor_state.audio_buffers.clear();
+        let mut buffers: Vec<AudioBuffer<'_>> =
+            mem::transmute(mem::replace(&mut processor_state.audio_buffers, Vec::new()));
 
         let inputs = slice::from_raw_parts(process_data.inputs, process_data.num_inputs as usize);
+
+        let outputs =
+            slice::from_raw_parts(process_data.outputs, process_data.num_outputs as usize);
+
         for (input, bus_state) in inputs.iter().zip(bus_states.inputs.iter()) {
             if !bus_state.enabled || input.num_channels == 0 {
                 continue;
-            }
-
-            if input.num_channels as usize != bus_state.layout.channels() {
-                return result::INVALID_ARGUMENT;
             }
 
             let input_ptrs = slice::from_raw_parts(
@@ -848,15 +900,9 @@ impl<P: Plugin> Wrapper<P> {
             }
         }
 
-        let outputs =
-            slice::from_raw_parts(process_data.outputs, process_data.num_outputs as usize);
         for (output, bus_state) in outputs.iter().zip(bus_states.outputs.iter()) {
             if !bus_state.enabled || output.num_channels == 0 {
                 continue;
-            }
-
-            if output.num_channels as usize != bus_state.layout.channels() {
-                return result::INVALID_ARGUMENT;
             }
 
             let output_ptrs = slice::from_raw_parts(
@@ -873,8 +919,6 @@ impl<P: Plugin> Wrapper<P> {
                 buffers.push(AudioBuffer { ptr, len, phantom: PhantomData });
             }
         }
-
-        let mut buses = Vec::new();
 
         let mut buffers_slice = &mut buffers[..];
 
@@ -918,6 +962,16 @@ impl<P: Plugin> Wrapper<P> {
             AudioBuses { samples: process_data.num_samples as usize, inputs, outputs };
 
         processor_state.processor.process(&mut audio_buses, &processor_state.param_changes[..]);
+
+        // Clear vectors of AudioBus and AudioBuffer, transmute them back to
+        // having 'static lifetime parameters, and replace them back in
+        // ProcessorState.
+
+        buses.clear();
+        processor_state.audio_buses = mem::transmute(buses);
+
+        buffers.clear();
+        processor_state.audio_buffers = mem::transmute(buffers);
 
         result::OK
     }

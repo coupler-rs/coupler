@@ -15,34 +15,34 @@ impl BusLayout {
     }
 }
 
-pub struct AudioBuses<'a> {
+pub struct AudioBuses<'a, 'b, 'c> {
     pub(crate) samples: usize,
-    pub(crate) inputs: &'a [AudioBus<'a>],
-    pub(crate) outputs: &'a mut [AudioBus<'a>],
+    pub(crate) inputs: &'a [AudioBus<'b, 'c>],
+    pub(crate) outputs: &'a mut [AudioBus<'b, 'c>],
 }
 
-impl<'a> AudioBuses<'a> {
+impl<'a, 'b, 'c> AudioBuses<'a, 'b, 'c> {
     pub fn samples(&self) -> usize {
         self.samples
     }
 
-    pub fn inputs(&self) -> &[AudioBus<'a>] {
+    pub fn inputs(&self) -> &[AudioBus<'b, 'c>] {
         self.inputs
     }
 
-    pub fn outputs(&mut self) -> &mut [AudioBus<'a>] {
+    pub fn outputs(&mut self) -> &mut [AudioBus<'b, 'c>] {
         self.outputs
     }
 }
 
-pub struct AudioBus<'a> {
+pub struct AudioBus<'a, 'b> {
     pub(crate) enabled: bool,
     pub(crate) layout: &'a BusLayout,
     pub(crate) samples: usize,
-    pub(crate) channels: &'a mut [AudioBuffer<'a>],
+    pub(crate) channels: &'a mut [AudioBuffer<'b>],
 }
 
-impl<'a> AudioBus<'a> {
+impl<'a, 'b> AudioBus<'a, 'b> {
     pub fn enabled(&self) -> bool {
         self.enabled
     }
@@ -55,11 +55,11 @@ impl<'a> AudioBus<'a> {
         self.samples
     }
 
-    pub fn channels(&self) -> &[AudioBuffer<'a>] {
+    pub fn channels(&self) -> &[AudioBuffer<'b>] {
         self.channels
     }
 
-    pub fn channels_mut(&mut self) -> &mut [AudioBuffer<'a>] {
+    pub fn channels_mut(&mut self) -> &mut [AudioBuffer<'b>] {
         self.channels
     }
 }
