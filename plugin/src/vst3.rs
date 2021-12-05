@@ -839,21 +839,30 @@ impl<P: Plugin> Wrapper<P> {
             }
         }
 
-        if process_data.num_inputs as usize != P::INPUTS.len()
-            || process_data.num_outputs as usize != P::OUTPUTS.len()
-        {
+        if process_data.num_inputs > 0 && process_data.num_inputs as usize != P::INPUTS.len() {
             return result::INVALID_ARGUMENT;
         }
 
-        let inputs = slice::from_raw_parts(process_data.inputs, process_data.num_inputs as usize);
+        if process_data.num_outputs > 0 && process_data.num_outputs as usize != P::OUTPUTS.len() {
+            return result::INVALID_ARGUMENT;
+        }
+
+        let inputs = if process_data.num_inputs > 0 {
+            slice::from_raw_parts(process_data.inputs, process_data.num_inputs as usize)
+        } else {
+            &[]
+        };
         for (input, bus_state) in inputs.iter().zip(bus_states.inputs.iter()) {
             if input.num_channels != 0 && input.num_channels as usize != bus_state.layout.channels() {
                 return result::INVALID_ARGUMENT;
             }
         }
 
-        let outputs =
-            slice::from_raw_parts(process_data.outputs, process_data.num_outputs as usize);
+        let outputs = if process_data.num_outputs > 0 {
+            slice::from_raw_parts(process_data.outputs, process_data.num_outputs as usize)
+        } else {
+            &[]
+        };
         for (output, bus_state) in outputs.iter().zip(bus_states.outputs.iter()) {
             if output.num_channels != 0 && output.num_channels as usize != bus_state.layout.channels() {
                 return result::INVALID_ARGUMENT;
@@ -874,11 +883,6 @@ impl<P: Plugin> Wrapper<P> {
         processor_state.audio_buffers.clear();
         let mut buffers: Vec<AudioBuffer<'_>> =
             mem::transmute(mem::replace(&mut processor_state.audio_buffers, Vec::new()));
-
-        let inputs = slice::from_raw_parts(process_data.inputs, process_data.num_inputs as usize);
-
-        let outputs =
-            slice::from_raw_parts(process_data.outputs, process_data.num_outputs as usize);
 
         for (input, bus_state) in inputs.iter().zip(bus_states.inputs.iter()) {
             if !bus_state.enabled || input.num_channels == 0 {
@@ -922,8 +926,14 @@ impl<P: Plugin> Wrapper<P> {
 
         let mut buffers_slice = &mut buffers[..];
 
-        for (input, bus_state) in inputs.iter().zip(bus_states.inputs.iter()) {
-            let channels = if bus_state.enabled && input.num_channels != 0 {
+        for (index, bus_state) in bus_states.inputs.iter().enumerate() {
+            let input_exists = if let Some(input) = inputs.get(index) {
+                input.num_channels != 0
+            } else {
+                false
+            };
+
+            let channels = if bus_state.enabled && input_exists {
                 let (channels, remainder) = buffers_slice.split_at_mut(bus_state.layout.channels());
                 buffers_slice = remainder;
                 channels
@@ -939,8 +949,14 @@ impl<P: Plugin> Wrapper<P> {
             });
         }
 
-        for (output, bus_state) in outputs.iter().zip(bus_states.outputs.iter()) {
-            let channels = if bus_state.enabled && output.num_channels != 0 {
+        for (index, bus_state) in bus_states.outputs.iter().enumerate() {
+            let output_exists = if let Some(output) = outputs.get(index) {
+                output.num_channels != 0
+            } else {
+                false
+            };
+
+            let channels = if bus_state.enabled && output_exists {
                 let (channels, remainder) = buffers_slice.split_at_mut(bus_state.layout.channels());
                 buffers_slice = remainder;
                 channels
