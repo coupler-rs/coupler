@@ -522,7 +522,7 @@ impl<P: Plugin> Wrapper<P> {
 
                     bus.media_type = media_types::AUDIO;
                     bus.direction = dir;
-                    bus.channel_count = bus_state.layout.channel_count() as i32;
+                    bus.channel_count = bus_state.layout.channels() as i32;
                     copy_wstring(bus_info.name, &mut bus.name);
                     bus.bus_type = if index == 0 { bus_types::MAIN } else { bus_types::AUX };
                     bus.flags = BusInfo::DEFAULT_ACTIVE;

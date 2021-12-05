@@ -8,7 +8,7 @@ pub enum BusLayout {
 }
 
 impl BusLayout {
-    pub fn channel_count(&self) -> usize {
+    pub fn channels(&self) -> usize {
         match self {
             BusLayout::Stereo => 2,
         }
