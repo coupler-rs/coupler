@@ -681,7 +681,10 @@ impl<P: Plugin> Wrapper<P> {
             return result::FALSE;
         }
 
-        let inputs = slice::from_raw_parts(inputs, num_ins as usize);
+        // Don't use from_raw_parts for zero-length inputs, since the pointer
+        // may be null or unaligned
+        let inputs =
+            if num_ins > 0 { slice::from_raw_parts(inputs, num_ins as usize) } else { &[] };
         let mut candidate_inputs = Vec::with_capacity(num_ins as usize);
         for input in inputs {
             if let Some(bus_layout) = speaker_arrangement_to_bus_layout(*input) {
@@ -691,7 +694,10 @@ impl<P: Plugin> Wrapper<P> {
             }
         }
 
-        let outputs = slice::from_raw_parts(outputs, num_outs as usize);
+        // Don't use from_raw_parts for zero-length inputs, since the pointer
+        // may be null or unaligned
+        let outputs =
+            if num_outs > 0 { slice::from_raw_parts(outputs, num_outs as usize) } else { &[] };
         let mut candidate_outputs = Vec::with_capacity(num_outs as usize);
         for output in outputs {
             if let Some(bus_layout) = speaker_arrangement_to_bus_layout(*output) {
