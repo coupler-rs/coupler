@@ -436,9 +436,9 @@ impl<P: Plugin> Wrapper<P> {
 
     unsafe fn add_ref(this: *mut c_void) -> u32 {
         let wrapper = Arc::from_raw(this as *const Wrapper<P>);
-        Arc::into_raw(wrapper.clone());
+        let _ = Arc::into_raw(wrapper.clone());
         let count = Arc::strong_count(&wrapper);
-        Arc::into_raw(wrapper);
+        let _ = Arc::into_raw(wrapper);
 
         count as u32
     }
