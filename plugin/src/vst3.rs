@@ -853,7 +853,8 @@ impl<P: Plugin> Wrapper<P> {
             &[]
         };
         for (input, bus_state) in inputs.iter().zip(bus_states.inputs.iter()) {
-            if input.num_channels != 0 && input.num_channels as usize != bus_state.layout.channels() {
+            if input.num_channels != 0 && input.num_channels as usize != bus_state.layout.channels()
+            {
                 return result::INVALID_ARGUMENT;
             }
         }
@@ -864,7 +865,9 @@ impl<P: Plugin> Wrapper<P> {
             &[]
         };
         for (output, bus_state) in outputs.iter().zip(bus_states.outputs.iter()) {
-            if output.num_channels != 0 && output.num_channels as usize != bus_state.layout.channels() {
+            if output.num_channels != 0
+                && output.num_channels as usize != bus_state.layout.channels()
+            {
                 return result::INVALID_ARGUMENT;
             }
         }
@@ -926,11 +929,8 @@ impl<P: Plugin> Wrapper<P> {
         let mut buffers_slice = &mut buffers[..];
 
         for (index, bus_state) in bus_states.inputs.iter().enumerate() {
-            let input_exists = if let Some(input) = inputs.get(index) {
-                input.num_channels != 0
-            } else {
-                false
-            };
+            let input_exists =
+                if let Some(input) = inputs.get(index) { input.num_channels != 0 } else { false };
 
             let channels = if bus_state.enabled && input_exists {
                 let (channels, remainder) = buffers_slice.split_at_mut(bus_state.layout.channels());
