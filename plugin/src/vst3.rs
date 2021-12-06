@@ -872,17 +872,16 @@ impl<P: Plugin> Wrapper<P> {
         // To avoid allocating in process(), we hold onto preallocated vectors
         // of AudioBus<'static, 'static> and AudioBuffer<'static>. However,
         // their lifetime parameters need to be shorter than 'static for the
-        // duration of this method, so we transmute them to have the necessary
-        // lifetime. For safety, we ensure that the vectors are empty before
-        // transmuting and again before transmuting back.
+        // duration of this method, so we transmute references to them to have
+        // the necessary lifetime parameters. For safety, we ensure that the
+        // vectors are empty before transmuting and again before the references
+        // go out of scope.
 
         processor_state.audio_buses.clear();
-        let mut buses: Vec<AudioBus<'_, '_>> =
-            mem::transmute(mem::replace(&mut processor_state.audio_buses, Vec::new()));
+        let buses: &mut Vec<AudioBus<'_, '_>> = mem::transmute(&mut processor_state.audio_buses);
 
         processor_state.audio_buffers.clear();
-        let mut buffers: Vec<AudioBuffer<'_>> =
-            mem::transmute(mem::replace(&mut processor_state.audio_buffers, Vec::new()));
+        let buffers: &mut Vec<AudioBuffer<'_>> = mem::transmute(&mut processor_state.audio_buffers);
 
         for (input, bus_state) in inputs.iter().zip(bus_states.inputs.iter()) {
             if !bus_state.enabled || input.num_channels == 0 {
@@ -979,15 +978,11 @@ impl<P: Plugin> Wrapper<P> {
 
         processor_state.processor.process(&mut audio_buses, &processor_state.param_changes[..]);
 
-        // Clear vectors of AudioBus and AudioBuffer, transmute them back to
-        // having 'static lifetime parameters, and replace them back in
-        // ProcessorState.
+        // Clear vectors of AudioBus and AudioBuffer to ensure no data with
+        // non-'static lifetimes is left behind.
 
         buses.clear();
-        processor_state.audio_buses = mem::transmute(buses);
-
         buffers.clear();
-        processor_state.audio_buffers = mem::transmute(buffers);
 
         result::OK
     }
