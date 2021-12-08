@@ -54,8 +54,8 @@ impl Plugin for Gain {
         GainProcessor { params: self.params.clone(), gain: 0.0 }
     }
 
-    fn editor(&self, context: EditorContext) -> GainEditor {
-        GainEditor { context, params: self.params.clone(), application: None, window: None }
+    fn editor(&self, context: EditorContext, parent: Option<&ParentWindow>) -> GainEditor {
+        GainEditor::open(context, parent, self.params.clone())
     }
 
     fn get_param(&self, id: ParamId) -> f64 {
@@ -161,18 +161,16 @@ impl Processor for GainProcessor {
 }
 
 pub struct GainEditor {
-    context: EditorContext,
-    params: Arc<GainParams>,
-    application: Option<Application>,
-    window: Option<Window>,
+    application: Application,
+    window: Window,
 }
 
-impl Editor for GainEditor {
-    fn size(&self) -> (f64, f64) {
-        (256.0, 256.0)
-    }
-
-    fn open(&mut self, parent: Option<&ParentWindow>) {
+impl GainEditor {
+    fn open(
+        context: EditorContext,
+        parent: Option<&ParentWindow>,
+        params: Arc<GainParams>,
+    ) -> GainEditor {
         let parent =
             if let Some(parent) = parent { Parent::Parent(parent) } else { Parent::Detached };
 
@@ -183,50 +181,37 @@ impl Editor for GainEditor {
             WindowOptions {
                 rect: Rect { x: 0.0, y: 0.0, width: 512.0, height: 512.0 },
                 parent,
-                handler: Box::new(GainWindowHandler::new(
-                    self.context.clone(),
-                    self.params.clone(),
-                )),
+                handler: Box::new(GainWindowHandler::new(context, params)),
                 ..WindowOptions::default()
             },
         )
         .unwrap();
 
-        self.application = Some(application);
-        self.window = Some(window);
+        GainEditor { application, window }
+    }
+}
+
+impl Editor for GainEditor {
+    fn initial_size() -> (f64, f64) {
+        (256.0, 256.0)
     }
 
     fn close(&mut self) {
-        if let Some(window) = &self.window {
-            window.close().unwrap();
-        }
+        self.window.close().unwrap();
+    }
 
-        self.window = None;
-        self.application = None;
+    fn raw_window_handle(&self) -> Option<RawWindowHandle> {
+        Some(self.window.raw_window_handle())
     }
 
     #[cfg(target_os = "linux")]
     fn poll(&mut self) {
-        if let Some(application) = &self.application {
-            application.poll();
-        }
-    }
-
-    fn raw_window_handle(&self) -> Option<RawWindowHandle> {
-        if let Some(window) = &self.window {
-            Some(window.raw_window_handle())
-        } else {
-            None
-        }
+        self.application.poll();
     }
 
     #[cfg(target_os = "linux")]
     fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
-        if let Some(application) = &self.application {
-            Some(application.file_descriptor())
-        } else {
-            None
-        }
+        Some(self.application.file_descriptor())
     }
 }
 

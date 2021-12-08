@@ -84,7 +84,7 @@ pub trait Plugin: Send + Sync + Sized {
 
     fn create() -> Self;
     fn processor(&self, context: &ProcessContext) -> Self::Processor;
-    fn editor(&self, context: EditorContext) -> Self::Editor;
+    fn editor(&self, context: EditorContext, parent: Option<&ParentWindow>) -> Self::Editor;
 
     fn get_param(&self, id: ParamId) -> f64;
     fn set_param(&self, id: ParamId, value: f64);
@@ -109,8 +109,7 @@ pub trait Processor: Send + Sized {
 }
 
 pub trait Editor: Sized {
-    fn size(&self) -> (f64, f64);
-    fn open(&mut self, parent: Option<&ParentWindow>);
+    fn initial_size() -> (f64, f64);
     fn close(&mut self);
     fn raw_window_handle(&self) -> Option<RawWindowHandle>;
 

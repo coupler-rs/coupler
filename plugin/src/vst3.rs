@@ -199,7 +199,6 @@ impl<P: Plugin> Factory<P> {
         }
 
         let plugin = P::create();
-        let editor = plugin.editor(EditorContext(editor_context.clone()));
 
         *obj = Arc::into_raw(Arc::new(Wrapper {
             component: factory.component,
@@ -227,7 +226,7 @@ impl<P: Plugin> Factory<P> {
             editor_state: UnsafeCell::new(EditorState {
                 plug_frame: ptr::null_mut(),
                 context: editor_context,
-                editor,
+                editor: None,
             }),
         })) as *mut c_void;
 
@@ -369,7 +368,7 @@ struct ProcessorState<P: Plugin> {
 struct EditorState<P: Plugin> {
     plug_frame: *mut *const IPlugFrame,
     context: Rc<Vst3EditorContext>,
-    editor: P::Editor,
+    editor: Option<P::Editor>,
 }
 
 unsafe impl<P: Plugin> Sync for Wrapper<P> {}
@@ -1323,10 +1322,12 @@ impl<P: Plugin> Wrapper<P> {
             RawWindowHandle::Xcb(XcbHandle { window: parent as u32, ..XcbHandle::empty() })
         };
 
-        editor_state.editor.open(Some(&ParentWindow(parent)));
+        let editor = wrapper
+            .plugin
+            .editor(EditorContext(editor_state.context.clone()), Some(&ParentWindow(parent)));
 
         #[cfg(target_os = "linux")]
-        if let Some(file_descriptor) = editor_state.editor.file_descriptor() {
+        if let Some(file_descriptor) = editor.file_descriptor() {
             if !editor_state.plug_frame.is_null() {
                 let mut obj = ptr::null_mut();
                 let result = ((*(*editor_state.plug_frame)).unknown.query_interface)(
@@ -1356,6 +1357,8 @@ impl<P: Plugin> Wrapper<P> {
             }
         }
 
+        editor_state.editor = Some(editor);
+
         result::OK
     }
 
@@ -1363,7 +1366,9 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::PLUG_VIEW_OFFSET) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
-        editor_state.editor.close();
+        if let Some(mut editor) = editor_state.editor.take() {
+            editor.close();
+        }
 
         #[cfg(target_os = "linux")]
         {
@@ -1420,11 +1425,8 @@ impl<P: Plugin> Wrapper<P> {
         result::NOT_IMPLEMENTED
     }
 
-    pub unsafe extern "system" fn get_size(this: *mut c_void, size: *mut ViewRect) -> TResult {
-        let wrapper = &*(this.offset(-Self::PLUG_VIEW_OFFSET) as *const Wrapper<P>);
-        let editor_state = &*wrapper.editor_state.get();
-
-        let (width, height) = editor_state.editor.size();
+    pub unsafe extern "system" fn get_size(_this: *mut c_void, size: *mut ViewRect) -> TResult {
+        let (width, height) = P::Editor::initial_size();
 
         let size = &mut *size;
         size.left = 0;
@@ -1496,7 +1498,9 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EVENT_HANDLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
-        editor_state.editor.poll();
+        if let Some(editor) = &mut editor_state.editor {
+            editor.poll();
+        }
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -1523,7 +1527,9 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::TIMER_HANDLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
-        editor_state.editor.poll();
+        if let Some(editor) = &mut editor_state.editor {
+            editor.poll();
+        }
     }
 
     #[cfg(not(target_os = "linux"))]
