@@ -176,14 +176,18 @@ impl<P: Plugin> Factory<P> {
             param_indices.insert(param.id, index);
         }
 
-        let mut inputs = Vec::with_capacity(P::INPUTS.len());
+        let mut input_layouts = Vec::with_capacity(P::INPUTS.len());
+        let mut inputs_enabled = Vec::with_capacity(P::INPUTS.len());
         for bus_info in P::INPUTS {
-            inputs.push(BusState { enabled: true, layout: bus_info.default_layout.clone() });
+            input_layouts.push(bus_info.default_layout.clone());
+            inputs_enabled.push(true);
         }
 
-        let mut outputs = Vec::with_capacity(P::OUTPUTS.len());
+        let mut output_layouts = Vec::with_capacity(P::OUTPUTS.len());
+        let mut outputs_enabled = Vec::with_capacity(P::OUTPUTS.len());
         for bus_info in P::OUTPUTS {
-            outputs.push(BusState { enabled: true, layout: bus_info.default_layout.clone() });
+            output_layouts.push(bus_info.default_layout.clone());
+            outputs_enabled.push(true);
         }
 
         let mut audio_buffers_capacity = 0;
@@ -206,7 +210,12 @@ impl<P: Plugin> Factory<P> {
             plug_view: factory.plug_view,
             event_handler: factory.event_handler,
             timer_handler: factory.timer_handler,
-            bus_states: UnsafeCell::new(BusStates { inputs, outputs }),
+            bus_states: UnsafeCell::new(BusStates {
+                input_layouts,
+                output_layouts,
+                inputs_enabled,
+                outputs_enabled,
+            }),
             param_indices,
             plugin,
             processor_state: UnsafeCell::new(ProcessorState {
@@ -343,13 +352,10 @@ pub struct Wrapper<P: Plugin> {
 }
 
 struct BusStates {
-    inputs: Vec<BusState>,
-    outputs: Vec<BusState>,
-}
-
-struct BusState {
-    enabled: bool,
-    layout: BusLayout,
+    input_layouts: Vec<BusLayout>,
+    inputs_enabled: Vec<bool>,
+    output_layouts: Vec<BusLayout>,
+    outputs_enabled: Vec<bool>,
 }
 
 struct ProcessorState<P: Plugin> {
@@ -523,18 +529,18 @@ impl<P: Plugin> Wrapper<P> {
                     _ => None,
                 };
 
-                let bus_state = match dir {
-                    bus_directions::INPUT => bus_states.inputs.get(index as usize),
-                    bus_directions::OUTPUT => bus_states.outputs.get(index as usize),
+                let bus_layout = match dir {
+                    bus_directions::INPUT => bus_states.input_layouts.get(index as usize),
+                    bus_directions::OUTPUT => bus_states.output_layouts.get(index as usize),
                     _ => None,
                 };
 
-                if let (Some(bus_info), Some(bus_state)) = (bus_info, bus_state) {
+                if let (Some(bus_info), Some(bus_layout)) = (bus_info, bus_layout) {
                     let bus = &mut *bus;
 
                     bus.media_type = media_types::AUDIO;
                     bus.direction = dir;
-                    bus.channel_count = bus_state.layout.channels() as i32;
+                    bus.channel_count = bus_layout.channels() as i32;
                     copy_wstring(bus_info.name, &mut bus.name);
                     bus.bus_type = if index == 0 { bus_types::MAIN } else { bus_types::AUX };
                     bus.flags = BusInfo::DEFAULT_ACTIVE;
@@ -569,14 +575,14 @@ impl<P: Plugin> Wrapper<P> {
 
         match media_type {
             media_types::AUDIO => {
-                let bus_state = match dir {
-                    bus_directions::INPUT => bus_states.inputs.get_mut(index as usize),
-                    bus_directions::OUTPUT => bus_states.outputs.get_mut(index as usize),
+                let bus_enabled = match dir {
+                    bus_directions::INPUT => bus_states.inputs_enabled.get_mut(index as usize),
+                    bus_directions::OUTPUT => bus_states.outputs_enabled.get_mut(index as usize),
                     _ => None,
                 };
 
-                if let Some(bus_state) = bus_state {
-                    bus_state.enabled = if state == 0 { false } else { true };
+                if let Some(bus_enabled) = bus_enabled {
+                    *bus_enabled = if state == 0 { false } else { true };
                     return result::OK;
                 }
             }
@@ -722,10 +728,10 @@ impl<P: Plugin> Wrapper<P> {
 
         if P::supports_layout(&candidate_inputs[..], &candidate_outputs[..]) {
             for (i, input) in candidate_inputs.into_iter().enumerate() {
-                bus_states.inputs[i].layout = input;
+                bus_states.input_layouts[i] = input;
             }
             for (i, output) in candidate_outputs.into_iter().enumerate() {
-                bus_states.outputs[i].layout = output;
+                bus_states.output_layouts[i] = output;
             }
 
             let mut audio_buffers_capacity = 0;
@@ -752,14 +758,14 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::AUDIO_PROCESSOR_OFFSET) as *const Wrapper<P>);
         let bus_states = &*wrapper.bus_states.get();
 
-        let bus_state = match dir {
-            bus_directions::INPUT => bus_states.inputs.get(index as usize),
-            bus_directions::OUTPUT => bus_states.outputs.get(index as usize),
+        let bus_layout = match dir {
+            bus_directions::INPUT => bus_states.input_layouts.get(index as usize),
+            bus_directions::OUTPUT => bus_states.output_layouts.get(index as usize),
             _ => None,
         };
 
-        if let Some(bus_state) = bus_state {
-            *arr = bus_layout_to_speaker_arrangement(&bus_state.layout);
+        if let Some(bus_layout) = bus_layout {
+            *arr = bus_layout_to_speaker_arrangement(&bus_layout);
             return result::OK;
         }
 
@@ -852,9 +858,8 @@ impl<P: Plugin> Wrapper<P> {
         } else {
             &[]
         };
-        for (input, bus_state) in inputs.iter().zip(bus_states.inputs.iter()) {
-            if input.num_channels != 0 && input.num_channels as usize != bus_state.layout.channels()
-            {
+        for (input, bus_layout) in inputs.iter().zip(bus_states.input_layouts.iter()) {
+            if input.num_channels != 0 && input.num_channels as usize != bus_layout.channels() {
                 return result::INVALID_ARGUMENT;
             }
         }
@@ -864,10 +869,8 @@ impl<P: Plugin> Wrapper<P> {
         } else {
             &[]
         };
-        for (output, bus_state) in outputs.iter().zip(bus_states.outputs.iter()) {
-            if output.num_channels != 0
-                && output.num_channels as usize != bus_state.layout.channels()
-            {
+        for (output, bus_layout) in outputs.iter().zip(bus_states.output_layouts.iter()) {
+            if output.num_channels != 0 && output.num_channels as usize != bus_layout.channels() {
                 return result::INVALID_ARGUMENT;
             }
         }
@@ -886,8 +889,8 @@ impl<P: Plugin> Wrapper<P> {
         processor_state.audio_buffers.clear();
         let buffers: &mut Vec<AudioBuffer<'_>> = mem::transmute(&mut processor_state.audio_buffers);
 
-        for (input, bus_state) in inputs.iter().zip(bus_states.inputs.iter()) {
-            if !bus_state.enabled || input.num_channels == 0 {
+        for (input, bus_enabled) in inputs.iter().zip(bus_states.inputs_enabled.iter()) {
+            if !bus_enabled || input.num_channels == 0 {
                 continue;
             }
 
@@ -906,8 +909,8 @@ impl<P: Plugin> Wrapper<P> {
             }
         }
 
-        for (output, bus_state) in outputs.iter().zip(bus_states.outputs.iter()) {
-            if !bus_state.enabled || output.num_channels == 0 {
+        for (output, bus_enabled) in outputs.iter().zip(bus_states.outputs_enabled.iter()) {
+            if !bus_enabled || output.num_channels == 0 {
                 continue;
             }
 
@@ -928,12 +931,13 @@ impl<P: Plugin> Wrapper<P> {
 
         let mut buffers_slice = &mut buffers[..];
 
-        for (index, bus_state) in bus_states.inputs.iter().enumerate() {
+        for index in 0..P::INPUTS.len() {
             let input_exists =
                 if let Some(input) = inputs.get(index) { input.num_channels != 0 } else { false };
 
-            let channels = if bus_state.enabled && input_exists {
-                let (channels, remainder) = buffers_slice.split_at_mut(bus_state.layout.channels());
+            let channels = if bus_states.inputs_enabled[index] && input_exists {
+                let (channels, remainder) =
+                    buffers_slice.split_at_mut(bus_states.input_layouts[index].channels());
                 buffers_slice = remainder;
                 channels
             } else {
@@ -941,22 +945,23 @@ impl<P: Plugin> Wrapper<P> {
             };
 
             buses.push(AudioBus {
-                enabled: bus_state.enabled,
-                layout: &bus_state.layout,
+                enabled: bus_states.inputs_enabled[index],
+                layout: &bus_states.input_layouts[index],
                 samples: process_data.num_samples as usize,
                 channels,
             });
         }
 
-        for (index, bus_state) in bus_states.outputs.iter().enumerate() {
+        for index in 0..P::OUTPUTS.len() {
             let output_exists = if let Some(output) = outputs.get(index) {
                 output.num_channels != 0
             } else {
                 false
             };
 
-            let channels = if bus_state.enabled && output_exists {
-                let (channels, remainder) = buffers_slice.split_at_mut(bus_state.layout.channels());
+            let channels = if bus_states.outputs_enabled[index] && output_exists {
+                let (channels, remainder) =
+                    buffers_slice.split_at_mut(bus_states.output_layouts[index].channels());
                 buffers_slice = remainder;
                 channels
             } else {
@@ -964,8 +969,8 @@ impl<P: Plugin> Wrapper<P> {
             };
 
             buses.push(AudioBus {
-                enabled: bus_state.enabled,
-                layout: &bus_state.layout,
+                enabled: bus_states.outputs_enabled[index],
+                layout: &bus_states.output_layouts[index],
                 samples: process_data.num_samples as usize,
                 channels,
             });
