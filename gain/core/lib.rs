@@ -130,7 +130,12 @@ pub struct GainProcessor {
 }
 
 impl Processor for GainProcessor {
-    fn process(&mut self, audio_buses: &mut AudioBuses, param_changes: &[ParamChange]) {
+    fn process(
+        &mut self,
+        _context: &ProcessContext,
+        audio_buses: &mut AudioBuses,
+        param_changes: &[ParamChange],
+    ) {
         let mut gain = f64::from_bits(self.params.gain.load(Ordering::Relaxed)) as f32;
 
         for change in param_changes {

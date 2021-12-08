@@ -1,6 +1,6 @@
 use crate::{
     AudioBuffer, AudioBus, AudioBuses, BusLayout, Editor, EditorContext, EditorContextInner,
-    ParamChange, ParamId, ParentWindow, Plugin, Processor,
+    ParamChange, ParamId, ParentWindow, Plugin, ProcessContext, Processor,
 };
 
 use std::cell::{Cell, UnsafeCell};
@@ -222,6 +222,7 @@ impl<P: Plugin> Factory<P> {
                 param_changes: Vec::with_capacity(P::PARAMS.len()),
                 audio_buses: Vec::with_capacity(P::INPUTS.len() + P::OUTPUTS.len()),
                 audio_buffers: Vec::with_capacity(audio_buffers_capacity),
+                sample_rate: 44_100.0,
                 processor,
             }),
             editor_state: UnsafeCell::new(EditorState {
@@ -362,6 +363,7 @@ struct ProcessorState<P: Plugin> {
     param_changes: Vec<ParamChange>,
     audio_buses: Vec<AudioBus<'static, 'static>>,
     audio_buffers: Vec<AudioBuffer<'static>>,
+    sample_rate: f64,
     processor: P::Processor,
 }
 
@@ -788,9 +790,16 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn setup_processing(
-        _this: *mut c_void,
-        _setup: *mut ProcessSetup,
+        this: *mut c_void,
+        setup: *mut ProcessSetup,
     ) -> TResult {
+        let wrapper = &*(this.offset(-Self::AUDIO_PROCESSOR_OFFSET) as *const Wrapper<P>);
+        let processor_state = &mut *wrapper.processor_state.get();
+
+        let setup = &*setup;
+
+        processor_state.sample_rate = setup.sample_rate;
+
         result::OK
     }
 
@@ -981,7 +990,19 @@ impl<P: Plugin> Wrapper<P> {
         let mut audio_buses =
             AudioBuses { samples: process_data.num_samples as usize, inputs, outputs };
 
-        processor_state.processor.process(&mut audio_buses, &processor_state.param_changes[..]);
+        if !process_data.process_context.is_null() {
+            processor_state.sample_rate = (*process_data.process_context).sample_rate;
+        }
+
+        processor_state.processor.process(
+            &ProcessContext {
+                sample_rate: processor_state.sample_rate,
+                input_layouts: &bus_states.input_layouts[..],
+                output_layouts: &bus_states.output_layouts[..],
+            },
+            &mut audio_buses,
+            &processor_state.param_changes[..],
+        );
 
         // Clear vectors of AudioBus and AudioBuffer to ensure no data with
         // non-'static lifetimes is left behind.

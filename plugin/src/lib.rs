@@ -36,6 +36,12 @@ pub struct BusInfo {
     pub default_layout: BusLayout,
 }
 
+pub struct ProcessContext<'a> {
+    pub sample_rate: f64,
+    pub input_layouts: &'a [BusLayout],
+    pub output_layouts: &'a [BusLayout],
+}
+
 trait EditorContextInner {
     fn begin_edit(&self, param_id: ParamId);
     fn perform_edit(&self, param_id: ParamId, value: f64);
@@ -94,7 +100,12 @@ pub trait Plugin: Send + Sync + Sized {
 }
 
 pub trait Processor: Send + Sized {
-    fn process(&mut self, audio_buses: &mut AudioBuses, param_changes: &[ParamChange]);
+    fn process(
+        &mut self,
+        context: &ProcessContext,
+        audio_buses: &mut AudioBuses,
+        param_changes: &[ParamChange],
+    );
 }
 
 pub trait Editor: Sized {
