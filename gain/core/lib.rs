@@ -158,6 +158,8 @@ impl Processor for GainProcessor {
 
         self.params.gain.store((gain as f64).to_bits(), Ordering::Relaxed);
     }
+
+    fn reset(&mut self, _context: &ProcessContext) {}
 }
 
 pub struct GainEditor {

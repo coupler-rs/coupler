@@ -820,7 +820,27 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn set_processing(_this: *mut c_void, _state: TBool) -> TResult {
+    pub unsafe extern "system" fn set_processing(this: *mut c_void, state: TBool) -> TResult {
+        let wrapper = &*(this.offset(-Self::AUDIO_PROCESSOR_OFFSET) as *const Wrapper<P>);
+        let bus_states = &*wrapper.bus_states.get();
+        let processor_state = &mut *wrapper.processor_state.get();
+
+        if processor_state.processor.is_none() {
+            return result::NOT_INITIALIZED;
+        }
+
+        if state == 0 {
+            let context = ProcessContext {
+                sample_rate: processor_state.sample_rate,
+                input_layouts: &bus_states.input_layouts[..],
+                output_layouts: &bus_states.output_layouts[..],
+            };
+
+            if let Some(processor) = &mut processor_state.processor {
+                processor.reset(&context);
+            }
+        }
+
         result::OK
     }
 
