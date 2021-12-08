@@ -50,7 +50,7 @@ impl Plugin for Gain {
         Gain { params: Arc::new(GainParams::new()) }
     }
 
-    fn processor(&self) -> GainProcessor {
+    fn processor(&self, _context: &ProcessContext) -> GainProcessor {
         GainProcessor { params: self.params.clone(), gain: 0.0 }
     }
 

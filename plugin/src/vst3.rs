@@ -199,7 +199,6 @@ impl<P: Plugin> Factory<P> {
         }
 
         let plugin = P::create();
-        let processor = plugin.processor();
         let editor = plugin.editor(EditorContext(editor_context.clone()));
 
         *obj = Arc::into_raw(Arc::new(Wrapper {
@@ -223,7 +222,7 @@ impl<P: Plugin> Factory<P> {
                 audio_buses: Vec::with_capacity(P::INPUTS.len() + P::OUTPUTS.len()),
                 audio_buffers: Vec::with_capacity(audio_buffers_capacity),
                 sample_rate: 44_100.0,
-                processor,
+                processor: None,
             }),
             editor_state: UnsafeCell::new(EditorState {
                 plug_frame: ptr::null_mut(),
@@ -364,7 +363,7 @@ struct ProcessorState<P: Plugin> {
     audio_buses: Vec<AudioBus<'static, 'static>>,
     audio_buffers: Vec<AudioBuffer<'static>>,
     sample_rate: f64,
-    processor: P::Processor,
+    processor: Option<P::Processor>,
 }
 
 struct EditorState<P: Plugin> {
@@ -595,7 +594,26 @@ impl<P: Plugin> Wrapper<P> {
         result::INVALID_ARGUMENT
     }
 
-    pub unsafe extern "system" fn set_active(_this: *mut c_void, _state: TBool) -> TResult {
+    pub unsafe extern "system" fn set_active(this: *mut c_void, state: TBool) -> TResult {
+        let wrapper = &*(this.offset(-Self::COMPONENT_OFFSET) as *const Wrapper<P>);
+        let bus_states = &mut *wrapper.bus_states.get();
+        let processor_state = &mut *wrapper.processor_state.get();
+
+        match state {
+            0 => {
+                processor_state.processor = None;
+            }
+            _ => {
+                let context = ProcessContext {
+                    sample_rate: processor_state.sample_rate,
+                    input_layouts: &bus_states.input_layouts[..],
+                    output_layouts: &bus_states.output_layouts[..],
+                };
+
+                processor_state.processor = Some(wrapper.plugin.processor(&context));
+            }
+        }
+
         result::OK
     }
 
@@ -812,6 +830,10 @@ impl<P: Plugin> Wrapper<P> {
         let bus_states = &*wrapper.bus_states.get();
         let processor_state = &mut *wrapper.processor_state.get();
 
+        if processor_state.processor.is_none() {
+            return result::NOT_INITIALIZED;
+        }
+
         processor_state.param_changes.clear();
 
         let process_data = &*data;
@@ -994,15 +1016,15 @@ impl<P: Plugin> Wrapper<P> {
             processor_state.sample_rate = (*process_data.process_context).sample_rate;
         }
 
-        processor_state.processor.process(
-            &ProcessContext {
-                sample_rate: processor_state.sample_rate,
-                input_layouts: &bus_states.input_layouts[..],
-                output_layouts: &bus_states.output_layouts[..],
-            },
-            &mut audio_buses,
-            &processor_state.param_changes[..],
-        );
+        let context = ProcessContext {
+            sample_rate: processor_state.sample_rate,
+            input_layouts: &bus_states.input_layouts[..],
+            output_layouts: &bus_states.output_layouts[..],
+        };
+
+        if let Some(processor) = &mut processor_state.processor {
+            processor.process(&context, &mut audio_buses, &processor_state.param_changes[..]);
+        }
 
         // Clear vectors of AudioBus and AudioBuffer to ensure no data with
         // non-'static lifetimes is left behind.
