@@ -217,7 +217,10 @@ impl<P: Plugin> Factory<P> {
             param_indices,
             plugin,
             processor_state: UnsafeCell::new(ProcessorState {
-                param_changes: Vec::with_capacity(P::PARAMS.len()),
+                // We can't know the maximum number of param changes in a
+                // block, so make a reasonable guess and hope we don't have to
+                // allocate more
+                param_changes: Vec::with_capacity(4 * P::PARAMS.len()),
                 audio_buses: Vec::with_capacity(P::INPUTS.len() + P::OUTPUTS.len()),
                 audio_buffers: Vec::with_capacity(audio_buffers_capacity),
                 sample_rate: 44_100.0,
@@ -874,24 +877,26 @@ impl<P: Plugin> Wrapper<P> {
                 let param_id = ((*(*param_data)).get_parameter_id)(param_data as *mut c_void);
                 let point_count = ((*(*param_data)).get_point_count)(param_data as *mut c_void);
 
-                if point_count <= 0 {
-                    continue;
+                for index in 0..point_count {
+                    let mut offset = 0;
+                    let mut value = 0.0;
+                    let result = ((*(*param_data)).get_point)(
+                        param_data as *mut c_void,
+                        index,
+                        &mut offset,
+                        &mut value,
+                    );
+
+                    if result != result::OK {
+                        continue;
+                    }
+
+                    processor_state.param_changes.push(ParamChange {
+                        id: param_id,
+                        offset: offset as usize,
+                        value,
+                    });
                 }
-
-                let mut offset = 0;
-                let mut value = 0.0;
-                let result = ((*(*param_data)).get_point)(
-                    param_data as *mut c_void,
-                    point_count - 1,
-                    &mut offset,
-                    &mut value,
-                );
-
-                if result != result::OK {
-                    continue;
-                }
-
-                processor_state.param_changes.push(ParamChange { id: param_id, offset: 0, value });
             }
         }
 
