@@ -10,7 +10,28 @@ use std::sync::Arc;
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
-const GAIN: ParamInfo = ParamInfo { id: 0, name: "gain", label: "dB", steps: None, default: 1.0 };
+struct GainFormat;
+
+impl ParamFormat for GainFormat {
+    fn display(&self, value: f64, write: &mut dyn std::fmt::Write) {
+        let _ = write!(write, "{}", value);
+    }
+
+    fn parse(&self, string: &str) -> Result<f64, ()> {
+        string.parse().map_err(|_| ())
+    }
+
+    fn normalize(&self, value: f64) -> f64 {
+        value
+    }
+
+    fn denormalize(&self, value: f64) -> f64 {
+        value
+    }
+}
+
+const GAIN: ParamInfo =
+    ParamInfo { id: 0, name: "gain", label: "dB", steps: None, default: 1.0, format: &GainFormat };
 
 pub struct GainParams {
     gain: AtomicU64,
@@ -71,36 +92,6 @@ impl Plugin for Gain {
                 self.params.gain.store(value.to_bits(), Ordering::Relaxed);
             }
             _ => {}
-        }
-    }
-
-    fn display_param(&self, id: ParamId, value: f64, write: &mut impl std::fmt::Write) {
-        match id {
-            0 => {
-                let _ = write!(write, "{}", value);
-            }
-            _ => {}
-        }
-    }
-
-    fn parse_param(&self, id: ParamId, string: &str) -> Result<f64, ()> {
-        match id {
-            0 => string.parse().map_err(|_| ()),
-            _ => Err(()),
-        }
-    }
-
-    fn normalize_param(&self, id: ParamId, value: f64) -> f64 {
-        match id {
-            0 => value,
-            _ => 0.0,
-        }
-    }
-
-    fn denormalize_param(&self, id: ParamId, value: f64) -> f64 {
-        match id {
-            0 => value,
-            _ => 0.0,
         }
     }
 

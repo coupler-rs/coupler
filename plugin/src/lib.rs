@@ -23,6 +23,14 @@ pub struct ParamInfo {
     pub label: &'static str,
     pub steps: Option<u32>,
     pub default: f64,
+    pub format: &'static dyn ParamFormat,
+}
+
+pub trait ParamFormat: Send + Sync {
+    fn display(&self, value: f64, write: &mut dyn std::fmt::Write);
+    fn parse(&self, string: &str) -> Result<f64, ()>;
+    fn normalize(&self, value: f64) -> f64;
+    fn denormalize(&self, value: f64) -> f64;
 }
 
 pub struct ParamChange {
@@ -88,10 +96,6 @@ pub trait Plugin: Send + Sync + Sized {
 
     fn get_param(&self, id: ParamId) -> f64;
     fn set_param(&self, id: ParamId, value: f64);
-    fn display_param(&self, id: ParamId, value: f64, write: &mut impl std::fmt::Write);
-    fn parse_param(&self, id: ParamId, string: &str) -> Result<f64, ()>;
-    fn normalize_param(&self, id: ParamId, value: f64) -> f64;
-    fn denormalize_param(&self, id: ParamId, value: f64) -> f64;
 
     fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()>;
     fn deserialize(&self, read: &mut impl std::io::Read) -> Result<(), ()>;
