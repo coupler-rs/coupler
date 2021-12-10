@@ -107,7 +107,7 @@ pub trait Processor: Send + Sized {
     fn process(
         &mut self,
         context: &ProcessContext,
-        audio_buses: &mut AudioBuses,
+        buffers: &mut AudioBuffers,
         param_changes: &[ParamChange],
     );
     fn reset(&mut self, context: &ProcessContext);

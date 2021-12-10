@@ -1,5 +1,5 @@
 use crate::{
-    AudioBuffer, AudioBus, AudioBuses, BusLayout, Editor, EditorContext, EditorContextInner,
+    AudioBuffers, AudioBus, AudioBuses, BusLayout, Editor, EditorContext, EditorContextInner,
     ParamChange, ParamId, ParentWindow, Plugin, ProcessContext, Processor,
 };
 
@@ -190,14 +190,6 @@ impl<P: Plugin> Factory<P> {
             outputs_enabled.push(true);
         }
 
-        let mut audio_buffers_capacity = 0;
-        for bus_info in P::INPUTS {
-            audio_buffers_capacity += bus_info.default_layout.channels();
-        }
-        for bus_info in P::OUTPUTS {
-            audio_buffers_capacity += bus_info.default_layout.channels();
-        }
-
         let plugin = P::create();
 
         *obj = Arc::into_raw(Arc::new(Wrapper {
@@ -221,8 +213,8 @@ impl<P: Plugin> Factory<P> {
                 // block, so make a reasonable guess and hope we don't have to
                 // allocate more
                 param_changes: Vec::with_capacity(4 * P::PARAMS.len()),
-                audio_buses: Vec::with_capacity(P::INPUTS.len() + P::OUTPUTS.len()),
-                audio_buffers: Vec::with_capacity(audio_buffers_capacity),
+                input_buses: Vec::with_capacity(P::INPUTS.len()),
+                output_buses: Vec::with_capacity(P::INPUTS.len()),
                 sample_rate: 44_100.0,
                 processor: None,
             }),
@@ -362,8 +354,8 @@ struct BusStates {
 
 struct ProcessorState<P: Plugin> {
     param_changes: Vec<ParamChange>,
-    audio_buses: Vec<AudioBus<'static, 'static>>,
-    audio_buffers: Vec<AudioBuffer<'static>>,
+    input_buses: Vec<AudioBus<'static>>,
+    output_buses: Vec<AudioBus<'static>>,
     sample_rate: f64,
     processor: Option<P::Processor>,
 }
@@ -716,7 +708,6 @@ impl<P: Plugin> Wrapper<P> {
     ) -> TResult {
         let wrapper = &*(this.offset(-Self::AUDIO_PROCESSOR_OFFSET) as *const Wrapper<P>);
         let bus_states = &mut *wrapper.bus_states.get();
-        let processor_state = &mut *wrapper.processor_state.get();
 
         if num_ins as usize != P::INPUTS.len() || num_outs as usize != P::OUTPUTS.len() {
             return result::FALSE;
@@ -755,17 +746,6 @@ impl<P: Plugin> Wrapper<P> {
             for (i, output) in candidate_outputs.into_iter().enumerate() {
                 bus_states.output_layouts[i] = output;
             }
-
-            let mut audio_buffers_capacity = 0;
-            for bus_info in P::INPUTS {
-                audio_buffers_capacity += bus_info.default_layout.channels();
-            }
-            for bus_info in P::OUTPUTS {
-                audio_buffers_capacity += bus_info.default_layout.channels();
-            }
-            processor_state.audio_buffers.clear();
-            processor_state.audio_buffers.shrink_to(audio_buffers_capacity);
-            processor_state.audio_buffers.reserve_exact(audio_buffers_capacity);
         }
 
         result::TRUE
@@ -900,23 +880,47 @@ impl<P: Plugin> Wrapper<P> {
             }
         }
 
-        if process_data.num_inputs > 0 && process_data.num_inputs as usize != P::INPUTS.len() {
-            return result::INVALID_ARGUMENT;
-        }
-
-        if process_data.num_outputs > 0 && process_data.num_outputs as usize != P::OUTPUTS.len() {
-            return result::INVALID_ARGUMENT;
-        }
+        processor_state.input_buses.clear();
 
         let inputs = if process_data.num_inputs > 0 {
             slice::from_raw_parts(process_data.inputs, process_data.num_inputs as usize)
         } else {
             &[]
         };
-        for (input, bus_layout) in inputs.iter().zip(bus_states.input_layouts.iter()) {
-            if input.num_channels != 0 && input.num_channels as usize != bus_layout.channels() {
+
+        for index in 0..P::INPUTS.len() {
+            let input = inputs[index];
+            let bus_layout = &bus_states.input_layouts[index];
+            let bus_enabled = bus_states.inputs_enabled[index];
+
+            let channels = if !bus_enabled {
+                None
+            } else if input.num_channels as usize == bus_layout.channels() {
+                Some(if input.num_channels > 0 {
+                    slice::from_raw_parts(
+                        input.channel_buffers as *const *mut f32,
+                        input.num_channels as usize,
+                    )
+                } else {
+                    &[]
+                })
+            } else if input.num_channels == 0 {
+                None
+            } else {
                 return result::INVALID_ARGUMENT;
-            }
+            };
+
+            processor_state.input_buses.push(AudioBus {
+                layout: bus_layout,
+                samples: process_data.num_samples as usize,
+                channels,
+            });
+        }
+
+        processor_state.output_buses.clear();
+
+        if process_data.num_outputs > 0 && process_data.num_outputs as usize != P::OUTPUTS.len() {
+            return result::INVALID_ARGUMENT;
         }
 
         let outputs = if process_data.num_outputs > 0 {
@@ -924,117 +928,42 @@ impl<P: Plugin> Wrapper<P> {
         } else {
             &[]
         };
-        for (output, bus_layout) in outputs.iter().zip(bus_states.output_layouts.iter()) {
-            if output.num_channels != 0 && output.num_channels as usize != bus_layout.channels() {
-                return result::INVALID_ARGUMENT;
-            }
-        }
-
-        // To avoid allocating in process(), we hold onto preallocated vectors
-        // of AudioBus<'static, 'static> and AudioBuffer<'static>. However,
-        // their lifetime parameters need to be shorter than 'static for the
-        // duration of this method, so we transmute references to them to have
-        // the necessary lifetime parameters. For safety, we ensure that the
-        // vectors are empty before transmuting and again before the references
-        // go out of scope.
-
-        processor_state.audio_buses.clear();
-        let buses: &mut Vec<AudioBus<'_, '_>> = mem::transmute(&mut processor_state.audio_buses);
-
-        processor_state.audio_buffers.clear();
-        let buffers: &mut Vec<AudioBuffer<'_>> = mem::transmute(&mut processor_state.audio_buffers);
-
-        for (input, bus_enabled) in inputs.iter().zip(bus_states.inputs_enabled.iter()) {
-            if !bus_enabled || input.num_channels == 0 {
-                continue;
-            }
-
-            let input_ptrs = slice::from_raw_parts(
-                input.channel_buffers as *mut *mut f32,
-                input.num_channels as usize,
-            );
-
-            for &ptr in input_ptrs {
-                // AudioBuffer holds the raw parts of a slice, and we shouldn't
-                // use from_raw_parts for zero-length inputs since the pointer
-                // may be null or unaligned
-                let len = process_data.num_samples as usize;
-                let ptr = if len > 0 { ptr } else { (&mut []).as_mut_ptr() };
-                buffers.push(AudioBuffer { ptr, len, phantom: PhantomData });
-            }
-        }
-
-        for (output, bus_enabled) in outputs.iter().zip(bus_states.outputs_enabled.iter()) {
-            if !bus_enabled || output.num_channels == 0 {
-                continue;
-            }
-
-            let output_ptrs = slice::from_raw_parts(
-                output.channel_buffers as *mut *mut f32,
-                output.num_channels as usize,
-            );
-
-            for &ptr in output_ptrs {
-                // AudioBuffer holds the raw parts of a slice, and we shouldn't
-                // use from_raw_parts for zero-length inputs since the pointer
-                // may be null or unaligned
-                let len = process_data.num_samples as usize;
-                let ptr = if len > 0 { ptr } else { (&mut []).as_mut_ptr() };
-                buffers.push(AudioBuffer { ptr, len, phantom: PhantomData });
-            }
-        }
-
-        let mut buffers_slice = &mut buffers[..];
-
-        for index in 0..P::INPUTS.len() {
-            let input_exists =
-                if let Some(input) = inputs.get(index) { input.num_channels != 0 } else { false };
-
-            let channels = if bus_states.inputs_enabled[index] && input_exists {
-                let (channels, remainder) =
-                    buffers_slice.split_at_mut(bus_states.input_layouts[index].channels());
-                buffers_slice = remainder;
-                channels
-            } else {
-                &mut []
-            };
-
-            buses.push(AudioBus {
-                enabled: bus_states.inputs_enabled[index],
-                layout: &bus_states.input_layouts[index],
-                samples: process_data.num_samples as usize,
-                channels,
-            });
-        }
 
         for index in 0..P::OUTPUTS.len() {
-            let output_exists = if let Some(output) = outputs.get(index) {
-                output.num_channels != 0
+            let output = outputs[index];
+            let bus_layout = &bus_states.output_layouts[index];
+            let bus_enabled = bus_states.outputs_enabled[index];
+
+            let channels = if !bus_enabled {
+                None
+            } else if output.num_channels as usize == bus_layout.channels() {
+                Some(if output.num_channels > 0 {
+                    slice::from_raw_parts(
+                        output.channel_buffers as *const *mut f32,
+                        output.num_channels as usize,
+                    )
+                } else {
+                    &[]
+                })
+            } else if output.num_channels == 0 {
+                None
             } else {
-                false
+                return result::INVALID_ARGUMENT;
             };
 
-            let channels = if bus_states.outputs_enabled[index] && output_exists {
-                let (channels, remainder) =
-                    buffers_slice.split_at_mut(bus_states.output_layouts[index].channels());
-                buffers_slice = remainder;
-                channels
-            } else {
-                &mut []
-            };
-
-            buses.push(AudioBus {
-                enabled: bus_states.outputs_enabled[index],
-                layout: &bus_states.output_layouts[index],
+            processor_state.output_buses.push(AudioBus {
+                layout: bus_layout,
                 samples: process_data.num_samples as usize,
                 channels,
             });
         }
 
-        let (inputs, outputs) = buses.split_at_mut(P::INPUTS.len());
-
-        let mut audio_buses =
-            AudioBuses { samples: process_data.num_samples as usize, inputs, outputs };
+        let samples = process_data.num_samples as usize;
+        let mut audio_buses = AudioBuffers {
+            samples,
+            inputs: AudioBuses { samples, buses: &mut processor_state.input_buses },
+            outputs: AudioBuses { samples, buses: &mut processor_state.output_buses },
+        };
 
         if !process_data.process_context.is_null() {
             processor_state.sample_rate = (*process_data.process_context).sample_rate;
@@ -1049,12 +978,6 @@ impl<P: Plugin> Wrapper<P> {
         if let Some(processor) = &mut processor_state.processor {
             processor.process(&context, &mut audio_buses, &processor_state.param_changes[..]);
         }
-
-        // Clear vectors of AudioBus and AudioBuffer to ensure no data with
-        // non-'static lifetimes is left behind.
-
-        buses.clear();
-        buffers.clear();
 
         result::OK
     }

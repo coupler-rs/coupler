@@ -124,7 +124,7 @@ impl Processor for GainProcessor {
     fn process(
         &mut self,
         _context: &ProcessContext,
-        audio_buses: &mut AudioBuses,
+        buffers: &mut AudioBuffers,
         param_changes: &[ParamChange],
     ) {
         let mut gain = f64::from_bits(self.params.gain.load(Ordering::Relaxed)) as f32;
@@ -138,12 +138,13 @@ impl Processor for GainProcessor {
             }
         }
 
-        for i in 0..audio_buses.samples() {
+        for i in 0..buffers.samples() {
             self.gain = 0.9995 * self.gain + 0.0005 * gain;
 
             for channel in 0..2 {
-                let input_sample = audio_buses.inputs()[0].channels()[channel][i];
-                audio_buses.outputs()[0].channels_mut()[channel][i] = self.gain * input_sample;
+                let input_sample = buffers.inputs().bus(0).unwrap().channel(channel).unwrap()[i];
+                buffers.outputs().bus_mut(0).unwrap().channel_mut(channel).unwrap()[i] =
+                    self.gain * input_sample;
             }
         }
 
