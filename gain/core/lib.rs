@@ -155,6 +155,7 @@ impl Processor for GainProcessor {
 }
 
 pub struct GainEditor {
+    #[allow(unused)]
     application: Application,
     window: Window,
 }
