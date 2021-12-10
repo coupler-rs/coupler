@@ -54,6 +54,14 @@ impl<'a, 'b> AudioBuses<'a, 'b> {
     pub fn bus_mut(&mut self, index: usize) -> Option<&mut AudioBus<'b>> {
         self.buses.get_mut(index)
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &AudioBus<'b>> {
+        self.buses.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut AudioBus<'b>> {
+        self.buses.iter_mut()
+    }
 }
 
 pub struct AudioBus<'a> {
@@ -101,5 +109,17 @@ impl<'a> AudioBus<'a> {
         }
 
         None
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &[f32]> {
+        let samples = self.samples;
+        let channels = self.channels.unwrap_or(&[]);
+        channels.iter().map(move |channel| unsafe { slice::from_raw_parts(*channel, samples) })
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut [f32]> {
+        let samples = self.samples;
+        let channels = self.channels.unwrap_or(&mut []);
+        channels.iter().map(move |channel| unsafe { slice::from_raw_parts_mut(*channel, samples) })
     }
 }
