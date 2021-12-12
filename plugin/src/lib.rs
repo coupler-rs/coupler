@@ -123,3 +123,22 @@ pub trait Editor: Sized {
     #[cfg(target_os = "linux")]
     fn poll(&mut self);
 }
+
+pub struct NoEditor;
+
+impl Editor for NoEditor {
+    fn initial_size() -> (f64, f64) {
+        (0.0, 0.0)
+    }
+    fn close(&mut self) {}
+    fn raw_window_handle(&self) -> Option<RawWindowHandle> {
+        None
+    }
+
+    #[cfg(target_os = "linux")]
+    fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
+        None
+    }
+    #[cfg(target_os = "linux")]
+    fn poll(&mut self) {}
+}
