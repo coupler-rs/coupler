@@ -880,6 +880,8 @@ impl<P: Plugin> Wrapper<P> {
             }
         }
 
+        processor_state.param_changes.sort_by_key(|param_change| param_change.offset);
+
         processor_state.input_buses.clear();
 
         let inputs = if process_data.num_inputs > 0 {
