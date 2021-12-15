@@ -1,7 +1,7 @@
 use crate::{
     AudioBuffers, AudioBus, AudioBuses, BusDescs, BusLayout, Editor, EditorContext,
-    EditorContextInner, ParamChange, ParamId, ParentWindow, Plugin, PluginDesc, ProcessContext,
-    Processor,
+    EditorContextInner, ParamChange, ParamDescs, ParamId, ParentWindow, Plugin, PluginDesc,
+    ProcessContext, Processor,
 };
 
 use std::cell::{Cell, UnsafeCell};
@@ -184,11 +184,6 @@ impl<P: Plugin> Factory<P> {
             component_handler: Cell::new(ptr::null_mut()),
         });
 
-        let mut param_indices = HashMap::with_capacity(P::PARAMS.len());
-        for (index, param) in P::PARAMS.iter().enumerate() {
-            param_indices.insert(param.id, index);
-        }
-
         let mut input_descs = BusDescs::default();
         let mut output_descs = BusDescs::default();
         P::describe_buses(&mut input_descs, &mut output_descs);
@@ -209,11 +204,19 @@ impl<P: Plugin> Factory<P> {
 
         let plugin = P::create();
 
+        let mut param_descs = ParamDescs::default();
+        plugin.describe_params(&mut param_descs);
+
+        let mut param_indices = HashMap::with_capacity(param_descs.params().len());
+        for (index, param) in param_descs.params().iter().enumerate() {
+            param_indices.insert(param.id, index);
+        }
+
         let processor_state = UnsafeCell::new(ProcessorState {
             // We can't know the maximum number of param changes in a
             // block, so make a reasonable guess and hope we don't have to
             // allocate more
-            param_changes: Vec::with_capacity(4 * P::PARAMS.len()),
+            param_changes: Vec::with_capacity(4 * param_descs.params().len()),
             input_buses: Vec::with_capacity(input_descs.buses().len()),
             output_buses: Vec::with_capacity(output_descs.buses().len()),
             sample_rate: 44_100.0,
@@ -243,6 +246,7 @@ impl<P: Plugin> Factory<P> {
                 inputs_enabled,
                 outputs_enabled,
             }),
+            param_descs,
             param_indices,
             plugin,
             processor_state,
@@ -366,6 +370,7 @@ pub struct Wrapper<P: Plugin> {
     // activate_bus, which aren't called concurrently with any other methods on
     // IComponent or IAudioProcessor per the spec.
     bus_states: UnsafeCell<BusStates>,
+    param_descs: ParamDescs,
     param_indices: HashMap<u32, usize>,
     plugin: P,
     processor_state: UnsafeCell<ProcessorState<P>>,
@@ -1110,24 +1115,28 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn get_parameter_count(_this: *mut c_void) -> i32 {
-        P::PARAMS.len() as i32
+    pub unsafe extern "system" fn get_parameter_count(this: *mut c_void) -> i32 {
+        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+
+        wrapper.param_descs.params().len() as i32
     }
 
     pub unsafe extern "system" fn get_parameter_info(
-        _this: *mut c_void,
+        this: *mut c_void,
         param_index: i32,
         info: *mut ParameterInfo,
     ) -> TResult {
-        if let Some(param_info) = P::PARAMS.get(param_index as usize) {
+        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+
+        if let Some(param_desc) = wrapper.param_descs.params().get(param_index as usize) {
             let info = &mut *info;
 
             info.id = param_index as u32;
-            copy_wstring(param_info.name, &mut info.title);
-            copy_wstring(param_info.name, &mut info.short_title);
-            copy_wstring(param_info.label, &mut info.units);
-            info.step_count = param_info.steps.unwrap_or(0) as i32;
-            info.default_normalized_value = param_info.default;
+            copy_wstring(&param_desc.name, &mut info.title);
+            copy_wstring(&param_desc.name, &mut info.short_title);
+            copy_wstring(&param_desc.label, &mut info.units);
+            info.step_count = param_desc.steps.unwrap_or(0) as i32;
+            info.default_normalized_value = param_desc.default;
             info.unit_id = 0;
             info.flags = ParameterInfo::CAN_AUTOMATE;
 

@@ -27,22 +27,6 @@ impl Default for PluginDesc {
     }
 }
 
-pub type ParamId = u32;
-
-pub struct ParamInfo {
-    pub id: ParamId,
-    pub name: &'static str,
-    pub label: &'static str,
-    pub steps: Option<u32>,
-    pub default: f64,
-}
-
-pub struct ParamChange {
-    pub id: ParamId,
-    pub offset: usize,
-    pub value: f64,
-}
-
 pub struct BusDescs {
     buses: Vec<BusDesc>,
 }
@@ -66,6 +50,42 @@ impl BusDescs {
 pub struct BusDesc {
     pub name: String,
     pub default_layout: BusLayout,
+}
+
+pub type ParamId = u32;
+
+pub struct ParamDescs {
+    params: Vec<ParamDesc>,
+}
+
+impl Default for ParamDescs {
+    fn default() -> ParamDescs {
+        ParamDescs { params: Vec::new() }
+    }
+}
+
+impl ParamDescs {
+    pub fn add(&mut self, param: ParamDesc) {
+        self.params.push(param)
+    }
+
+    pub fn params(&self) -> &[ParamDesc] {
+        &self.params
+    }
+}
+
+pub struct ParamDesc {
+    pub id: ParamId,
+    pub name: String,
+    pub label: String,
+    pub steps: Option<u32>,
+    pub default: f64,
+}
+
+pub struct ParamChange {
+    pub id: ParamId,
+    pub offset: usize,
+    pub value: f64,
 }
 
 pub struct ProcessContext<'a> {
@@ -106,8 +126,6 @@ unsafe impl HasRawWindowHandle for ParentWindow {
 }
 
 pub trait Plugin: Send + Sync + Sized {
-    const PARAMS: &'static [ParamInfo];
-
     type Processor: Processor;
     type Editor: Editor;
 
@@ -120,6 +138,7 @@ pub trait Plugin: Send + Sync + Sized {
     fn processor(&self, context: &ProcessContext) -> Self::Processor;
     fn editor(&self, context: EditorContext, parent: Option<&ParentWindow>) -> Self::Editor;
 
+    fn describe_params(&self, params: &mut ParamDescs);
     fn get_param(&self, id: ParamId) -> f64;
     fn set_param(&self, id: ParamId, value: f64);
     fn display_param(&self, id: ParamId, value: f64, write: &mut impl std::fmt::Write);

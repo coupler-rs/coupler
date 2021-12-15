@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
-const GAIN: ParamInfo = ParamInfo { id: 0, name: "gain", label: "dB", steps: None, default: 1.0 };
+const GAIN: u32 = 0;
 
 pub struct GainParams {
     gain: AtomicU64,
@@ -27,8 +27,6 @@ pub struct Gain {
 }
 
 impl Plugin for Gain {
-    const PARAMS: &'static [ParamInfo] = &[GAIN];
-
     type Processor = GainProcessor;
     type Editor = GainEditor;
 
@@ -57,6 +55,10 @@ impl Plugin for Gain {
 
     fn editor(&self, context: EditorContext, parent: Option<&ParentWindow>) -> GainEditor {
         GainEditor::open(context, parent, self.params.clone())
+    }
+
+    fn describe_params(&self, params: &mut ParamDescs) {
+        params.add(ParamDesc { id: GAIN, name: "gain".to_string(), label: "dB".to_string(), steps: None, default: 1.0 });
     }
 
     fn get_param(&self, id: ParamId) -> f64 {
@@ -296,7 +298,7 @@ impl WindowHandler for GainWindowHandler {
             let new_value =
                 (start_value - 0.005 * (position.y - start_position.y)).max(0.0).min(1.0);
             self.params.gain.store(new_value.to_bits(), Ordering::Relaxed);
-            self.context.perform_edit(GAIN.id, new_value);
+            self.context.perform_edit(GAIN, new_value);
         } else {
             self.update_cursor(window);
         }
@@ -308,9 +310,9 @@ impl WindowHandler for GainWindowHandler {
             if position.x >= 96.0 && position.x < 160.0 && position.y >= 96.0 && position.y < 160.0
             {
                 window.set_cursor(Cursor::SizeNs);
-                self.context.begin_edit(GAIN.id);
+                self.context.begin_edit(GAIN);
                 let value = f64::from_bits(self.params.gain.load(Ordering::Relaxed));
-                self.context.perform_edit(GAIN.id, value);
+                self.context.perform_edit(GAIN, value);
                 self.down.set(Some((position, value)));
                 return true;
             }
@@ -322,7 +324,7 @@ impl WindowHandler for GainWindowHandler {
     fn mouse_up(&self, window: &Window, button: MouseButton) -> bool {
         if button == MouseButton::Left {
             if self.down.get().is_some() {
-                self.context.end_edit(GAIN.id);
+                self.context.end_edit(GAIN);
                 self.down.set(None);
                 self.update_cursor(window);
                 return true;
