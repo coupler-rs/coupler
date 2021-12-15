@@ -1,6 +1,6 @@
 use crate::{
     AudioBuffers, AudioBus, AudioBuses, BusDescs, BusLayout, Editor, EditorContext,
-    EditorContextInner, ParamChange, ParamDescs, ParamId, ParentWindow, Plugin, PluginDesc,
+    EditorContextInner, ParamChange, ParamDescs, ParamId, ParentWindow, Plugin, PluginInfo,
     ProcessContext, Processor,
 };
 
@@ -81,7 +81,7 @@ pub struct Factory<P> {
     pub event_handler: *const IEventHandler,
     pub timer_handler: *const ITimerHandler,
     pub uid: TUID,
-    pub plugin_desc: PluginDesc,
+    pub plugin_info: PluginInfo,
     pub phantom: PhantomData<P>,
 }
 
@@ -133,9 +133,9 @@ impl<P: Plugin> Factory<P> {
 
         let info = &mut *info;
 
-        copy_cstring(&factory.plugin_desc.vendor, &mut info.vendor);
-        copy_cstring(&factory.plugin_desc.url, &mut info.url);
-        copy_cstring(&factory.plugin_desc.email, &mut info.email);
+        copy_cstring(&factory.plugin_info.vendor, &mut info.vendor);
+        copy_cstring(&factory.plugin_info.url, &mut info.url);
+        copy_cstring(&factory.plugin_info.email, &mut info.email);
         info.flags = PFactoryInfo::UNICODE;
 
         result::OK
@@ -161,7 +161,7 @@ impl<P: Plugin> Factory<P> {
         info.cid = factory.uid;
         info.cardinality = PClassInfo::MANY_INSTANCES;
         copy_cstring("Audio Module Class", &mut info.category);
-        copy_cstring(&factory.plugin_desc.name, &mut info.name);
+        copy_cstring(&factory.plugin_info.name, &mut info.name);
 
         result::OK
     }
@@ -240,7 +240,7 @@ impl<P: Plugin> Factory<P> {
             timer_handler: factory.timer_handler,
             input_descs,
             output_descs,
-            has_editor: factory.plugin_desc.has_editor,
+            has_editor: factory.plugin_info.has_editor,
             bus_states: UnsafeCell::new(BusStates {
                 input_layouts,
                 output_layouts,
@@ -273,10 +273,10 @@ impl<P: Plugin> Factory<P> {
         info.cid = factory.uid;
         info.cardinality = PClassInfo::MANY_INSTANCES;
         copy_cstring("Audio Module Class", &mut info.category);
-        copy_cstring(&factory.plugin_desc.name, &mut info.name);
+        copy_cstring(&factory.plugin_info.name, &mut info.name);
         info.class_flags = 0;
         copy_cstring("Fx", &mut info.sub_categories);
-        copy_cstring(&factory.plugin_desc.vendor, &mut info.vendor);
+        copy_cstring(&factory.plugin_info.vendor, &mut info.vendor);
         copy_cstring("", &mut info.version);
         copy_cstring("VST 3.7", &mut info.sdk_version);
 
@@ -299,10 +299,10 @@ impl<P: Plugin> Factory<P> {
         info.cid = factory.uid;
         info.cardinality = PClassInfo::MANY_INSTANCES;
         copy_cstring("Audio Module Class", &mut info.category);
-        copy_wstring(&factory.plugin_desc.name, &mut info.name);
+        copy_wstring(&factory.plugin_info.name, &mut info.name);
         info.class_flags = 0;
         copy_cstring("Fx", &mut info.sub_categories);
-        copy_wstring(&factory.plugin_desc.vendor, &mut info.vendor);
+        copy_wstring(&factory.plugin_info.vendor, &mut info.vendor);
         copy_wstring("", &mut info.version);
         copy_wstring("VST 3.7", &mut info.sdk_version);
 
@@ -1710,9 +1710,6 @@ macro_rules! vst3 {
 
             #[no_mangle]
             extern "system" fn GetPluginFactory() -> *mut c_void {
-                let mut plugin_desc = PluginDesc::default();
-                <$plugin>::describe(&mut plugin_desc);
-
                 Arc::into_raw(Arc::new(Factory::<$plugin> {
                     plugin_factory_3: &PLUGIN_FACTORY_3_VTABLE,
                     component: &COMPONENT_VTABLE,
@@ -1723,7 +1720,7 @@ macro_rules! vst3 {
                     event_handler: &EVENT_HANDLER_VTABLE,
                     timer_handler: &TIMER_HANDLER_VTABLE,
                     uid: uid($uid[0], $uid[1], $uid[2], $uid[3]),
-                    plugin_desc,
+                    plugin_info: <$plugin>::info(),
                     phantom: PhantomData,
                 })) as *mut c_void
             }

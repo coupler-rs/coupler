@@ -30,14 +30,14 @@ impl Plugin for Gain {
     type Processor = GainProcessor;
     type Editor = GainEditor;
 
-    fn describe(desc: &mut PluginDesc) {
-        *desc = PluginDesc {
+    fn info() -> PluginInfo {
+        PluginInfo {
             name: "gain".to_string(),
             vendor: "glowcoil".to_string(),
             url: "https://glowcoil.com".to_string(),
             email: "micah@glowcoil.com".to_string(),
             has_editor: true,
-        };
+        }
     }
 
     fn describe_buses(inputs: &mut BusDescs, outputs: &mut BusDescs) {

@@ -7,24 +7,12 @@ use std::rc::Rc;
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
-pub struct PluginDesc {
+pub struct PluginInfo {
     pub name: String,
     pub vendor: String,
     pub url: String,
     pub email: String,
     pub has_editor: bool,
-}
-
-impl Default for PluginDesc {
-    fn default() -> PluginDesc {
-        PluginDesc {
-            name: String::new(),
-            vendor: String::new(),
-            url: String::new(),
-            email: String::new(),
-            has_editor: false,
-        }
-    }
 }
 
 pub struct BusDescs {
@@ -129,7 +117,7 @@ pub trait Plugin: Send + Sync + Sized {
     type Processor: Processor;
     type Editor: Editor;
 
-    fn describe(desc: &mut PluginDesc);
+    fn info() -> PluginInfo;
 
     fn describe_buses(inputs: &mut BusDescs, outputs: &mut BusDescs);
     fn supports_layout(inputs: &[BusLayout], outputs: &[BusLayout]) -> bool;
