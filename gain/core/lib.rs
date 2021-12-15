@@ -58,7 +58,13 @@ impl Plugin for Gain {
     }
 
     fn describe_params(&self, params: &mut ParamDescs) {
-        params.add(ParamDesc { id: GAIN, name: "gain".to_string(), label: "dB".to_string(), steps: None, default: 1.0 });
+        params.add(ParamDesc {
+            id: GAIN,
+            name: "gain".to_string(),
+            label: "dB".to_string(),
+            steps: None,
+            default: 1.0,
+        });
     }
 
     fn get_param(&self, id: ParamId) -> f64 {
