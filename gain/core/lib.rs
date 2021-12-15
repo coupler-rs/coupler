@@ -29,12 +29,6 @@ pub struct Gain {
 impl Plugin for Gain {
     const PARAMS: &'static [ParamInfo] = &[GAIN];
 
-    const INPUTS: &'static [BusInfo] =
-        &[BusInfo { name: "Input", default_layout: BusLayout::Stereo }];
-
-    const OUTPUTS: &'static [BusInfo] =
-        &[BusInfo { name: "Output", default_layout: BusLayout::Stereo }];
-
     type Processor = GainProcessor;
     type Editor = GainEditor;
 
@@ -46,6 +40,11 @@ impl Plugin for Gain {
             email: "micah@glowcoil.com".to_string(),
             has_editor: true,
         };
+    }
+
+    fn describe_buses(inputs: &mut BusDescs, outputs: &mut BusDescs) {
+        inputs.add(BusDesc { name: "Input".to_string(), default_layout: BusLayout::Stereo });
+        outputs.add(BusDesc { name: "Output".to_string(), default_layout: BusLayout::Stereo });
     }
 
     fn create() -> Gain {

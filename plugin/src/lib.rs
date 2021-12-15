@@ -43,8 +43,28 @@ pub struct ParamChange {
     pub value: f64,
 }
 
-pub struct BusInfo {
-    pub name: &'static str,
+pub struct BusDescs {
+    buses: Vec<BusDesc>,
+}
+
+impl Default for BusDescs {
+    fn default() -> BusDescs {
+        BusDescs { buses: Vec::new() }
+    }
+}
+
+impl BusDescs {
+    pub fn add(&mut self, bus: BusDesc) {
+        self.buses.push(bus)
+    }
+
+    pub fn buses(&self) -> &[BusDesc] {
+        &self.buses
+    }
+}
+
+pub struct BusDesc {
+    pub name: String,
     pub default_layout: BusLayout,
 }
 
@@ -87,13 +107,14 @@ unsafe impl HasRawWindowHandle for ParentWindow {
 
 pub trait Plugin: Send + Sync + Sized {
     const PARAMS: &'static [ParamInfo];
-    const INPUTS: &'static [BusInfo];
-    const OUTPUTS: &'static [BusInfo];
 
     type Processor: Processor;
     type Editor: Editor;
 
     fn describe(desc: &mut PluginDesc);
+
+    fn describe_buses(inputs: &mut BusDescs, outputs: &mut BusDescs);
+    fn supports_layout(inputs: &[BusLayout], outputs: &[BusLayout]) -> bool;
 
     fn create() -> Self;
     fn processor(&self, context: &ProcessContext) -> Self::Processor;
@@ -108,8 +129,6 @@ pub trait Plugin: Send + Sync + Sized {
 
     fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()>;
     fn deserialize(&self, read: &mut impl std::io::Read) -> Result<(), ()>;
-
-    fn supports_layout(inputs: &[BusLayout], outputs: &[BusLayout]) -> bool;
 }
 
 pub trait Processor: Send + Sized {

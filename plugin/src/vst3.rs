@@ -1,6 +1,7 @@
 use crate::{
-    AudioBuffers, AudioBus, AudioBuses, BusLayout, Editor, EditorContext, EditorContextInner,
-    ParamChange, ParamId, ParentWindow, Plugin, PluginDesc, ProcessContext, Processor,
+    AudioBuffers, AudioBus, AudioBuses, BusDescs, BusLayout, Editor, EditorContext,
+    EditorContextInner, ParamChange, ParamId, ParentWindow, Plugin, PluginDesc, ProcessContext,
+    Processor,
 };
 
 use std::cell::{Cell, UnsafeCell};
@@ -188,21 +189,42 @@ impl<P: Plugin> Factory<P> {
             param_indices.insert(param.id, index);
         }
 
-        let mut input_layouts = Vec::with_capacity(P::INPUTS.len());
-        let mut inputs_enabled = Vec::with_capacity(P::INPUTS.len());
-        for bus_info in P::INPUTS {
+        let mut input_descs = BusDescs::default();
+        let mut output_descs = BusDescs::default();
+        P::describe_buses(&mut input_descs, &mut output_descs);
+
+        let mut input_layouts = Vec::with_capacity(input_descs.buses().len());
+        let mut inputs_enabled = Vec::with_capacity(input_descs.buses().len());
+        for bus_info in input_descs.buses() {
             input_layouts.push(bus_info.default_layout.clone());
             inputs_enabled.push(true);
         }
 
-        let mut output_layouts = Vec::with_capacity(P::OUTPUTS.len());
-        let mut outputs_enabled = Vec::with_capacity(P::OUTPUTS.len());
-        for bus_info in P::OUTPUTS {
+        let mut output_layouts = Vec::with_capacity(output_descs.buses().len());
+        let mut outputs_enabled = Vec::with_capacity(output_descs.buses().len());
+        for bus_info in output_descs.buses() {
             output_layouts.push(bus_info.default_layout.clone());
             outputs_enabled.push(true);
         }
 
         let plugin = P::create();
+
+        let processor_state = UnsafeCell::new(ProcessorState {
+            // We can't know the maximum number of param changes in a
+            // block, so make a reasonable guess and hope we don't have to
+            // allocate more
+            param_changes: Vec::with_capacity(4 * P::PARAMS.len()),
+            input_buses: Vec::with_capacity(input_descs.buses().len()),
+            output_buses: Vec::with_capacity(output_descs.buses().len()),
+            sample_rate: 44_100.0,
+            processor: None,
+        });
+
+        let editor_state = UnsafeCell::new(EditorState {
+            plug_frame: ptr::null_mut(),
+            context: editor_context,
+            editor: None,
+        });
 
         *obj = Arc::into_raw(Arc::new(Wrapper {
             component: factory.component,
@@ -212,6 +234,8 @@ impl<P: Plugin> Factory<P> {
             plug_view: factory.plug_view,
             event_handler: factory.event_handler,
             timer_handler: factory.timer_handler,
+            input_descs,
+            output_descs,
             has_editor: factory.plugin_desc.has_editor,
             bus_states: UnsafeCell::new(BusStates {
                 input_layouts,
@@ -221,21 +245,8 @@ impl<P: Plugin> Factory<P> {
             }),
             param_indices,
             plugin,
-            processor_state: UnsafeCell::new(ProcessorState {
-                // We can't know the maximum number of param changes in a
-                // block, so make a reasonable guess and hope we don't have to
-                // allocate more
-                param_changes: Vec::with_capacity(4 * P::PARAMS.len()),
-                input_buses: Vec::with_capacity(P::INPUTS.len()),
-                output_buses: Vec::with_capacity(P::INPUTS.len()),
-                sample_rate: 44_100.0,
-                processor: None,
-            }),
-            editor_state: UnsafeCell::new(EditorState {
-                plug_frame: ptr::null_mut(),
-                context: editor_context,
-                editor: None,
-            }),
+            processor_state,
+            editor_state,
         })) as *mut c_void;
 
         result::OK
@@ -349,6 +360,8 @@ pub struct Wrapper<P: Plugin> {
     event_handler: *const IEventHandler,
     timer_handler: *const ITimerHandler,
     has_editor: bool,
+    input_descs: BusDescs,
+    output_descs: BusDescs,
     // We only form an &mut to bus_states in set_bus_arrangements and
     // activate_bus, which aren't called concurrently with any other methods on
     // IComponent or IAudioProcessor per the spec.
@@ -505,14 +518,16 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn get_bus_count(
-        _this: *mut c_void,
+        this: *mut c_void,
         media_type: MediaType,
         dir: BusDirection,
     ) -> i32 {
+        let wrapper = &*(this.offset(-Self::COMPONENT_OFFSET) as *const Wrapper<P>);
+
         match media_type {
             media_types::AUDIO => match dir {
-                bus_directions::INPUT => P::INPUTS.len() as i32,
-                bus_directions::OUTPUT => P::OUTPUTS.len() as i32,
+                bus_directions::INPUT => wrapper.input_descs.buses().len() as i32,
+                bus_directions::OUTPUT => wrapper.output_descs.buses().len() as i32,
                 _ => 0,
             },
             media_types::EVENT => 0,
@@ -533,8 +548,8 @@ impl<P: Plugin> Wrapper<P> {
         match media_type {
             media_types::AUDIO => {
                 let bus_info = match dir {
-                    bus_directions::INPUT => P::INPUTS.get(index as usize),
-                    bus_directions::OUTPUT => P::OUTPUTS.get(index as usize),
+                    bus_directions::INPUT => wrapper.input_descs.buses().get(index as usize),
+                    bus_directions::OUTPUT => wrapper.output_descs.buses().get(index as usize),
                     _ => None,
                 };
 
@@ -550,7 +565,7 @@ impl<P: Plugin> Wrapper<P> {
                     bus.media_type = media_types::AUDIO;
                     bus.direction = dir;
                     bus.channel_count = bus_layout.channels() as i32;
-                    copy_wstring(bus_info.name, &mut bus.name);
+                    copy_wstring(&bus_info.name, &mut bus.name);
                     bus.bus_type = if index == 0 { bus_types::MAIN } else { bus_types::AUX };
                     bus.flags = BusInfo::DEFAULT_ACTIVE;
 
@@ -723,7 +738,9 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::AUDIO_PROCESSOR_OFFSET) as *const Wrapper<P>);
         let bus_states = &mut *wrapper.bus_states.get();
 
-        if num_ins as usize != P::INPUTS.len() || num_outs as usize != P::OUTPUTS.len() {
+        if num_ins as usize != wrapper.input_descs.buses().len()
+            || num_outs as usize != wrapper.output_descs.buses().len()
+        {
             return result::FALSE;
         }
 
@@ -898,13 +915,19 @@ impl<P: Plugin> Wrapper<P> {
 
         processor_state.input_buses.clear();
 
+        if process_data.num_inputs > 0
+            && process_data.num_inputs as usize != wrapper.input_descs.buses().len()
+        {
+            return result::INVALID_ARGUMENT;
+        }
+
         let inputs = if process_data.num_inputs > 0 {
             slice::from_raw_parts(process_data.inputs, process_data.num_inputs as usize)
         } else {
             &[]
         };
 
-        for index in 0..P::INPUTS.len() {
+        for index in 0..wrapper.input_descs.buses().len() {
             let input = inputs[index];
             let bus_layout = &bus_states.input_layouts[index];
             let bus_enabled = bus_states.inputs_enabled[index];
@@ -935,7 +958,9 @@ impl<P: Plugin> Wrapper<P> {
 
         processor_state.output_buses.clear();
 
-        if process_data.num_outputs > 0 && process_data.num_outputs as usize != P::OUTPUTS.len() {
+        if process_data.num_outputs > 0
+            && process_data.num_outputs as usize != wrapper.output_descs.buses().len()
+        {
             return result::INVALID_ARGUMENT;
         }
 
@@ -945,7 +970,7 @@ impl<P: Plugin> Wrapper<P> {
             &[]
         };
 
-        for index in 0..P::OUTPUTS.len() {
+        for index in 0..wrapper.output_descs.buses().len() {
             let output = outputs[index];
             let bus_layout = &bus_states.output_layouts[index];
             let bus_enabled = bus_states.outputs_enabled[index];
