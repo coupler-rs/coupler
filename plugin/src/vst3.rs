@@ -921,88 +921,80 @@ impl<P: Plugin> Wrapper<P> {
 
         processor_state.input_buses.clear();
 
-        if process_data.num_inputs > 0
-            && process_data.num_inputs as usize != wrapper.input_descs.buses().len()
-        {
-            return result::INVALID_ARGUMENT;
-        }
-
-        let inputs = if process_data.num_inputs > 0 {
-            slice::from_raw_parts(process_data.inputs, process_data.num_inputs as usize)
-        } else {
-            &[]
-        };
-
-        for index in 0..wrapper.input_descs.buses().len() {
-            let input = inputs[index];
-            let bus_layout = &bus_states.input_layouts[index];
-            let bus_enabled = bus_states.inputs_enabled[index];
-
-            let channels = if !bus_enabled {
-                None
-            } else if input.num_channels as usize == bus_layout.channels() {
-                Some(if input.num_channels > 0 {
-                    slice::from_raw_parts(
-                        input.channel_buffers as *const *mut f32,
-                        input.num_channels as usize,
-                    )
-                } else {
-                    &[]
-                })
-            } else if input.num_channels == 0 {
-                None
-            } else {
+        if process_data.num_inputs > 0 {
+            if process_data.num_inputs as usize != wrapper.input_descs.buses().len() {
                 return result::INVALID_ARGUMENT;
-            };
+            }
 
-            processor_state.input_buses.push(AudioBus {
-                layout: bus_layout,
-                samples: process_data.num_samples as usize,
-                channels,
-            });
+            let inputs =
+                slice::from_raw_parts(process_data.inputs, process_data.num_inputs as usize);
+
+            for (index, input) in inputs.iter().enumerate() {
+                let bus_layout = &bus_states.input_layouts[index];
+                let bus_enabled = bus_states.inputs_enabled[index];
+
+                let channels = if !bus_enabled {
+                    None
+                } else if input.num_channels as usize == bus_layout.channels() {
+                    Some(if input.num_channels > 0 {
+                        slice::from_raw_parts(
+                            input.channel_buffers as *const *mut f32,
+                            input.num_channels as usize,
+                        )
+                    } else {
+                        &[]
+                    })
+                } else if input.num_channels == 0 {
+                    None
+                } else {
+                    return result::INVALID_ARGUMENT;
+                };
+
+                processor_state.input_buses.push(AudioBus {
+                    layout: bus_layout,
+                    samples: process_data.num_samples as usize,
+                    channels,
+                });
+            }
         }
 
         processor_state.output_buses.clear();
 
-        if process_data.num_outputs > 0
-            && process_data.num_outputs as usize != wrapper.output_descs.buses().len()
-        {
-            return result::INVALID_ARGUMENT;
-        }
-
-        let outputs = if process_data.num_outputs > 0 {
-            slice::from_raw_parts(process_data.outputs, process_data.num_outputs as usize)
-        } else {
-            &[]
-        };
-
-        for index in 0..wrapper.output_descs.buses().len() {
-            let output = outputs[index];
-            let bus_layout = &bus_states.output_layouts[index];
-            let bus_enabled = bus_states.outputs_enabled[index];
-
-            let channels = if !bus_enabled {
-                None
-            } else if output.num_channels as usize == bus_layout.channels() {
-                Some(if output.num_channels > 0 {
-                    slice::from_raw_parts(
-                        output.channel_buffers as *const *mut f32,
-                        output.num_channels as usize,
-                    )
-                } else {
-                    &[]
-                })
-            } else if output.num_channels == 0 {
-                None
-            } else {
+        if process_data.num_outputs > 0 {
+            if process_data.num_outputs as usize != wrapper.output_descs.buses().len() {
                 return result::INVALID_ARGUMENT;
-            };
+            }
 
-            processor_state.output_buses.push(AudioBus {
-                layout: bus_layout,
-                samples: process_data.num_samples as usize,
-                channels,
-            });
+            let outputs =
+                slice::from_raw_parts(process_data.outputs, process_data.num_outputs as usize);
+
+            for (index, output) in outputs.iter().enumerate() {
+                let bus_layout = &bus_states.output_layouts[index];
+                let bus_enabled = bus_states.outputs_enabled[index];
+
+                let channels = if !bus_enabled {
+                    None
+                } else if output.num_channels as usize == bus_layout.channels() {
+                    Some(if output.num_channels > 0 {
+                        slice::from_raw_parts(
+                            output.channel_buffers as *const *mut f32,
+                            output.num_channels as usize,
+                        )
+                    } else {
+                        &[]
+                    })
+                } else if output.num_channels == 0 {
+                    None
+                } else {
+                    return result::INVALID_ARGUMENT;
+                };
+
+                processor_state.output_buses.push(AudioBus {
+                    layout: bus_layout,
+                    samples: process_data.num_samples as usize,
+                    channels,
+                });
+            }
         }
 
         let samples = process_data.num_samples as usize;
