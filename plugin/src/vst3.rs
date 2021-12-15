@@ -105,12 +105,21 @@ impl<P: Plugin> Factory<P> {
         result::NO_INTERFACE
     }
 
-    pub unsafe extern "system" fn add_ref(_this: *mut c_void) -> u32 {
-        1
+    pub unsafe extern "system" fn add_ref(this: *mut c_void) -> u32 {
+        let factory = Arc::from_raw(this as *const Factory<P>);
+        let _ = Arc::into_raw(factory.clone());
+        let count = Arc::strong_count(&factory);
+        let _ = Arc::into_raw(factory);
+
+        count as u32
     }
 
-    pub unsafe extern "system" fn release(_this: *mut c_void) -> u32 {
-        1
+    pub unsafe extern "system" fn release(this: *mut c_void) -> u32 {
+        let factory = Arc::from_raw(this as *const Factory<P>);
+        let count = Arc::strong_count(&factory) - 1;
+        drop(factory);
+
+        count as u32
     }
 
     pub unsafe extern "system" fn get_factory_info(
@@ -1492,6 +1501,7 @@ macro_rules! vst3 {
         mod vst3_impl {
             use std::ffi::c_void;
             use std::marker::PhantomData;
+            use std::sync::Arc;
 
             use $crate::vst3::vst3_sys::*;
             use $crate::vst3::*;
@@ -1627,19 +1637,6 @@ macro_rules! vst3 {
                 on_timer: Wrapper::<$plugin>::on_timer,
             };
 
-            static PLUGIN_FACTORY: Factory<$plugin> = Factory {
-                plugin_factory_3: &PLUGIN_FACTORY_3_VTABLE,
-                component: &COMPONENT_VTABLE,
-                audio_processor: &AUDIO_PROCESSOR_VTABLE,
-                process_context_requirements: &PROCESS_CONTEXT_REQUIREMENTS_VTABLE,
-                edit_controller: &EDIT_CONTROLLER_VTABLE,
-                plug_view: &PLUG_VIEW_VTABLE,
-                event_handler: &EVENT_HANDLER_VTABLE,
-                timer_handler: &TIMER_HANDLER_VTABLE,
-                uid: uid($uid[0], $uid[1], $uid[2], $uid[3]),
-                phantom: PhantomData,
-            };
-
             #[cfg(target_os = "windows")]
             #[no_mangle]
             extern "system" fn InitDll() -> bool {
@@ -1678,7 +1675,18 @@ macro_rules! vst3 {
 
             #[no_mangle]
             extern "system" fn GetPluginFactory() -> *mut c_void {
-                &PLUGIN_FACTORY as *const Factory<$plugin> as *mut c_void
+                Arc::into_raw(Arc::new(Factory::<$plugin> {
+                    plugin_factory_3: &PLUGIN_FACTORY_3_VTABLE,
+                    component: &COMPONENT_VTABLE,
+                    audio_processor: &AUDIO_PROCESSOR_VTABLE,
+                    process_context_requirements: &PROCESS_CONTEXT_REQUIREMENTS_VTABLE,
+                    edit_controller: &EDIT_CONTROLLER_VTABLE,
+                    plug_view: &PLUG_VIEW_VTABLE,
+                    event_handler: &EVENT_HANDLER_VTABLE,
+                    timer_handler: &TIMER_HANDLER_VTABLE,
+                    uid: uid($uid[0], $uid[1], $uid[2], $uid[3]),
+                    phantom: PhantomData,
+                })) as *mut c_void
             }
         }
     };
