@@ -51,27 +51,26 @@ pub struct BusInfo {
 
 pub type ParamId = u32;
 
-pub struct ParamDescs {
-    params: Vec<ParamDesc>,
+pub struct ParamList {
+    params: Vec<ParamInfo>,
 }
 
-impl Default for ParamDescs {
-    fn default() -> ParamDescs {
-        ParamDescs { params: Vec::new() }
-    }
-}
-
-impl ParamDescs {
-    pub fn add(&mut self, param: ParamDesc) {
-        self.params.push(param)
+impl ParamList {
+    pub fn new() -> ParamList {
+        ParamList { params: Vec::new() }
     }
 
-    pub fn params(&self) -> &[ParamDesc] {
+    pub fn add(mut self, param: ParamInfo) -> ParamList {
+        self.params.push(param);
+        self
+    }
+
+    pub fn params(&self) -> &[ParamInfo] {
         &self.params
     }
 }
 
-pub struct ParamDesc {
+pub struct ParamInfo {
     pub id: ParamId,
     pub name: String,
     pub label: String,
@@ -135,7 +134,7 @@ pub trait Plugin: Send + Sync + Sized {
     fn processor(&self, context: &ProcessContext) -> Self::Processor;
     fn editor(&self, context: EditorContext, parent: Option<&ParentWindow>) -> Self::Editor;
 
-    fn describe_params(&self, params: &mut ParamDescs);
+    fn params(&self) -> ParamList;
     fn get_param(&self, id: ParamId) -> f64;
     fn set_param(&self, id: ParamId, value: f64);
     fn display_param(&self, id: ParamId, value: f64, write: &mut impl std::fmt::Write);

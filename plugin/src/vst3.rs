@@ -1,6 +1,6 @@
 use crate::{
     AudioBuffers, AudioBus, AudioBuses, BusLayout, BusList, Editor, EditorContext,
-    EditorContextInner, ParamChange, ParamDescs, ParamId, ParentWindow, Plugin, PluginInfo,
+    EditorContextInner, ParamChange, ParamId, ParamList, ParentWindow, Plugin, PluginInfo,
     ProcessContext, Processor,
 };
 
@@ -203,11 +203,10 @@ impl<P: Plugin> Factory<P> {
 
         let plugin = P::create();
 
-        let mut param_descs = ParamDescs::default();
-        plugin.describe_params(&mut param_descs);
+        let param_list = plugin.params();
 
-        let mut param_indices = HashMap::with_capacity(param_descs.params().len());
-        for (index, param) in param_descs.params().iter().enumerate() {
+        let mut param_indices = HashMap::with_capacity(param_list.params().len());
+        for (index, param) in param_list.params().iter().enumerate() {
             param_indices.insert(param.id, index);
         }
 
@@ -215,7 +214,7 @@ impl<P: Plugin> Factory<P> {
             // We can't know the maximum number of param changes in a
             // block, so make a reasonable guess and hope we don't have to
             // allocate more
-            param_changes: Vec::with_capacity(4 * param_descs.params().len()),
+            param_changes: Vec::with_capacity(4 * param_list.params().len()),
             input_buses: Vec::with_capacity(bus_list.inputs().len()),
             output_buses: Vec::with_capacity(bus_list.outputs().len()),
             sample_rate: 44_100.0,
@@ -244,7 +243,7 @@ impl<P: Plugin> Factory<P> {
                 inputs_enabled,
                 outputs_enabled,
             }),
-            param_descs,
+            param_list,
             param_indices,
             plugin,
             processor_state,
@@ -367,7 +366,7 @@ pub struct Wrapper<P: Plugin> {
     // activate_bus, which aren't called concurrently with any other methods on
     // IComponent or IAudioProcessor per the spec.
     bus_states: UnsafeCell<BusStates>,
-    param_descs: ParamDescs,
+    param_list: ParamList,
     param_indices: HashMap<u32, usize>,
     plugin: P,
     processor_state: UnsafeCell<ProcessorState<P>>,
@@ -1107,7 +1106,7 @@ impl<P: Plugin> Wrapper<P> {
     pub unsafe extern "system" fn get_parameter_count(this: *mut c_void) -> i32 {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
-        wrapper.param_descs.params().len() as i32
+        wrapper.param_list.params().len() as i32
     }
 
     pub unsafe extern "system" fn get_parameter_info(
@@ -1117,15 +1116,15 @@ impl<P: Plugin> Wrapper<P> {
     ) -> TResult {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
-        if let Some(param_desc) = wrapper.param_descs.params().get(param_index as usize) {
+        if let Some(param_info) = wrapper.param_list.params().get(param_index as usize) {
             let info = &mut *info;
 
             info.id = param_index as u32;
-            copy_wstring(&param_desc.name, &mut info.title);
-            copy_wstring(&param_desc.name, &mut info.short_title);
-            copy_wstring(&param_desc.label, &mut info.units);
-            info.step_count = param_desc.steps.unwrap_or(0) as i32;
-            info.default_normalized_value = param_desc.default;
+            copy_wstring(&param_info.name, &mut info.title);
+            copy_wstring(&param_info.name, &mut info.short_title);
+            copy_wstring(&param_info.label, &mut info.units);
+            info.step_count = param_info.steps.unwrap_or(0) as i32;
+            info.default_normalized_value = param_info.default;
             info.unit_id = 0;
             info.flags = ParameterInfo::CAN_AUTOMATE;
 
