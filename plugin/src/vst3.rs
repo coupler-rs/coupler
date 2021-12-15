@@ -100,6 +100,7 @@ impl<P: Plugin> Factory<P> {
             || iid == IPluginFactory2::IID
             || iid == IPluginFactory3::IID
         {
+            Self::add_ref(this);
             *obj = this;
             return result::OK;
         }
