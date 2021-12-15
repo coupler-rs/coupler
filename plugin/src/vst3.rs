@@ -1,5 +1,5 @@
 use crate::{
-    AudioBuffers, AudioBus, AudioBuses, BusDescs, BusLayout, Editor, EditorContext,
+    AudioBuffers, AudioBus, AudioBuses, BusLayout, BusList, Editor, EditorContext,
     EditorContextInner, ParamChange, ParamDescs, ParamId, ParentWindow, Plugin, PluginInfo,
     ProcessContext, Processor,
 };
@@ -185,20 +185,18 @@ impl<P: Plugin> Factory<P> {
             component_handler: Cell::new(ptr::null_mut()),
         });
 
-        let mut input_descs = BusDescs::default();
-        let mut output_descs = BusDescs::default();
-        P::describe_buses(&mut input_descs, &mut output_descs);
+        let bus_list = P::buses();
 
-        let mut input_layouts = Vec::with_capacity(input_descs.buses().len());
-        let mut inputs_enabled = Vec::with_capacity(input_descs.buses().len());
-        for bus_info in input_descs.buses() {
+        let mut input_layouts = Vec::with_capacity(bus_list.inputs().len());
+        let mut inputs_enabled = Vec::with_capacity(bus_list.inputs().len());
+        for bus_info in bus_list.inputs() {
             input_layouts.push(bus_info.default_layout.clone());
             inputs_enabled.push(true);
         }
 
-        let mut output_layouts = Vec::with_capacity(output_descs.buses().len());
-        let mut outputs_enabled = Vec::with_capacity(output_descs.buses().len());
-        for bus_info in output_descs.buses() {
+        let mut output_layouts = Vec::with_capacity(bus_list.outputs().len());
+        let mut outputs_enabled = Vec::with_capacity(bus_list.outputs().len());
+        for bus_info in bus_list.outputs() {
             output_layouts.push(bus_info.default_layout.clone());
             outputs_enabled.push(true);
         }
@@ -218,8 +216,8 @@ impl<P: Plugin> Factory<P> {
             // block, so make a reasonable guess and hope we don't have to
             // allocate more
             param_changes: Vec::with_capacity(4 * param_descs.params().len()),
-            input_buses: Vec::with_capacity(input_descs.buses().len()),
-            output_buses: Vec::with_capacity(output_descs.buses().len()),
+            input_buses: Vec::with_capacity(bus_list.inputs().len()),
+            output_buses: Vec::with_capacity(bus_list.outputs().len()),
             sample_rate: 44_100.0,
             processor: None,
         });
@@ -238,8 +236,7 @@ impl<P: Plugin> Factory<P> {
             plug_view: factory.plug_view,
             event_handler: factory.event_handler,
             timer_handler: factory.timer_handler,
-            input_descs,
-            output_descs,
+            bus_list,
             has_editor: factory.plugin_info.has_editor,
             bus_states: UnsafeCell::new(BusStates {
                 input_layouts,
@@ -365,8 +362,7 @@ pub struct Wrapper<P: Plugin> {
     event_handler: *const IEventHandler,
     timer_handler: *const ITimerHandler,
     has_editor: bool,
-    input_descs: BusDescs,
-    output_descs: BusDescs,
+    bus_list: BusList,
     // We only form an &mut to bus_states in set_bus_arrangements and
     // activate_bus, which aren't called concurrently with any other methods on
     // IComponent or IAudioProcessor per the spec.
@@ -532,8 +528,8 @@ impl<P: Plugin> Wrapper<P> {
 
         match media_type {
             media_types::AUDIO => match dir {
-                bus_directions::INPUT => wrapper.input_descs.buses().len() as i32,
-                bus_directions::OUTPUT => wrapper.output_descs.buses().len() as i32,
+                bus_directions::INPUT => wrapper.bus_list.inputs().len() as i32,
+                bus_directions::OUTPUT => wrapper.bus_list.outputs().len() as i32,
                 _ => 0,
             },
             media_types::EVENT => 0,
@@ -554,8 +550,8 @@ impl<P: Plugin> Wrapper<P> {
         match media_type {
             media_types::AUDIO => {
                 let bus_info = match dir {
-                    bus_directions::INPUT => wrapper.input_descs.buses().get(index as usize),
-                    bus_directions::OUTPUT => wrapper.output_descs.buses().get(index as usize),
+                    bus_directions::INPUT => wrapper.bus_list.inputs().get(index as usize),
+                    bus_directions::OUTPUT => wrapper.bus_list.outputs().get(index as usize),
                     _ => None,
                 };
 
@@ -744,8 +740,8 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::AUDIO_PROCESSOR_OFFSET) as *const Wrapper<P>);
         let bus_states = &mut *wrapper.bus_states.get();
 
-        if num_ins as usize != wrapper.input_descs.buses().len()
-            || num_outs as usize != wrapper.output_descs.buses().len()
+        if num_ins as usize != wrapper.bus_list.inputs().len()
+            || num_outs as usize != wrapper.bus_list.outputs().len()
         {
             return result::FALSE;
         }
@@ -922,7 +918,7 @@ impl<P: Plugin> Wrapper<P> {
         processor_state.input_buses.clear();
 
         if process_data.num_inputs > 0 {
-            if process_data.num_inputs as usize != wrapper.input_descs.buses().len() {
+            if process_data.num_inputs as usize != wrapper.bus_list.inputs().len() {
                 return result::INVALID_ARGUMENT;
             }
 
@@ -961,7 +957,7 @@ impl<P: Plugin> Wrapper<P> {
         processor_state.output_buses.clear();
 
         if process_data.num_outputs > 0 {
-            if process_data.num_outputs as usize != wrapper.output_descs.buses().len() {
+            if process_data.num_outputs as usize != wrapper.bus_list.outputs().len() {
                 return result::INVALID_ARGUMENT;
             }
 

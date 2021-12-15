@@ -40,9 +40,10 @@ impl Plugin for Gain {
         }
     }
 
-    fn describe_buses(inputs: &mut BusDescs, outputs: &mut BusDescs) {
-        inputs.add(BusDesc { name: "Input".to_string(), default_layout: BusLayout::Stereo });
-        outputs.add(BusDesc { name: "Output".to_string(), default_layout: BusLayout::Stereo });
+    fn buses() -> BusList {
+        BusList::new()
+            .add_input(BusInfo { name: "Input".to_string(), default_layout: BusLayout::Stereo })
+            .add_output(BusInfo { name: "Output".to_string(), default_layout: BusLayout::Stereo })
     }
 
     fn create() -> Gain {

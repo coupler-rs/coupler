@@ -15,27 +15,36 @@ pub struct PluginInfo {
     pub has_editor: bool,
 }
 
-pub struct BusDescs {
-    buses: Vec<BusDesc>,
+pub struct BusList {
+    inputs: Vec<BusInfo>,
+    outputs: Vec<BusInfo>,
 }
 
-impl Default for BusDescs {
-    fn default() -> BusDescs {
-        BusDescs { buses: Vec::new() }
+impl BusList {
+    pub fn new() -> BusList {
+        BusList { inputs: Vec::new(), outputs: Vec::new() }
+    }
+
+    pub fn add_input(mut self, bus: BusInfo) -> BusList {
+        self.inputs.push(bus);
+        self
+    }
+
+    pub fn add_output(mut self, bus: BusInfo) -> BusList {
+        self.outputs.push(bus);
+        self
+    }
+
+    pub fn inputs(&self) -> &[BusInfo] {
+        &self.inputs
+    }
+
+    pub fn outputs(&self) -> &[BusInfo] {
+        &self.outputs
     }
 }
 
-impl BusDescs {
-    pub fn add(&mut self, bus: BusDesc) {
-        self.buses.push(bus)
-    }
-
-    pub fn buses(&self) -> &[BusDesc] {
-        &self.buses
-    }
-}
-
-pub struct BusDesc {
+pub struct BusInfo {
     pub name: String,
     pub default_layout: BusLayout,
 }
@@ -119,7 +128,7 @@ pub trait Plugin: Send + Sync + Sized {
 
     fn info() -> PluginInfo;
 
-    fn describe_buses(inputs: &mut BusDescs, outputs: &mut BusDescs);
+    fn buses() -> BusList;
     fn supports_layout(inputs: &[BusLayout], outputs: &[BusLayout]) -> bool;
 
     fn create() -> Self;
