@@ -27,14 +27,6 @@ pub struct Gain {
 }
 
 impl Plugin for Gain {
-    const INFO: PluginInfo = PluginInfo {
-        name: "gain",
-        vendor: "glowcoil",
-        url: "https://glowcoil.com",
-        email: "micah@glowcoil.com",
-        has_editor: true,
-    };
-
     const PARAMS: &'static [ParamInfo] = &[GAIN];
 
     const INPUTS: &'static [BusInfo] =
@@ -45,6 +37,16 @@ impl Plugin for Gain {
 
     type Processor = GainProcessor;
     type Editor = GainEditor;
+
+    fn describe(desc: &mut PluginDesc) {
+        *desc = PluginDesc {
+            name: "gain".to_string(),
+            vendor: "glowcoil".to_string(),
+            url: "https://glowcoil.com".to_string(),
+            email: "micah@glowcoil.com".to_string(),
+            has_editor: true,
+        };
+    }
 
     fn create() -> Gain {
         Gain { params: Arc::new(GainParams::new()) }

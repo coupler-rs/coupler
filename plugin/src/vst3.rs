@@ -1,6 +1,6 @@
 use crate::{
     AudioBuffers, AudioBus, AudioBuses, BusLayout, Editor, EditorContext, EditorContextInner,
-    ParamChange, ParamId, ParentWindow, Plugin, ProcessContext, Processor,
+    ParamChange, ParamId, ParentWindow, Plugin, PluginDesc, ProcessContext, Processor,
 };
 
 use std::cell::{Cell, UnsafeCell};
@@ -80,6 +80,7 @@ pub struct Factory<P> {
     pub event_handler: *const IEventHandler,
     pub timer_handler: *const ITimerHandler,
     pub uid: TUID,
+    pub plugin_desc: PluginDesc,
     pub phantom: PhantomData<P>,
 }
 
@@ -123,14 +124,16 @@ impl<P: Plugin> Factory<P> {
     }
 
     pub unsafe extern "system" fn get_factory_info(
-        _this: *mut c_void,
+        this: *mut c_void,
         info: *mut PFactoryInfo,
     ) -> TResult {
+        let factory = &*(this as *const Factory<P>);
+
         let info = &mut *info;
 
-        copy_cstring(P::INFO.vendor, &mut info.vendor);
-        copy_cstring(P::INFO.url, &mut info.url);
-        copy_cstring(P::INFO.email, &mut info.email);
+        copy_cstring(&factory.plugin_desc.vendor, &mut info.vendor);
+        copy_cstring(&factory.plugin_desc.url, &mut info.url);
+        copy_cstring(&factory.plugin_desc.email, &mut info.email);
         info.flags = PFactoryInfo::UNICODE;
 
         result::OK
@@ -156,7 +159,7 @@ impl<P: Plugin> Factory<P> {
         info.cid = factory.uid;
         info.cardinality = PClassInfo::MANY_INSTANCES;
         copy_cstring("Audio Module Class", &mut info.category);
-        copy_cstring(P::INFO.name, &mut info.name);
+        copy_cstring(&factory.plugin_desc.name, &mut info.name);
 
         result::OK
     }
@@ -209,6 +212,7 @@ impl<P: Plugin> Factory<P> {
             plug_view: factory.plug_view,
             event_handler: factory.event_handler,
             timer_handler: factory.timer_handler,
+            has_editor: factory.plugin_desc.has_editor,
             bus_states: UnsafeCell::new(BusStates {
                 input_layouts,
                 output_layouts,
@@ -253,10 +257,10 @@ impl<P: Plugin> Factory<P> {
         info.cid = factory.uid;
         info.cardinality = PClassInfo::MANY_INSTANCES;
         copy_cstring("Audio Module Class", &mut info.category);
-        copy_cstring(P::INFO.name, &mut info.name);
+        copy_cstring(&factory.plugin_desc.name, &mut info.name);
         info.class_flags = 0;
         copy_cstring("Fx", &mut info.sub_categories);
-        copy_cstring(P::INFO.vendor, &mut info.vendor);
+        copy_cstring(&factory.plugin_desc.vendor, &mut info.vendor);
         copy_cstring("", &mut info.version);
         copy_cstring("VST 3.7", &mut info.sdk_version);
 
@@ -279,10 +283,10 @@ impl<P: Plugin> Factory<P> {
         info.cid = factory.uid;
         info.cardinality = PClassInfo::MANY_INSTANCES;
         copy_cstring("Audio Module Class", &mut info.category);
-        copy_wstring(P::INFO.name, &mut info.name);
+        copy_wstring(&factory.plugin_desc.name, &mut info.name);
         info.class_flags = 0;
         copy_cstring("Fx", &mut info.sub_categories);
-        copy_wstring(P::INFO.vendor, &mut info.vendor);
+        copy_wstring(&factory.plugin_desc.vendor, &mut info.vendor);
         copy_wstring("", &mut info.version);
         copy_wstring("VST 3.7", &mut info.sdk_version);
 
@@ -344,6 +348,7 @@ pub struct Wrapper<P: Plugin> {
     plug_view: *const IPlugView,
     event_handler: *const IEventHandler,
     timer_handler: *const ITimerHandler,
+    has_editor: bool,
     // We only form an &mut to bus_states in set_bus_arrangements and
     // activate_bus, which aren't called concurrently with any other methods on
     // IComponent or IAudioProcessor per the spec.
@@ -423,7 +428,7 @@ impl<P: Plugin> Wrapper<P> {
             return result::OK;
         }
 
-        if iid == IPlugView::IID && P::INFO.has_editor {
+        if iid == IPlugView::IID {
             Self::add_ref(this);
             *obj = this.offset(Self::PLUG_VIEW_OFFSET);
             return result::OK;
@@ -1198,7 +1203,9 @@ impl<P: Plugin> Wrapper<P> {
         this: *mut c_void,
         name: *const c_char,
     ) -> *mut *const IPlugView {
-        if !P::INFO.has_editor {
+        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+
+        if !wrapper.has_editor {
             return ptr::null_mut();
         }
 
@@ -1505,6 +1512,7 @@ macro_rules! vst3 {
 
             use $crate::vst3::vst3_sys::*;
             use $crate::vst3::*;
+            use $crate::*;
 
             static PLUGIN_FACTORY_3_VTABLE: IPluginFactory3 = IPluginFactory3 {
                 plugin_factory_2: IPluginFactory2 {
@@ -1675,6 +1683,9 @@ macro_rules! vst3 {
 
             #[no_mangle]
             extern "system" fn GetPluginFactory() -> *mut c_void {
+                let mut plugin_desc = PluginDesc::default();
+                <$plugin>::describe(&mut plugin_desc);
+
                 Arc::into_raw(Arc::new(Factory::<$plugin> {
                     plugin_factory_3: &PLUGIN_FACTORY_3_VTABLE,
                     component: &COMPONENT_VTABLE,
@@ -1685,6 +1696,7 @@ macro_rules! vst3 {
                     event_handler: &EVENT_HANDLER_VTABLE,
                     timer_handler: &TIMER_HANDLER_VTABLE,
                     uid: uid($uid[0], $uid[1], $uid[2], $uid[3]),
+                    plugin_desc,
                     phantom: PhantomData,
                 })) as *mut c_void
             }

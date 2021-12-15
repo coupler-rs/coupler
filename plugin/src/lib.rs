@@ -7,12 +7,24 @@ use std::rc::Rc;
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
-pub struct PluginInfo {
-    pub name: &'static str,
-    pub vendor: &'static str,
-    pub url: &'static str,
-    pub email: &'static str,
+pub struct PluginDesc {
+    pub name: String,
+    pub vendor: String,
+    pub url: String,
+    pub email: String,
     pub has_editor: bool,
+}
+
+impl Default for PluginDesc {
+    fn default() -> PluginDesc {
+        PluginDesc {
+            name: String::new(),
+            vendor: String::new(),
+            url: String::new(),
+            email: String::new(),
+            has_editor: false,
+        }
+    }
 }
 
 pub type ParamId = u32;
@@ -74,13 +86,14 @@ unsafe impl HasRawWindowHandle for ParentWindow {
 }
 
 pub trait Plugin: Send + Sync + Sized {
-    const INFO: PluginInfo;
     const PARAMS: &'static [ParamInfo];
     const INPUTS: &'static [BusInfo];
     const OUTPUTS: &'static [BusInfo];
 
     type Processor: Processor;
     type Editor: Editor;
+
+    fn describe(desc: &mut PluginDesc);
 
     fn create() -> Self;
     fn processor(&self, context: &ProcessContext) -> Self::Processor;
