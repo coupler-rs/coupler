@@ -1,6 +1,8 @@
+mod atomic;
 mod audio_buses;
 pub mod vst3;
 
+pub use atomic::*;
 pub use audio_buses::*;
 
 use std::rc::Rc;
