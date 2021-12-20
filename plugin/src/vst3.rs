@@ -1142,11 +1142,17 @@ impl<P: Plugin> Wrapper<P> {
     ) -> TResult {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
-        let mut display = String::new();
-        wrapper.plugin.display_param(id, value_normalized, &mut display);
-        copy_wstring(&display, &mut *string);
+        if let Some(&index) = wrapper.param_indices.get(&id) {
+            if let Some(param_info) = wrapper.param_list.params.get(index) {
+                let mut display = String::new();
+                param_info.format.display(value_normalized, &mut display);
+                copy_wstring(&display, &mut *string);
 
-        result::OK
+                return result::OK;
+            }
+        }
+
+        result::INVALID_ARGUMENT
     }
 
     pub unsafe extern "system" fn get_param_value_by_string(
@@ -1157,10 +1163,18 @@ impl<P: Plugin> Wrapper<P> {
     ) -> TResult {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
-        let len = len_wstring(string);
-        if let Ok(string) = String::from_utf16(slice::from_raw_parts(string as *const u16, len)) {
-            if let Ok(value) = wrapper.plugin.parse_param(id, &string) {
-                *value_normalized = value;
+        if let Some(&index) = wrapper.param_indices.get(&id) {
+            if let Some(param_info) = wrapper.param_list.params.get(index) {
+                let len = len_wstring(string);
+                if let Ok(string) =
+                    String::from_utf16(slice::from_raw_parts(string as *const u16, len))
+                {
+                    if let Ok(value) = param_info.format.parse(&string) {
+                        *value_normalized = value;
+                        return result::OK;
+                    }
+                }
+
                 return result::OK;
             }
         }
@@ -1175,7 +1189,13 @@ impl<P: Plugin> Wrapper<P> {
     ) -> f64 {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
-        wrapper.plugin.denormalize_param(id, value_normalized)
+        if let Some(&index) = wrapper.param_indices.get(&id) {
+            if let Some(param_info) = wrapper.param_list.params.get(index) {
+                return param_info.format.denormalize(value_normalized);
+            }
+        }
+
+        0.0
     }
 
     pub unsafe extern "system" fn plain_param_to_normalized(
@@ -1185,7 +1205,13 @@ impl<P: Plugin> Wrapper<P> {
     ) -> f64 {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
-        wrapper.plugin.normalize_param(id, plain_value)
+        if let Some(&index) = wrapper.param_indices.get(&id) {
+            if let Some(param_info) = wrapper.param_list.params.get(index) {
+                return param_info.format.normalize(plain_value);
+            }
+        }
+
+        0.0
     }
 
     pub unsafe extern "system" fn get_param_normalized(this: *mut c_void, id: u32) -> f64 {
