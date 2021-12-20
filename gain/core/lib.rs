@@ -5,8 +5,6 @@ use window::{
 };
 
 use std::cell::{Cell, RefCell};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
@@ -32,19 +30,7 @@ impl ParamFormat for GainFormat {
     }
 }
 
-pub struct GainParams {
-    gain: AtomicU64,
-}
-
-impl GainParams {
-    fn new() -> GainParams {
-        GainParams { gain: AtomicU64::new(0.0f64.to_bits()) }
-    }
-}
-
-pub struct Gain {
-    params: Arc<GainParams>,
-}
+pub struct Gain {}
 
 impl Plugin for Gain {
     type Processor = GainProcessor;
@@ -67,15 +53,15 @@ impl Plugin for Gain {
     }
 
     fn create() -> Gain {
-        Gain { params: Arc::new(GainParams::new()) }
+        Gain {}
     }
 
     fn processor(&self, _context: &ProcessContext) -> GainProcessor {
-        GainProcessor { params: self.params.clone(), gain: 0.0 }
+        GainProcessor { gain: 0.0 }
     }
 
     fn editor(&self, context: EditorContext, parent: Option<&ParentWindow>) -> GainEditor {
-        GainEditor::open(context, parent, self.params.clone())
+        GainEditor::open(context, parent)
     }
 
     fn params(&self) -> ParamList {
@@ -89,31 +75,16 @@ impl Plugin for Gain {
         })
     }
 
-    fn get_param(&self, id: ParamId) -> f64 {
-        match id {
-            0 => f64::from_bits(self.params.gain.load(Ordering::Relaxed)),
-            _ => 0.0,
-        }
-    }
-
-    fn set_param(&self, id: ParamId, value: f64) {
-        match id {
-            0 => {
-                self.params.gain.store(value.to_bits(), Ordering::Relaxed);
-            }
-            _ => {}
-        }
-    }
-
     fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()> {
-        let gain = self.params.gain.load(Ordering::Relaxed);
+        // let gain = self.params.gain.load(Ordering::Relaxed);
+        let gain = 0.0f64;
         write.write(&gain.to_le_bytes()).map(|_| ()).map_err(|_| ())
     }
 
     fn deserialize(&self, read: &mut impl std::io::Read) -> Result<(), ()> {
         let mut buf = [0; std::mem::size_of::<u64>()];
         if read.read(&mut buf).is_ok() {
-            self.params.gain.store(u64::from_le_bytes(buf), Ordering::Relaxed);
+            // self.params.gain.store(u64::from_le_bytes(buf), Ordering::Relaxed);
             Ok(())
         } else {
             Err(())
@@ -126,7 +97,6 @@ impl Plugin for Gain {
 }
 
 pub struct GainProcessor {
-    params: Arc<GainParams>,
     gain: f32,
 }
 
@@ -137,7 +107,7 @@ impl Processor for GainProcessor {
         buffers: &mut AudioBuffers,
         param_changes: &[ParamChange],
     ) {
-        let mut gain = f64::from_bits(self.params.gain.load(Ordering::Relaxed)) as f32;
+        let mut gain = self.gain;
 
         for change in param_changes {
             match change.id {
@@ -157,8 +127,6 @@ impl Processor for GainProcessor {
                     self.gain * input_sample;
             }
         }
-
-        self.params.gain.store((gain as f64).to_bits(), Ordering::Relaxed);
     }
 
     fn reset(&mut self, _context: &ProcessContext) {}
@@ -171,11 +139,7 @@ pub struct GainEditor {
 }
 
 impl GainEditor {
-    fn open(
-        context: EditorContext,
-        parent: Option<&ParentWindow>,
-        params: Arc<GainParams>,
-    ) -> GainEditor {
+    fn open(context: EditorContext, parent: Option<&ParentWindow>) -> GainEditor {
         let parent =
             if let Some(parent) = parent { Parent::Parent(parent) } else { Parent::Detached };
 
@@ -186,7 +150,7 @@ impl GainEditor {
             WindowOptions {
                 rect: Rect { x: 0.0, y: 0.0, width: 512.0, height: 512.0 },
                 parent,
-                handler: Box::new(GainWindowHandler::new(context, params)),
+                handler: Box::new(GainWindowHandler::new(context)),
                 ..WindowOptions::default()
             },
         )
@@ -222,17 +186,15 @@ impl Editor for GainEditor {
 
 struct GainWindowHandler {
     context: EditorContext,
-    params: Arc<GainParams>,
     canvas: RefCell<Canvas>,
     mouse: Cell<Point>,
     down: Cell<Option<(Point, f64)>>,
 }
 
 impl GainWindowHandler {
-    fn new(context: EditorContext, params: Arc<GainParams>) -> GainWindowHandler {
+    fn new(context: EditorContext) -> GainWindowHandler {
         GainWindowHandler {
             context,
-            params,
             canvas: RefCell::new(Canvas::with_size(256, 256)),
             mouse: Cell::new(Point { x: -1.0, y: -1.0 }),
             down: Cell::new(None),
@@ -259,7 +221,8 @@ impl WindowHandler for GainWindowHandler {
 
         canvas.clear(Color::rgba(21, 26, 31, 255));
 
-        let value = f64::from_bits(self.params.gain.load(Ordering::Relaxed)) as f32;
+        // let value = f64::from_bits(self.params.gain.load(Ordering::Relaxed)) as f32;
+        let value = 0.0;
 
         let center = Vec2::new(128.0, 128.0);
         let radius = 32.0;
@@ -295,7 +258,7 @@ impl WindowHandler for GainWindowHandler {
         if let Some((start_position, start_value)) = self.down.get() {
             let new_value =
                 (start_value - 0.005 * (position.y - start_position.y)).max(0.0).min(1.0);
-            self.params.gain.store(new_value.to_bits(), Ordering::Relaxed);
+            // self.params.gain.store(new_value.to_bits(), Ordering::Relaxed);
             self.context.perform_edit(GAIN, new_value);
         } else {
             self.update_cursor(window);
@@ -309,7 +272,8 @@ impl WindowHandler for GainWindowHandler {
             {
                 window.set_cursor(Cursor::SizeNs);
                 self.context.begin_edit(GAIN);
-                let value = f64::from_bits(self.params.gain.load(Ordering::Relaxed));
+                // let value = f64::from_bits(self.params.gain.load(Ordering::Relaxed));
+                let value = 0.0;
                 self.context.perform_edit(GAIN, value);
                 self.down.set(Some((position, value)));
                 return true;

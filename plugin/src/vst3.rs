@@ -180,11 +180,6 @@ impl<P: Plugin> Factory<P> {
             return result::INVALID_ARGUMENT;
         }
 
-        let editor_context = Rc::new(Vst3EditorContext {
-            alive: Cell::new(true),
-            component_handler: Cell::new(ptr::null_mut()),
-        });
-
         let bus_list = P::buses();
 
         let mut input_layouts = Vec::with_capacity(bus_list.inputs().len());
@@ -210,15 +205,26 @@ impl<P: Plugin> Factory<P> {
             param_indices.insert(param.id, index);
         }
 
+        let mut param_values = Vec::with_capacity(param_list.params.len());
+        for param in param_list.params.iter() {
+            param_values.push(Cell::new(param.default));
+        }
+
         let processor_state = UnsafeCell::new(ProcessorState {
+            input_buses: Vec::with_capacity(bus_list.inputs().len()),
+            output_buses: Vec::with_capacity(bus_list.outputs().len()),
+            sample_rate: 44_100.0,
             // We can't know the maximum number of param changes in a
             // block, so make a reasonable guess and hope we don't have to
             // allocate more
             param_changes: Vec::with_capacity(4 * param_list.params().len()),
-            input_buses: Vec::with_capacity(bus_list.inputs().len()),
-            output_buses: Vec::with_capacity(bus_list.outputs().len()),
-            sample_rate: 44_100.0,
             processor: None,
+        });
+
+        let editor_context = Rc::new(Vst3EditorContext {
+            alive: Cell::new(true),
+            component_handler: Cell::new(ptr::null_mut()),
+            param_values,
         });
 
         let editor_state = UnsafeCell::new(EditorState {
@@ -316,6 +322,7 @@ impl<P: Plugin> Factory<P> {
 struct Vst3EditorContext {
     alive: Cell<bool>,
     component_handler: Cell<*mut *const IComponentHandler>,
+    param_values: Vec<Cell<f64>>,
 }
 
 impl EditorContextInner for Vst3EditorContext {
@@ -381,10 +388,10 @@ struct BusStates {
 }
 
 struct ProcessorState<P: Plugin> {
-    param_changes: Vec<ParamChange>,
     input_buses: Vec<AudioBus<'static>>,
     output_buses: Vec<AudioBus<'static>>,
     sample_rate: f64,
+    param_changes: Vec<ParamChange>,
     processor: Option<P::Processor>,
 }
 
@@ -1216,8 +1223,15 @@ impl<P: Plugin> Wrapper<P> {
 
     pub unsafe extern "system" fn get_param_normalized(this: *mut c_void, id: u32) -> f64 {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+        let editor_state = &*wrapper.editor_state.get();
 
-        wrapper.plugin.get_param(id)
+        if let Some(&index) = wrapper.param_indices.get(&id) {
+            if let Some(value) = editor_state.context.param_values.get(index) {
+                return value.get();
+            }
+        }
+
+        0.0
     }
 
     pub unsafe extern "system" fn set_param_normalized(
@@ -1226,10 +1240,16 @@ impl<P: Plugin> Wrapper<P> {
         value: f64,
     ) -> TResult {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+        let editor_state = &*wrapper.editor_state.get();
 
-        wrapper.plugin.set_param(id, value);
+        if let Some(&index) = wrapper.param_indices.get(&id) {
+            if let Some(param) = editor_state.context.param_values.get(index) {
+                param.set(value);
+                return result::OK;
+            }
+        }
 
-        result::OK
+        result::INVALID_ARGUMENT
     }
 
     pub unsafe extern "system" fn set_component_handler(

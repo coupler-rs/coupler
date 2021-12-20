@@ -137,17 +137,14 @@ pub trait Plugin: Send + Sync + Sized {
 
     fn info() -> PluginInfo;
 
-    fn buses() -> BusList;
-    fn supports_layout(inputs: &[BusLayout], outputs: &[BusLayout]) -> bool;
-
     fn create() -> Self;
     fn processor(&self, context: &ProcessContext) -> Self::Processor;
     fn editor(&self, context: EditorContext, parent: Option<&ParentWindow>) -> Self::Editor;
 
-    fn params(&self) -> ParamList;
-    fn get_param(&self, id: ParamId) -> f64;
-    fn set_param(&self, id: ParamId, value: f64);
+    fn buses() -> BusList;
+    fn supports_layout(inputs: &[BusLayout], outputs: &[BusLayout]) -> bool;
 
+    fn params(&self) -> ParamList;
     fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()>;
     fn deserialize(&self, read: &mut impl std::io::Read) -> Result<(), ()>;
 }
