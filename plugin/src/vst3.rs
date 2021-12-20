@@ -205,11 +205,11 @@ impl<P: Plugin> Factory<P> {
             param_indices.insert(param.id, index);
         }
 
-        let mut processor_param_values = Vec::with_capacity(param_list.params.len());
-        let mut editor_param_values = Vec::with_capacity(param_list.params.len());
+        let mut processor_param_values = HashMap::with_capacity(param_list.params.len());
+        let mut editor_param_values = HashMap::with_capacity(param_list.params.len());
         for param in param_list.params.iter() {
-            processor_param_values.push(param.default);
-            editor_param_values.push(Cell::new(param.default));
+            processor_param_values.insert(param.id, param.default);
+            editor_param_values.insert(param.id, Cell::new(param.default));
         }
 
         let processor_state = UnsafeCell::new(ProcessorState {
@@ -325,7 +325,7 @@ impl<P: Plugin> Factory<P> {
 struct Vst3EditorContext {
     alive: Cell<bool>,
     component_handler: Cell<*mut *const IComponentHandler>,
-    param_values: Vec<Cell<f64>>,
+    param_values: HashMap<ParamId, Cell<f64>>,
 }
 
 impl EditorContextInner for Vst3EditorContext {
@@ -394,7 +394,7 @@ struct ProcessorState<P: Plugin> {
     input_buses: Vec<AudioBus<'static>>,
     output_buses: Vec<AudioBus<'static>>,
     sample_rate: f64,
-    param_values: Vec<f64>,
+    param_values: HashMap<ParamId, f64>,
     param_changes: Vec<ParamChange>,
     processor: Option<P::Processor>,
 }
@@ -643,7 +643,6 @@ impl<P: Plugin> Wrapper<P> {
                     sample_rate: processor_state.sample_rate,
                     input_layouts: &bus_states.input_layouts[..],
                     output_layouts: &bus_states.output_layouts[..],
-                    param_indices: &wrapper.param_indices,
                     param_values: &processor_state.param_values,
                 };
 
@@ -862,7 +861,6 @@ impl<P: Plugin> Wrapper<P> {
                 sample_rate: processor_state.sample_rate,
                 input_layouts: &bus_states.input_layouts[..],
                 output_layouts: &bus_states.output_layouts[..],
-                param_indices: &wrapper.param_indices,
                 param_values: &processor_state.param_values,
             };
 
@@ -924,10 +922,8 @@ impl<P: Plugin> Wrapper<P> {
                         value,
                     });
 
-                    if let Some(&index) = wrapper.param_indices.get(&param_id) {
-                        if let Some(param) = processor_state.param_values.get_mut(index) {
-                            *param = value;
-                        }
+                    if let Some(param) = processor_state.param_values.get_mut(&param_id) {
+                        *param = value;
                     }
                 }
             }
@@ -1028,7 +1024,6 @@ impl<P: Plugin> Wrapper<P> {
             sample_rate: processor_state.sample_rate,
             input_layouts: &bus_states.input_layouts[..],
             output_layouts: &bus_states.output_layouts[..],
-            param_indices: &wrapper.param_indices,
             param_values: &processor_state.param_values,
         };
 
@@ -1241,10 +1236,8 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &*wrapper.editor_state.get();
 
-        if let Some(&index) = wrapper.param_indices.get(&id) {
-            if let Some(value) = editor_state.context.param_values.get(index) {
-                return value.get();
-            }
+        if let Some(value) = editor_state.context.param_values.get(&id) {
+            return value.get();
         }
 
         0.0
@@ -1258,11 +1251,9 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &*wrapper.editor_state.get();
 
-        if let Some(&index) = wrapper.param_indices.get(&id) {
-            if let Some(param) = editor_state.context.param_values.get(index) {
-                param.set(value);
-                return result::OK;
-            }
+        if let Some(param) = editor_state.context.param_values.get(&id) {
+            param.set(value);
+            return result::OK;
         }
 
         result::INVALID_ARGUMENT

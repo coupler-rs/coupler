@@ -99,8 +99,7 @@ pub struct ProcessContext<'a> {
     sample_rate: f64,
     input_layouts: &'a [BusLayout],
     output_layouts: &'a [BusLayout],
-    param_indices: &'a HashMap<ParamId, usize>,
-    param_values: &'a [f64],
+    param_values: &'a HashMap<ParamId, f64>,
 }
 
 impl<'a> ProcessContext<'a> {
@@ -117,7 +116,7 @@ impl<'a> ProcessContext<'a> {
     }
 
     pub fn get_param(&self, param_id: ParamId) -> f64 {
-        self.param_values[self.param_indices[&param_id]]
+        self.param_values[&param_id]
     }
 }
 
