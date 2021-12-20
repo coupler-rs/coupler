@@ -221,8 +221,7 @@ impl WindowHandler for GainWindowHandler {
 
         canvas.clear(Color::rgba(21, 26, 31, 255));
 
-        // let value = f64::from_bits(self.params.gain.load(Ordering::Relaxed)) as f32;
-        let value = 0.0;
+        let value = self.context.get_param(GAIN) as f32;
 
         let center = Vec2::new(128.0, 128.0);
         let radius = 32.0;
@@ -258,7 +257,6 @@ impl WindowHandler for GainWindowHandler {
         if let Some((start_position, start_value)) = self.down.get() {
             let new_value =
                 (start_value - 0.005 * (position.y - start_position.y)).max(0.0).min(1.0);
-            // self.params.gain.store(new_value.to_bits(), Ordering::Relaxed);
             self.context.perform_edit(GAIN, new_value);
         } else {
             self.update_cursor(window);
@@ -272,8 +270,7 @@ impl WindowHandler for GainWindowHandler {
             {
                 window.set_cursor(Cursor::SizeNs);
                 self.context.begin_edit(GAIN);
-                // let value = f64::from_bits(self.params.gain.load(Ordering::Relaxed));
-                let value = 0.0;
+                let value = self.context.get_param(GAIN);
                 self.context.perform_edit(GAIN, value);
                 self.down.set(Some((position, value)));
                 return true;

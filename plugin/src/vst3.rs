@@ -329,6 +329,10 @@ struct Vst3EditorContext {
 }
 
 impl EditorContextInner for Vst3EditorContext {
+    fn get_param(&self, param_id: ParamId) -> f64 {
+        self.param_values[&param_id].get()
+    }
+
     fn begin_edit(&self, param_id: ParamId) {
         let component_handler = self.component_handler.get();
         if self.alive.get() && !component_handler.is_null() {
@@ -348,6 +352,8 @@ impl EditorContextInner for Vst3EditorContext {
                     value,
                 );
             }
+
+            self.param_values[&param_id].set(value);
         }
     }
 

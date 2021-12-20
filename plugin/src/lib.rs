@@ -121,6 +121,7 @@ impl<'a> ProcessContext<'a> {
 }
 
 trait EditorContextInner {
+    fn get_param(&self, param_id: ParamId) -> f64;
     fn begin_edit(&self, param_id: ParamId);
     fn perform_edit(&self, param_id: ParamId, value: f64);
     fn end_edit(&self, param_id: ParamId);
@@ -130,6 +131,10 @@ trait EditorContextInner {
 pub struct EditorContext(Rc<dyn EditorContextInner>);
 
 impl EditorContext {
+    pub fn get_param(&self, param_id: ParamId) -> f64 {
+        self.0.get_param(param_id)
+    }
+
     pub fn begin_edit(&self, param_id: ParamId) {
         self.0.begin_edit(param_id);
     }
