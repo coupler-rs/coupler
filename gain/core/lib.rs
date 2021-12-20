@@ -56,8 +56,8 @@ impl Plugin for Gain {
         Gain {}
     }
 
-    fn processor(&self, _context: &ProcessContext) -> GainProcessor {
-        GainProcessor { gain: 0.0 }
+    fn processor(&self, context: &ProcessContext) -> GainProcessor {
+        GainProcessor { gain: context.get_param(GAIN) as f32 }
     }
 
     fn editor(&self, context: EditorContext, parent: Option<&ParentWindow>) -> GainEditor {

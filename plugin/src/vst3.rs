@@ -205,9 +205,11 @@ impl<P: Plugin> Factory<P> {
             param_indices.insert(param.id, index);
         }
 
-        let mut param_values = Vec::with_capacity(param_list.params.len());
+        let mut processor_param_values = Vec::with_capacity(param_list.params.len());
+        let mut editor_param_values = Vec::with_capacity(param_list.params.len());
         for param in param_list.params.iter() {
-            param_values.push(Cell::new(param.default));
+            processor_param_values.push(param.default);
+            editor_param_values.push(Cell::new(param.default));
         }
 
         let processor_state = UnsafeCell::new(ProcessorState {
@@ -218,13 +220,14 @@ impl<P: Plugin> Factory<P> {
             // block, so make a reasonable guess and hope we don't have to
             // allocate more
             param_changes: Vec::with_capacity(4 * param_list.params().len()),
+            param_values: processor_param_values,
             processor: None,
         });
 
         let editor_context = Rc::new(Vst3EditorContext {
             alive: Cell::new(true),
             component_handler: Cell::new(ptr::null_mut()),
-            param_values,
+            param_values: editor_param_values,
         });
 
         let editor_state = UnsafeCell::new(EditorState {
@@ -391,6 +394,7 @@ struct ProcessorState<P: Plugin> {
     input_buses: Vec<AudioBus<'static>>,
     output_buses: Vec<AudioBus<'static>>,
     sample_rate: f64,
+    param_values: Vec<f64>,
     param_changes: Vec<ParamChange>,
     processor: Option<P::Processor>,
 }
@@ -639,6 +643,8 @@ impl<P: Plugin> Wrapper<P> {
                     sample_rate: processor_state.sample_rate,
                     input_layouts: &bus_states.input_layouts[..],
                     output_layouts: &bus_states.output_layouts[..],
+                    param_indices: &wrapper.param_indices,
+                    param_values: &processor_state.param_values,
                 };
 
                 processor_state.processor = Some(wrapper.plugin.processor(&context));
@@ -856,6 +862,8 @@ impl<P: Plugin> Wrapper<P> {
                 sample_rate: processor_state.sample_rate,
                 input_layouts: &bus_states.input_layouts[..],
                 output_layouts: &bus_states.output_layouts[..],
+                param_indices: &wrapper.param_indices,
+                param_values: &processor_state.param_values,
             };
 
             if let Some(processor) = &mut processor_state.processor {
@@ -915,6 +923,12 @@ impl<P: Plugin> Wrapper<P> {
                         offset: offset as usize,
                         value,
                     });
+
+                    if let Some(&index) = wrapper.param_indices.get(&param_id) {
+                        if let Some(param) = processor_state.param_values.get_mut(index) {
+                            *param = value;
+                        }
+                    }
                 }
             }
         }
@@ -1014,6 +1028,8 @@ impl<P: Plugin> Wrapper<P> {
             sample_rate: processor_state.sample_rate,
             input_layouts: &bus_states.input_layouts[..],
             output_layouts: &bus_states.output_layouts[..],
+            param_indices: &wrapper.param_indices,
+            param_values: &processor_state.param_values,
         };
 
         if let Some(processor) = &mut processor_state.processor {

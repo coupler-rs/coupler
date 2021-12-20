@@ -5,6 +5,7 @@ pub mod vst3;
 pub use atomic::*;
 pub use audio_buses::*;
 
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
@@ -95,9 +96,29 @@ pub struct ParamChange {
 }
 
 pub struct ProcessContext<'a> {
-    pub sample_rate: f64,
-    pub input_layouts: &'a [BusLayout],
-    pub output_layouts: &'a [BusLayout],
+    sample_rate: f64,
+    input_layouts: &'a [BusLayout],
+    output_layouts: &'a [BusLayout],
+    param_indices: &'a HashMap<ParamId, usize>,
+    param_values: &'a [f64],
+}
+
+impl<'a> ProcessContext<'a> {
+    pub fn sample_rate(&self) -> f64 {
+        self.sample_rate
+    }
+
+    pub fn input_layouts(&self) -> &[BusLayout] {
+        self.input_layouts
+    }
+
+    pub fn output_layouts(&self) -> &[BusLayout] {
+        self.output_layouts
+    }
+
+    pub fn get_param(&self, param_id: ParamId) -> f64 {
+        self.param_values[self.param_indices[&param_id]]
+    }
 }
 
 trait EditorContextInner {
