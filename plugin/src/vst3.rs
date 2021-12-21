@@ -1235,8 +1235,6 @@ impl<P: Plugin> Wrapper<P> {
                         return result::OK;
                     }
                 }
-
-                return result::OK;
             }
         }
 
