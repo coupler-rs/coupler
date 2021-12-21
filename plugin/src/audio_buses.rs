@@ -1,3 +1,4 @@
+use std::ops::{Index, IndexMut};
 use std::slice;
 
 #[derive(Eq, PartialEq, Clone)]
@@ -64,6 +65,20 @@ impl<'a, 'b> AudioBuses<'a, 'b> {
     }
 }
 
+impl<'a, 'b> Index<usize> for AudioBuses<'a, 'b> {
+    type Output = AudioBus<'b>;
+
+    fn index(&self, index: usize) -> &AudioBus<'b> {
+        &self.buses[index]
+    }
+}
+
+impl<'a, 'b> IndexMut<usize> for AudioBuses<'a, 'b> {
+    fn index_mut(&mut self, index: usize) -> &mut AudioBus<'b> {
+        &mut self.buses[index]
+    }
+}
+
 pub struct AudioBus<'a> {
     pub(crate) layout: &'a BusLayout,
     pub(crate) samples: usize,
@@ -121,5 +136,19 @@ impl<'a> AudioBus<'a> {
         let samples = self.samples;
         let channels = self.channels.unwrap_or(&mut []);
         channels.iter().map(move |channel| unsafe { slice::from_raw_parts_mut(*channel, samples) })
+    }
+}
+
+impl<'a, 'b> Index<usize> for AudioBus<'a> {
+    type Output = [f32];
+
+    fn index(&self, index: usize) -> &[f32] {
+        self.channel(index).unwrap()
+    }
+}
+
+impl<'a, 'b> IndexMut<usize> for AudioBus<'a> {
+    fn index_mut(&mut self, index: usize) -> &mut [f32] {
+        self.channel_mut(index).unwrap()
     }
 }

@@ -125,9 +125,7 @@ impl Processor for GainProcessor {
             self.gain = 0.9995 * self.gain + 0.0005 * gain;
 
             for channel in 0..2 {
-                let input_sample = buffers.inputs().bus(0).unwrap().channel(channel).unwrap()[i];
-                buffers.outputs().bus_mut(0).unwrap().channel_mut(channel).unwrap()[i] =
-                    self.gain * input_sample;
+                buffers.outputs()[0][channel][i] = self.gain * buffers.inputs()[0][channel][i];
             }
         }
     }
