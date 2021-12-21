@@ -75,16 +75,19 @@ impl Plugin for Gain {
         })
     }
 
-    fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()> {
-        // let gain = self.params.gain.load(Ordering::Relaxed);
-        let gain = 0.0f64;
+    fn serialize(&self, params: &ParamValues, write: &mut impl std::io::Write) -> Result<(), ()> {
+        let gain = params.get_param(GAIN);
         write.write(&gain.to_le_bytes()).map(|_| ()).map_err(|_| ())
     }
 
-    fn deserialize(&self, read: &mut impl std::io::Read) -> Result<(), ()> {
+    fn deserialize(
+        &self,
+        params: &mut ParamValues,
+        read: &mut impl std::io::Read,
+    ) -> Result<(), ()> {
         let mut buf = [0; std::mem::size_of::<u64>()];
         if read.read(&mut buf).is_ok() {
-            // self.params.gain.store(u64::from_le_bytes(buf), Ordering::Relaxed);
+            params.set_param(GAIN, f64::from_le_bytes(buf));
             Ok(())
         } else {
             Err(())

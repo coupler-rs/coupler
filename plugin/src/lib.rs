@@ -89,6 +89,20 @@ pub trait ParamFormat: Send + Sync {
     fn denormalize(&self, value: f64) -> f64;
 }
 
+pub struct ParamValues<'a> {
+    params: &'a HashMap<ParamId, AtomicF64>,
+}
+
+impl<'a> ParamValues<'a> {
+    pub fn get_param(&self, param_id: ParamId) -> f64 {
+        self.params[&param_id].load()
+    }
+
+    pub fn set_param(&mut self, param_id: ParamId, value: f64) {
+        self.params.get(&param_id).unwrap().store(value);
+    }
+}
+
 pub struct ParamChange {
     pub id: ParamId,
     pub offset: usize,
@@ -170,8 +184,12 @@ pub trait Plugin: Send + Sync + Sized {
     fn supports_layout(inputs: &[BusLayout], outputs: &[BusLayout]) -> bool;
 
     fn params(&self) -> ParamList;
-    fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()>;
-    fn deserialize(&self, read: &mut impl std::io::Read) -> Result<(), ()>;
+    fn serialize(&self, params: &ParamValues, write: &mut impl std::io::Write) -> Result<(), ()>;
+    fn deserialize(
+        &self,
+        params: &mut ParamValues,
+        read: &mut impl std::io::Read,
+    ) -> Result<(), ()>;
 }
 
 pub trait Processor: Send + Sized {

@@ -1,7 +1,7 @@
 use crate::{
-    AudioBuffers, AudioBus, AudioBuses, BusLayout, BusList, Editor, EditorContext,
-    EditorContextInner, ParamChange, ParamId, ParamList, ParentWindow, Plugin, PluginInfo,
-    ProcessContext, Processor,
+    AtomicF64, AudioBuffers, AudioBus, AudioBuses, BusLayout, BusList, Editor, EditorContext,
+    EditorContextInner, ParamChange, ParamId, ParamList, ParamValues, ParentWindow, Plugin,
+    PluginInfo, ProcessContext, Processor,
 };
 
 use std::cell::{Cell, UnsafeCell};
@@ -10,6 +10,7 @@ use std::ffi::{c_void, CString};
 use std::marker::PhantomData;
 use std::os::raw::{c_char, c_int};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::{ffi, io, mem, ptr, slice};
 
@@ -205,9 +206,11 @@ impl<P: Plugin> Factory<P> {
             param_indices.insert(param.id, index);
         }
 
+        let mut plugin_param_values = HashMap::with_capacity(param_list.params.len());
         let mut processor_param_values = HashMap::with_capacity(param_list.params.len());
         let mut editor_param_values = HashMap::with_capacity(param_list.params.len());
         for param in param_list.params.iter() {
+            plugin_param_values.insert(param.id, AtomicF64::new(param.default));
             processor_param_values.insert(param.id, param.default);
             editor_param_values.insert(param.id, Cell::new(param.default));
         }
@@ -254,6 +257,8 @@ impl<P: Plugin> Factory<P> {
             }),
             param_list,
             param_indices,
+            param_values: plugin_param_values,
+            params_dirty: AtomicBool::new(false),
             plugin,
             processor_state,
             editor_state,
@@ -384,6 +389,8 @@ pub struct Wrapper<P: Plugin> {
     bus_states: UnsafeCell<BusStates>,
     param_list: ParamList,
     param_indices: HashMap<u32, usize>,
+    param_values: HashMap<ParamId, AtomicF64>,
+    params_dirty: AtomicBool,
     plugin: P,
     processor_state: UnsafeCell<ProcessorState<P>>,
     editor_state: UnsafeCell<EditorState<P>>,
@@ -687,8 +694,12 @@ impl<P: Plugin> Wrapper<P> {
 
         let wrapper = &*(this.offset(-Self::COMPONENT_OFFSET) as *const Wrapper<P>);
 
-        match wrapper.plugin.deserialize(&mut StreamReader(state)) {
-            Ok(_) => result::OK,
+        let mut param_values = ParamValues { params: &wrapper.param_values };
+        match wrapper.plugin.deserialize(&mut param_values, &mut StreamReader(state)) {
+            Ok(_) => {
+                wrapper.params_dirty.store(true, Ordering::Release);
+                result::OK
+            }
             Err(_) => result::FALSE,
         }
     }
@@ -725,7 +736,8 @@ impl<P: Plugin> Wrapper<P> {
 
         let wrapper = &*(this.offset(-Self::COMPONENT_OFFSET) as *const Wrapper<P>);
 
-        match wrapper.plugin.serialize(&mut StreamWriter(state)) {
+        let param_values = ParamValues { params: &wrapper.param_values };
+        match wrapper.plugin.serialize(&param_values, &mut StreamWriter(state)) {
             Ok(_) => result::OK,
             Err(_) => result::FALSE,
         }
@@ -889,6 +901,15 @@ impl<P: Plugin> Wrapper<P> {
 
         processor_state.param_changes.clear();
 
+        // If params have been deserialized, read them out from the shared copy
+        if wrapper.params_dirty.swap(false, Ordering::Acquire) {
+            for (&id, value) in wrapper.param_values.iter() {
+                let value = value.load();
+                processor_state.param_changes.push(ParamChange { id, offset: 0, value });
+                *processor_state.param_values.get_mut(&id).unwrap() = value;
+            }
+        }
+
         let process_data = &*data;
 
         let param_changes = process_data.input_parameter_changes;
@@ -930,6 +951,10 @@ impl<P: Plugin> Wrapper<P> {
 
                     if let Some(param) = processor_state.param_values.get_mut(&param_id) {
                         *param = value;
+                    }
+
+                    if let Some(param) = wrapper.param_values.get(&param_id) {
+                        param.store(value);
                     }
                 }
             }
@@ -1107,10 +1132,22 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     pub unsafe extern "system" fn set_component_state(
-        _this: *mut c_void,
+        this: *mut c_void,
         _state: *mut *const IBStream,
     ) -> TResult {
-        result::NOT_IMPLEMENTED
+        // Since we implement a single-component effect, we don't need to call
+        // Plugin::deserialize again; we just use this method as a notification
+        // that deserialization has happened and we need to read back parameter
+        // values from the shared copy.
+
+        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+        let editor_state = &mut *wrapper.editor_state.get();
+
+        for (&id, value) in wrapper.param_values.iter() {
+            editor_state.context.param_values[&id].set(value.load());
+        }
+
+        result::OK
     }
 
     pub unsafe extern "system" fn edit_controller_set_state(
