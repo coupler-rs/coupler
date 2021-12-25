@@ -10,22 +10,35 @@ use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
 const GAIN: u32 = 0;
 
-struct GainFormat;
+struct GainParam;
 
-impl ParamFormat for GainFormat {
-    fn display(&self, value: f64, write: &mut dyn std::fmt::Write) {
+impl Param for GainParam {
+    type Value = f64;
+
+    fn info(&self) -> ParamInfo {
+        ParamInfo {
+            units: "".to_string(),
+            steps: None,
+        }
+    }
+
+    fn default(&self) -> Self::Value {
+        1.0
+    }
+
+    fn display(&self, value: Self::Value, write: &mut dyn std::fmt::Write) {
         let _ = write!(write, "{}", value);
     }
 
-    fn parse(&self, string: &str) -> Result<f64, ()> {
+    fn parse(&self, string: &str) -> Result<Self::Value, ()> {
         string.parse().map_err(|_| ())
     }
 
-    fn normalize(&self, value: f64) -> f64 {
+    fn encode(&self, value: Self::Value) -> f64 {
         value
     }
 
-    fn denormalize(&self, value: f64) -> f64 {
+    fn decode(&self, value: f64) -> Self::Value {
         value
     }
 }
@@ -65,14 +78,7 @@ impl Plugin for Gain {
     }
 
     fn params(&self) -> ParamList {
-        ParamList::new().add(ParamInfo {
-            id: GAIN,
-            name: "gain".to_string(),
-            label: "dB".to_string(),
-            steps: None,
-            default: 1.0,
-            format: Box::new(GainFormat),
-        })
+        ParamList::new().add(GAIN, "gain", GainParam)
     }
 
     fn serialize(&self, params: &ParamValues, write: &mut impl std::io::Write) -> Result<(), ()> {

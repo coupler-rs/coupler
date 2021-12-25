@@ -1,9 +1,11 @@
 mod atomic;
 mod audio_buses;
+mod params;
 pub mod vst3;
 
 pub use atomic::*;
 pub use audio_buses::*;
+pub use params::*;
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -50,43 +52,6 @@ impl BusList {
 pub struct BusInfo {
     pub name: String,
     pub default_layout: BusLayout,
-}
-
-pub type ParamId = u32;
-
-pub struct ParamList {
-    params: Vec<ParamInfo>,
-}
-
-impl ParamList {
-    pub fn new() -> ParamList {
-        ParamList { params: Vec::new() }
-    }
-
-    pub fn add(mut self, param: ParamInfo) -> ParamList {
-        self.params.push(param);
-        self
-    }
-
-    pub fn params(&self) -> &[ParamInfo] {
-        &self.params
-    }
-}
-
-pub struct ParamInfo {
-    pub id: ParamId,
-    pub name: String,
-    pub label: String,
-    pub steps: Option<u32>,
-    pub default: f64,
-    pub format: Box<dyn ParamFormat>,
-}
-
-pub trait ParamFormat: Send + Sync {
-    fn display(&self, value: f64, write: &mut dyn std::fmt::Write);
-    fn parse(&self, string: &str) -> Result<f64, ()>;
-    fn normalize(&self, value: f64) -> f64;
-    fn denormalize(&self, value: f64) -> f64;
 }
 
 pub struct ParamValues<'a> {

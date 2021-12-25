@@ -206,10 +206,10 @@ impl<P: Plugin> Factory<P> {
             param_indices.insert(param.id, index);
         }
 
-        let mut plugin_param_values = HashMap::with_capacity(param_list.params.len());
-        let mut processor_param_values = HashMap::with_capacity(param_list.params.len());
-        let mut editor_param_values = HashMap::with_capacity(param_list.params.len());
-        for param in param_list.params.iter() {
+        let mut plugin_param_values = HashMap::with_capacity(param_list.params().len());
+        let mut processor_param_values = HashMap::with_capacity(param_list.params().len());
+        let mut editor_param_values = HashMap::with_capacity(param_list.params().len());
+        for param in param_list.params().iter() {
             plugin_param_values.insert(param.id, AtomicF64::new(param.default));
             processor_param_values.insert(param.id, param.default);
             editor_param_values.insert(param.id, Cell::new(param.default));
@@ -1177,15 +1177,15 @@ impl<P: Plugin> Wrapper<P> {
     ) -> TResult {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
-        if let Some(param_info) = wrapper.param_list.params().get(param_index as usize) {
+        if let Some(param_def) = wrapper.param_list.params().get(param_index as usize) {
             let info = &mut *info;
 
             info.id = param_index as u32;
-            copy_wstring(&param_info.name, &mut info.title);
-            copy_wstring(&param_info.name, &mut info.short_title);
-            copy_wstring(&param_info.label, &mut info.units);
-            info.step_count = param_info.steps.unwrap_or(0) as i32;
-            info.default_normalized_value = param_info.default;
+            copy_wstring(&param_def.name, &mut info.title);
+            copy_wstring(&param_def.name, &mut info.short_title);
+            copy_wstring(&param_def.info.units, &mut info.units);
+            info.step_count = param_def.info.steps.unwrap_or(0) as i32;
+            info.default_normalized_value = param_def.default;
             info.unit_id = 0;
             info.flags = ParameterInfo::CAN_AUTOMATE;
 
@@ -1204,9 +1204,9 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
         if let Some(&index) = wrapper.param_indices.get(&id) {
-            if let Some(param_info) = wrapper.param_list.params.get(index) {
+            if let Some(param_def) = wrapper.param_list.params().get(index) {
                 let mut display = String::new();
-                param_info.format.display(value_normalized, &mut display);
+                param_def.param.display_encoded(value_normalized, &mut display);
                 copy_wstring(&display, &mut *string);
 
                 return result::OK;
@@ -1225,12 +1225,12 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
         if let Some(&index) = wrapper.param_indices.get(&id) {
-            if let Some(param_info) = wrapper.param_list.params.get(index) {
+            if let Some(param_def) = wrapper.param_list.params().get(index) {
                 let len = len_wstring(string);
                 if let Ok(string) =
                     String::from_utf16(slice::from_raw_parts(string as *const u16, len))
                 {
-                    if let Ok(value) = param_info.format.parse(&string) {
+                    if let Ok(value) = param_def.param.parse_encoded(&string) {
                         *value_normalized = value;
                         return result::OK;
                     }
@@ -1249,8 +1249,12 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
         if let Some(&index) = wrapper.param_indices.get(&id) {
-            if let Some(param_info) = wrapper.param_list.params.get(index) {
-                return param_info.format.denormalize(value_normalized);
+            if let Some(param_def) = wrapper.param_list.params().get(index) {
+                return if let Some(steps) = param_def.info.steps {
+                    (value_normalized * steps as f64).round()
+                } else {
+                    value_normalized
+                };
             }
         }
 
@@ -1265,8 +1269,12 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
         if let Some(&index) = wrapper.param_indices.get(&id) {
-            if let Some(param_info) = wrapper.param_list.params.get(index) {
-                return param_info.format.normalize(plain_value);
+            if let Some(param_def) = wrapper.param_list.params().get(index) {
+                return if let Some(steps) = param_def.info.steps {
+                    plain_value / steps as f64
+                } else {
+                    plain_value
+                };
             }
         }
 
