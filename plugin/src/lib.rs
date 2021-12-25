@@ -1,10 +1,12 @@
 mod atomic;
 mod audio_buffers;
+mod buses;
 mod params;
 pub mod vst3;
 
 pub use atomic::*;
 pub use audio_buffers::*;
+pub use buses::*;
 pub use params::*;
 
 use std::collections::HashMap;
@@ -18,40 +20,6 @@ pub struct PluginInfo {
     pub url: String,
     pub email: String,
     pub has_editor: bool,
-}
-
-pub struct BusList {
-    inputs: Vec<BusInfo>,
-    outputs: Vec<BusInfo>,
-}
-
-impl BusList {
-    pub fn new() -> BusList {
-        BusList { inputs: Vec::new(), outputs: Vec::new() }
-    }
-
-    pub fn add_input(mut self, bus: BusInfo) -> BusList {
-        self.inputs.push(bus);
-        self
-    }
-
-    pub fn add_output(mut self, bus: BusInfo) -> BusList {
-        self.outputs.push(bus);
-        self
-    }
-
-    pub fn inputs(&self) -> &[BusInfo] {
-        &self.inputs
-    }
-
-    pub fn outputs(&self) -> &[BusInfo] {
-        &self.outputs
-    }
-}
-
-pub struct BusInfo {
-    pub name: String,
-    pub default_layout: BusLayout,
 }
 
 pub struct ParamValues<'a> {

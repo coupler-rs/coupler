@@ -1,18 +1,7 @@
+use crate::BusLayout;
+
 use std::ops::{Index, IndexMut};
 use std::slice;
-
-#[derive(Eq, PartialEq, Clone)]
-pub enum BusLayout {
-    Stereo,
-}
-
-impl BusLayout {
-    pub fn channels(&self) -> usize {
-        match self {
-            BusLayout::Stereo => 2,
-        }
-    }
-}
 
 pub struct AudioBuffers<'a, 'b> {
     pub(crate) samples: usize,
