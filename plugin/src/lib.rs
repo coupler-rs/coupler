@@ -1,10 +1,10 @@
 mod atomic;
-mod audio_buses;
+mod audio_buffers;
 mod params;
 pub mod vst3;
 
 pub use atomic::*;
-pub use audio_buses::*;
+pub use audio_buffers::*;
 pub use params::*;
 
 use std::collections::HashMap;
