@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 pub type ParamId = u32;
 
 pub struct ParamInfo {
@@ -32,34 +34,36 @@ impl<P: Param> ParamDyn for P {
 }
 
 pub struct ParamDef {
-    pub id: ParamId,
-    pub name: String,
-    pub info: ParamInfo,
-    pub default: f64,
-    pub param: Box<dyn ParamDyn>,
+    pub(crate) id: ParamId,
+    pub(crate) name: String,
+    pub(crate) info: ParamInfo,
+    pub(crate) default: f64,
+    pub(crate) param: Box<dyn ParamDyn>,
 }
 
 pub struct ParamList {
-    params: Vec<ParamDef>,
+    pub(crate) params: Vec<ParamDef>,
+    pub(crate) indices: HashMap<ParamId, usize>,
 }
 
 impl ParamList {
     pub fn new() -> ParamList {
-        ParamList { params: Vec::new() }
+        ParamList { params: Vec::new(), indices: HashMap::new() }
     }
 
     pub fn add(mut self, id: ParamId, name: &str, param: impl Param + 'static) -> ParamList {
+        let index = self.params.len();
+
         self.params.push(ParamDef {
             id,
             name: name.to_string(),
             info: param.info(),
             default: param.encode(param.default()),
-            param: Box::new(param)
+            param: Box::new(param),
         });
-        self
-    }
 
-    pub fn params(&self) -> &[ParamDef] {
-        &self.params
+        self.indices.insert(id, index);
+
+        self
     }
 }

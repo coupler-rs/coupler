@@ -9,7 +9,6 @@ pub use audio_buffers::*;
 pub use buses::*;
 pub use params::*;
 
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
@@ -23,16 +22,17 @@ pub struct PluginInfo {
 }
 
 pub struct ParamValues<'a> {
-    params: &'a HashMap<ParamId, AtomicF64>,
+    param_list: &'a ParamList,
+    values: &'a [AtomicF64],
 }
 
 impl<'a> ParamValues<'a> {
     pub fn get_param(&self, param_id: ParamId) -> f64 {
-        self.params[&param_id].load()
+        self.values[self.param_list.indices[&param_id]].load()
     }
 
     pub fn set_param(&mut self, param_id: ParamId, value: f64) {
-        self.params.get(&param_id).unwrap().store(value);
+        self.values[self.param_list.indices[&param_id]].store(value);
     }
 }
 
@@ -46,7 +46,8 @@ pub struct ProcessContext<'a> {
     sample_rate: f64,
     input_layouts: &'a [BusLayout],
     output_layouts: &'a [BusLayout],
-    param_values: &'a HashMap<ParamId, f64>,
+    param_list: &'a ParamList,
+    param_values: &'a [f64],
 }
 
 impl<'a> ProcessContext<'a> {
@@ -63,7 +64,7 @@ impl<'a> ProcessContext<'a> {
     }
 
     pub fn get_param(&self, param_id: ParamId) -> f64 {
-        self.param_values[&param_id]
+        self.param_values[self.param_list.indices[&param_id]]
     }
 }
 

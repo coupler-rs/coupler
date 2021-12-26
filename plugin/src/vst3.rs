@@ -5,7 +5,6 @@ use crate::{
 };
 
 use std::cell::{Cell, UnsafeCell};
-use std::collections::HashMap;
 use std::ffi::{c_void, CString};
 use std::marker::PhantomData;
 use std::os::raw::{c_char, c_int};
@@ -199,20 +198,15 @@ impl<P: Plugin> Factory<P> {
 
         let plugin = P::create();
 
-        let param_list = plugin.params();
+        let param_list = Arc::new(plugin.params());
 
-        let mut param_indices = HashMap::with_capacity(param_list.params().len());
-        for (index, param) in param_list.params().iter().enumerate() {
-            param_indices.insert(param.id, index);
-        }
-
-        let mut plugin_param_values = HashMap::with_capacity(param_list.params().len());
-        let mut processor_param_values = HashMap::with_capacity(param_list.params().len());
-        let mut editor_param_values = HashMap::with_capacity(param_list.params().len());
-        for param in param_list.params().iter() {
-            plugin_param_values.insert(param.id, AtomicF64::new(param.default));
-            processor_param_values.insert(param.id, param.default);
-            editor_param_values.insert(param.id, Cell::new(param.default));
+        let mut plugin_param_values = Vec::with_capacity(param_list.params.len());
+        let mut processor_param_values = Vec::with_capacity(param_list.params.len());
+        let mut editor_param_values = Vec::with_capacity(param_list.params.len());
+        for param in param_list.params.iter() {
+            plugin_param_values.push(AtomicF64::new(param.default));
+            processor_param_values.push(param.default);
+            editor_param_values.push(Cell::new(param.default));
         }
 
         let processor_state = UnsafeCell::new(ProcessorState {
@@ -222,7 +216,7 @@ impl<P: Plugin> Factory<P> {
             // We can't know the maximum number of param changes in a
             // block, so make a reasonable guess and hope we don't have to
             // allocate more
-            param_changes: Vec::with_capacity(4 * param_list.params().len()),
+            param_changes: Vec::with_capacity(4 * param_list.params.len()),
             param_values: processor_param_values,
             processor: None,
         });
@@ -230,6 +224,7 @@ impl<P: Plugin> Factory<P> {
         let editor_context = Rc::new(Vst3EditorContext {
             alive: Cell::new(true),
             component_handler: Cell::new(ptr::null_mut()),
+            param_list: param_list.clone(),
             param_values: editor_param_values,
         });
 
@@ -256,7 +251,6 @@ impl<P: Plugin> Factory<P> {
                 outputs_enabled,
             }),
             param_list,
-            param_indices,
             param_values: plugin_param_values,
             params_dirty: AtomicBool::new(false),
             plugin,
@@ -330,12 +324,14 @@ impl<P: Plugin> Factory<P> {
 struct Vst3EditorContext {
     alive: Cell<bool>,
     component_handler: Cell<*mut *const IComponentHandler>,
-    param_values: HashMap<ParamId, Cell<f64>>,
+    param_list: Arc<ParamList>,
+    param_values: Vec<Cell<f64>>,
 }
 
 impl EditorContextInner for Vst3EditorContext {
     fn get_param(&self, param_id: ParamId) -> f64 {
-        self.param_values[&param_id].get()
+        let index = self.param_list.indices[&param_id];
+        self.param_values[index].get()
     }
 
     fn begin_edit(&self, param_id: ParamId) {
@@ -358,7 +354,8 @@ impl EditorContextInner for Vst3EditorContext {
                 );
             }
 
-            self.param_values[&param_id].set(value);
+            let index = self.param_list.indices[&param_id];
+            self.param_values[index].set(value);
         }
     }
 
@@ -387,9 +384,8 @@ pub struct Wrapper<P: Plugin> {
     // activate_bus, which aren't called concurrently with any other methods on
     // IComponent or IAudioProcessor per the spec.
     bus_states: UnsafeCell<BusStates>,
-    param_list: ParamList,
-    param_indices: HashMap<u32, usize>,
-    param_values: HashMap<ParamId, AtomicF64>,
+    param_list: Arc<ParamList>,
+    param_values: Vec<AtomicF64>,
     params_dirty: AtomicBool,
     plugin: P,
     processor_state: UnsafeCell<ProcessorState<P>>,
@@ -407,7 +403,7 @@ struct ProcessorState<P: Plugin> {
     input_buses: Vec<AudioBus<'static>>,
     output_buses: Vec<AudioBus<'static>>,
     sample_rate: f64,
-    param_values: HashMap<ParamId, f64>,
+    param_values: Vec<f64>,
     param_changes: Vec<ParamChange>,
     processor: Option<P::Processor>,
 }
@@ -656,6 +652,7 @@ impl<P: Plugin> Wrapper<P> {
                     sample_rate: processor_state.sample_rate,
                     input_layouts: &bus_states.input_layouts[..],
                     output_layouts: &bus_states.output_layouts[..],
+                    param_list: &wrapper.param_list,
                     param_values: &processor_state.param_values,
                 };
 
@@ -694,7 +691,8 @@ impl<P: Plugin> Wrapper<P> {
 
         let wrapper = &*(this.offset(-Self::COMPONENT_OFFSET) as *const Wrapper<P>);
 
-        let mut param_values = ParamValues { params: &wrapper.param_values };
+        let mut param_values =
+            ParamValues { param_list: &wrapper.param_list, values: &wrapper.param_values };
         match wrapper.plugin.deserialize(&mut param_values, &mut StreamReader(state)) {
             Ok(_) => {
                 wrapper.params_dirty.store(true, Ordering::Release);
@@ -736,7 +734,8 @@ impl<P: Plugin> Wrapper<P> {
 
         let wrapper = &*(this.offset(-Self::COMPONENT_OFFSET) as *const Wrapper<P>);
 
-        let param_values = ParamValues { params: &wrapper.param_values };
+        let param_values =
+            ParamValues { param_list: &wrapper.param_list, values: &wrapper.param_values };
         match wrapper.plugin.serialize(&param_values, &mut StreamWriter(state)) {
             Ok(_) => result::OK,
             Err(_) => result::FALSE,
@@ -879,6 +878,7 @@ impl<P: Plugin> Wrapper<P> {
                 sample_rate: processor_state.sample_rate,
                 input_layouts: &bus_states.input_layouts[..],
                 output_layouts: &bus_states.output_layouts[..],
+                param_list: &wrapper.param_list,
                 param_values: &processor_state.param_values,
             };
 
@@ -903,10 +903,10 @@ impl<P: Plugin> Wrapper<P> {
 
         // If params have been deserialized, read them out from the shared copy
         if wrapper.params_dirty.swap(false, Ordering::Acquire) {
-            for (&id, value) in wrapper.param_values.iter() {
-                let value = value.load();
-                processor_state.param_changes.push(ParamChange { id, offset: 0, value });
-                *processor_state.param_values.get_mut(&id).unwrap() = value;
+            for (index, param) in wrapper.param_list.params.iter().enumerate() {
+                let value = wrapper.param_values[index].load();
+                processor_state.param_changes.push(ParamChange { id: param.id, offset: 0, value });
+                processor_state.param_values[index] = value;
             }
         }
 
@@ -949,12 +949,14 @@ impl<P: Plugin> Wrapper<P> {
                         value,
                     });
 
-                    if let Some(param) = processor_state.param_values.get_mut(&param_id) {
-                        *param = value;
-                    }
+                    if let Some(&index) = wrapper.param_list.indices.get(&param_id) {
+                        if let Some(param) = processor_state.param_values.get_mut(index) {
+                            *param = value;
+                        }
 
-                    if let Some(param) = wrapper.param_values.get(&param_id) {
-                        param.store(value);
+                        if let Some(param) = wrapper.param_values.get(index) {
+                            param.store(value);
+                        }
                     }
                 }
             }
@@ -1055,6 +1057,7 @@ impl<P: Plugin> Wrapper<P> {
             sample_rate: processor_state.sample_rate,
             input_layouts: &bus_states.input_layouts[..],
             output_layouts: &bus_states.output_layouts[..],
+            param_list: &wrapper.param_list,
             param_values: &processor_state.param_values,
         };
 
@@ -1143,8 +1146,8 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
-        for (&id, value) in wrapper.param_values.iter() {
-            editor_state.context.param_values[&id].set(value.load());
+        for (index, value) in wrapper.param_values.iter().enumerate() {
+            editor_state.context.param_values[index].set(value.load());
         }
 
         result::OK
@@ -1167,7 +1170,7 @@ impl<P: Plugin> Wrapper<P> {
     pub unsafe extern "system" fn get_parameter_count(this: *mut c_void) -> i32 {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
-        wrapper.param_list.params().len() as i32
+        wrapper.param_list.params.len() as i32
     }
 
     pub unsafe extern "system" fn get_parameter_info(
@@ -1177,7 +1180,7 @@ impl<P: Plugin> Wrapper<P> {
     ) -> TResult {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
-        if let Some(param_def) = wrapper.param_list.params().get(param_index as usize) {
+        if let Some(param_def) = wrapper.param_list.params.get(param_index as usize) {
             let info = &mut *info;
 
             info.id = param_index as u32;
@@ -1203,8 +1206,8 @@ impl<P: Plugin> Wrapper<P> {
     ) -> TResult {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
-        if let Some(&index) = wrapper.param_indices.get(&id) {
-            if let Some(param_def) = wrapper.param_list.params().get(index) {
+        if let Some(&index) = wrapper.param_list.indices.get(&id) {
+            if let Some(param_def) = wrapper.param_list.params.get(index) {
                 let mut display = String::new();
                 param_def.param.display_encoded(value_normalized, &mut display);
                 copy_wstring(&display, &mut *string);
@@ -1224,8 +1227,8 @@ impl<P: Plugin> Wrapper<P> {
     ) -> TResult {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
-        if let Some(&index) = wrapper.param_indices.get(&id) {
-            if let Some(param_def) = wrapper.param_list.params().get(index) {
+        if let Some(&index) = wrapper.param_list.indices.get(&id) {
+            if let Some(param_def) = wrapper.param_list.params.get(index) {
                 let len = len_wstring(string);
                 if let Ok(string) =
                     String::from_utf16(slice::from_raw_parts(string as *const u16, len))
@@ -1248,8 +1251,8 @@ impl<P: Plugin> Wrapper<P> {
     ) -> f64 {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
-        if let Some(&index) = wrapper.param_indices.get(&id) {
-            if let Some(param_def) = wrapper.param_list.params().get(index) {
+        if let Some(&index) = wrapper.param_list.indices.get(&id) {
+            if let Some(param_def) = wrapper.param_list.params.get(index) {
                 return if let Some(steps) = param_def.info.steps {
                     (value_normalized * steps as f64).round()
                 } else {
@@ -1268,8 +1271,8 @@ impl<P: Plugin> Wrapper<P> {
     ) -> f64 {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
-        if let Some(&index) = wrapper.param_indices.get(&id) {
-            if let Some(param_def) = wrapper.param_list.params().get(index) {
+        if let Some(&index) = wrapper.param_list.indices.get(&id) {
+            if let Some(param_def) = wrapper.param_list.params.get(index) {
                 return if let Some(steps) = param_def.info.steps {
                     plain_value / steps as f64
                 } else {
@@ -1285,8 +1288,10 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &*wrapper.editor_state.get();
 
-        if let Some(value) = editor_state.context.param_values.get(&id) {
-            return value.get();
+        if let Some(&index) = wrapper.param_list.indices.get(&id) {
+            if let Some(value) = editor_state.context.param_values.get(index) {
+                return value.get();
+            }
         }
 
         0.0
@@ -1300,9 +1305,11 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &*wrapper.editor_state.get();
 
-        if let Some(param) = editor_state.context.param_values.get(&id) {
-            param.set(value);
-            return result::OK;
+        if let Some(&index) = wrapper.param_list.indices.get(&id) {
+            if let Some(param) = editor_state.context.param_values.get(index) {
+                param.set(value);
+                return result::OK;
+            }
         }
 
         result::INVALID_ARGUMENT
