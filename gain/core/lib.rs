@@ -16,10 +16,7 @@ impl Param for GainParam {
     type Value = f64;
 
     fn info(&self) -> ParamInfo {
-        ParamInfo {
-            units: "".to_string(),
-            steps: None,
-        }
+        ParamInfo { units: "".to_string(), steps: None }
     }
 
     fn default(&self) -> Self::Value {
