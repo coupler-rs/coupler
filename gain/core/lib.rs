@@ -109,20 +109,11 @@ pub struct GainProcessor {
 impl Processor for GainProcessor {
     fn process(
         &mut self,
-        _context: &ProcessContext,
+        context: &ProcessContext,
         buffers: &mut AudioBuffers,
-        param_changes: &[ParamChange],
+        _param_changes: &[ParamChange],
     ) {
-        let mut gain = self.gain;
-
-        for change in param_changes {
-            match change.id {
-                0 => {
-                    gain = change.value as f32;
-                }
-                _ => {}
-            }
-        }
+        let gain = context.get_param(GAIN) as f32;
 
         for i in 0..buffers.samples() {
             self.gain = 0.9995 * self.gain + 0.0005 * gain;
