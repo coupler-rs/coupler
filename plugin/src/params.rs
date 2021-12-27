@@ -120,3 +120,41 @@ impl<'a> ParamValues<'a> {
         self.values[index].store(param.encode(value));
     }
 }
+
+pub struct BoolParam {
+    default: bool,
+}
+
+impl BoolParam {
+    pub fn new(default: bool) -> BoolParam {
+        BoolParam { default }
+    }
+}
+
+impl Param for BoolParam {
+    type Value = bool;
+
+    fn info(&self) -> ParamInfo {
+        ParamInfo { units: "".to_string(), steps: Some(1) }
+    }
+
+    fn default(&self) -> bool {
+        self.default
+    }
+
+    fn display(&self, value: Self::Value, write: &mut dyn std::fmt::Write) {
+        let _ = write!(write, "{}", value);
+    }
+
+    fn parse(&self, string: &str) -> Result<Self::Value, ()> {
+        string.parse().map_err(|_| ())
+    }
+
+    fn encode(&self, value: Self::Value) -> f64 {
+        if value { 1.0 } else { 0.0 }
+    }
+
+    fn decode(&self, value: f64) -> Self::Value {
+        value >= 0.5
+    }
+}
