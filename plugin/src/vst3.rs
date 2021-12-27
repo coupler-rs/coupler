@@ -1419,9 +1419,11 @@ impl<P: Plugin> Wrapper<P> {
             RawWindowHandle::Xcb(XcbHandle { window: parent as u32, ..XcbHandle::empty() })
         };
 
-        let editor = wrapper
-            .plugin
-            .editor(EditorContext(editor_state.context.clone()), Some(&ParentWindow(parent)));
+        let editor_context = EditorContext {
+            param_list: wrapper.param_list.clone(),
+            inner: editor_state.context.clone(),
+        };
+        let editor = wrapper.plugin.editor(editor_context, Some(&ParentWindow(parent)));
 
         #[cfg(target_os = "linux")]
         if let Some(file_descriptor) = editor.file_descriptor() {

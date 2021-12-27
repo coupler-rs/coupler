@@ -10,6 +10,7 @@ pub use buses::*;
 pub use params::*;
 
 use std::rc::Rc;
+use std::sync::Arc;
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
@@ -27,12 +28,16 @@ pub struct ParamValues<'a> {
 }
 
 impl<'a> ParamValues<'a> {
-    pub fn get_param(&self, param_id: ParamId) -> f64 {
-        self.values[self.param_list.indices[&param_id]].load()
+    pub fn get_param<P: Param + 'static>(&self, key: ParamKey<P>) -> P::Value {
+        let index = self.param_list.indices[&key.id()];
+        let param = self.param_list.params[index].param.as_any().downcast_ref::<P>().unwrap();
+        param.decode(self.values[index].load())
     }
 
-    pub fn set_param(&mut self, param_id: ParamId, value: f64) {
-        self.values[self.param_list.indices[&param_id]].store(value);
+    pub fn set_param<P: Param + 'static>(&mut self, key: ParamKey<P>, value: P::Value) {
+        let index = self.param_list.indices[&key.id()];
+        let param = self.param_list.params[index].param.as_any().downcast_ref::<P>().unwrap();
+        self.values[index].store(param.encode(value));
     }
 }
 
@@ -63,8 +68,10 @@ impl<'a> ProcessContext<'a> {
         self.output_layouts
     }
 
-    pub fn get_param(&self, param_id: ParamId) -> f64 {
-        self.param_values[self.param_list.indices[&param_id]]
+    pub fn get_param<P: Param + 'static>(&self, key: ParamKey<P>) -> P::Value {
+        let index = self.param_list.indices[&key.id()];
+        let param = self.param_list.params[index].param.as_any().downcast_ref::<P>().unwrap();
+        param.decode(self.param_values[index])
     }
 }
 
@@ -76,23 +83,30 @@ trait EditorContextInner {
 }
 
 #[derive(Clone)]
-pub struct EditorContext(Rc<dyn EditorContextInner>);
+pub struct EditorContext {
+    param_list: Arc<ParamList>,
+    inner: Rc<dyn EditorContextInner>,
+}
 
 impl EditorContext {
-    pub fn get_param(&self, param_id: ParamId) -> f64 {
-        self.0.get_param(param_id)
+    pub fn get_param<P: Param + 'static>(&self, key: ParamKey<P>) -> P::Value {
+        let index = self.param_list.indices[&key.id()];
+        let param = self.param_list.params[index].param.as_any().downcast_ref::<P>().unwrap();
+        param.decode(self.inner.get_param(key.id()))
     }
 
-    pub fn begin_edit(&self, param_id: ParamId) {
-        self.0.begin_edit(param_id);
+    pub fn begin_edit<P: Param + 'static>(&self, key: ParamKey<P>) {
+        self.inner.begin_edit(key.id());
     }
 
-    pub fn perform_edit(&self, param_id: ParamId, value: f64) {
-        self.0.perform_edit(param_id, value);
+    pub fn perform_edit<P: Param + 'static>(&self, key: ParamKey<P>, value: P::Value) {
+        let index = self.param_list.indices[&key.id()];
+        let param = self.param_list.params[index].param.as_any().downcast_ref::<P>().unwrap();
+        self.inner.perform_edit(key.id(), param.encode(value));
     }
 
-    pub fn end_edit(&self, param_id: ParamId) {
-        self.0.end_edit(param_id);
+    pub fn end_edit<P: Param + 'static>(&self, key: ParamKey<P>) {
+        self.inner.end_edit(key.id());
     }
 }
 

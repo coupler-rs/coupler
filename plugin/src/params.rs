@@ -1,6 +1,31 @@
+use std::any::Any;
 use std::collections::HashMap;
+use std::marker::PhantomData;
 
 pub type ParamId = u32;
+
+pub struct ParamKey<P> {
+    id: ParamId,
+    phantom: PhantomData<P>,
+}
+
+impl<P> Clone for ParamKey<P> {
+    fn clone(&self) -> ParamKey<P> {
+        ParamKey { id: self.id, phantom: PhantomData }
+    }
+}
+
+impl<P> Copy for ParamKey<P> {}
+
+impl<P> ParamKey<P> {
+    pub const fn new(id: ParamId) -> ParamKey<P> {
+        ParamKey { id, phantom: PhantomData }
+    }
+
+    pub const fn id(&self) -> ParamId {
+        self.id
+    }
+}
 
 pub struct ParamInfo {
     pub units: String,
@@ -18,18 +43,23 @@ pub trait Param: Send + Sync {
     fn decode(&self, value: f64) -> Self::Value;
 }
 
-pub trait ParamDyn {
+pub(crate) trait ParamDyn: Any {
     fn display_encoded(&self, value: f64, write: &mut dyn std::fmt::Write);
     fn parse_encoded(&self, string: &str) -> Result<f64, ()>;
+    fn as_any(&self) -> &dyn Any;
 }
 
-impl<P: Param> ParamDyn for P {
+impl<P: Param + 'static> ParamDyn for P {
     fn display_encoded(&self, value: f64, write: &mut dyn std::fmt::Write) {
         self.display(self.decode(value), write);
     }
 
     fn parse_encoded(&self, string: &str) -> Result<f64, ()> {
         self.parse(string).map(|value| self.encode(value))
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
@@ -51,18 +81,20 @@ impl ParamList {
         ParamList { params: Vec::new(), indices: HashMap::new() }
     }
 
-    pub fn add(mut self, id: ParamId, name: &str, param: impl Param + 'static) -> ParamList {
+    pub fn add<P: Param + 'static>(mut self, key: ParamKey<P>, name: &str, param: P) -> ParamList {
         let index = self.params.len();
 
         self.params.push(ParamDef {
-            id,
+            id: key.id,
             name: name.to_string(),
             info: param.info(),
             default: param.encode(param.default()),
             param: Box::new(param),
         });
 
-        self.indices.insert(id, index);
+        (self.params.last().unwrap() as &dyn Any).downcast_ref::<u32>();
+
+        self.indices.insert(key.id, index);
 
         self
     }

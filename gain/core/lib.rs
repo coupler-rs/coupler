@@ -8,7 +8,7 @@ use std::cell::{Cell, RefCell};
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
-const GAIN: u32 = 0;
+const GAIN: ParamKey<GainParam> = ParamKey::new(0);
 
 struct GainParam;
 
