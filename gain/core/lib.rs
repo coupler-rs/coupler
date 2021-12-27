@@ -1,5 +1,5 @@
 use graphics::{Canvas, Color, Path, Vec2};
-use plugin::*;
+use plugin::{buffer::*, bus::*, editor::*, params::*, plugin::*, process::*};
 use window::{
     Application, Cursor, MouseButton, Parent, Point, Rect, Window, WindowHandler, WindowOptions,
 };

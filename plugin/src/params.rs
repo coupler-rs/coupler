@@ -2,6 +2,8 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
+use crate::atomic::AtomicF64;
+
 pub type ParamId = u32;
 
 pub struct ParamKey<P> {
@@ -63,7 +65,7 @@ impl<P: Param + 'static> ParamDyn for P {
     }
 }
 
-pub struct ParamDef {
+pub(crate) struct ParamDef {
     pub(crate) id: ParamId,
     pub(crate) name: String,
     pub(crate) info: ParamInfo,
@@ -97,5 +99,24 @@ impl ParamList {
         self.indices.insert(key.id, index);
 
         self
+    }
+}
+
+pub struct ParamValues<'a> {
+    pub(crate) param_list: &'a ParamList,
+    pub(crate) values: &'a [AtomicF64],
+}
+
+impl<'a> ParamValues<'a> {
+    pub fn get_param<P: Param + 'static>(&self, key: ParamKey<P>) -> P::Value {
+        let index = self.param_list.indices[&key.id()];
+        let param = self.param_list.params[index].param.as_any().downcast_ref::<P>().unwrap();
+        param.decode(self.values[index].load())
+    }
+
+    pub fn set_param<P: Param + 'static>(&mut self, key: ParamKey<P>, value: P::Value) {
+        let index = self.param_list.indices[&key.id()];
+        let param = self.param_list.params[index].param.as_any().downcast_ref::<P>().unwrap();
+        self.values[index].store(param.encode(value));
     }
 }

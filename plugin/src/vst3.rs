@@ -1,7 +1,6 @@
 use crate::{
-    AtomicF64, AudioBuffers, AudioBus, AudioBuses, BusLayout, BusList, Editor, EditorContext,
-    EditorContextInner, ParamChange, ParamId, ParamList, ParamValues, ParentWindow, Plugin,
-    PluginInfo, ProcessContext, Processor,
+    atomic::AtomicF64, buffer::*, bus::*, editor::*, params::*, plugin::*, process::ProcessContext,
+    process::*,
 };
 
 use std::cell::{Cell, UnsafeCell};
@@ -16,7 +15,7 @@ use std::{ffi, io, mem, ptr, slice};
 use raw_window_handle::RawWindowHandle;
 
 pub use vst3_sys;
-use vst3_sys::*;
+use vst3_sys::{BusInfo, *};
 
 fn copy_cstring(src: &str, dst: &mut [c_char]) {
     let c_string = CString::new(src).unwrap_or_else(|_| CString::default());
@@ -1643,9 +1642,9 @@ macro_rules! vst3 {
             use std::marker::PhantomData;
             use std::sync::Arc;
 
+            use $crate::plugin::*;
             use $crate::vst3::vst3_sys::*;
             use $crate::vst3::*;
-            use $crate::*;
 
             static PLUGIN_FACTORY_3_VTABLE: IPluginFactory3 = IPluginFactory3 {
                 plugin_factory_2: IPluginFactory2 {

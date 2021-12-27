@@ -1,4 +1,4 @@
-use crate::BusLayout;
+use crate::bus::BusLayout;
 
 use std::ops::{Index, IndexMut};
 use std::slice;
