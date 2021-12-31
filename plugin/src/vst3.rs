@@ -437,6 +437,8 @@ impl<P: Plugin> Wrapper<P> {
         iid: *const TUID,
         obj: *mut *mut c_void,
     ) -> TResult {
+        let wrapper = &*(this as *const Wrapper<P>);
+
         let iid = *iid;
 
         if iid == FUnknown::IID || iid == IComponent::IID {
@@ -463,7 +465,7 @@ impl<P: Plugin> Wrapper<P> {
             return result::OK;
         }
 
-        if iid == IPlugView::IID {
+        if iid == IPlugView::IID && wrapper.has_editor {
             Self::add_ref(this);
             *obj = this.offset(Self::PLUG_VIEW_OFFSET);
             return result::OK;
