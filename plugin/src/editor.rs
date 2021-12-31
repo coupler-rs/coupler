@@ -3,7 +3,6 @@ use crate::params::*;
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
 use std::rc::Rc;
-use std::sync::Arc;
 
 pub trait EditorContextInner {
     fn get_param(&self, param_id: ParamId) -> f64;
@@ -14,29 +13,24 @@ pub trait EditorContextInner {
 
 #[derive(Clone)]
 pub struct EditorContext {
-    pub(crate) param_list: Arc<ParamList>,
     pub(crate) inner: Rc<dyn EditorContextInner>,
 }
 
 impl EditorContext {
-    pub fn get_param<P: Param + 'static>(&self, key: ParamKey<P>) -> P::Value {
-        let index = self.param_list.indices[&key.id()];
-        let param = self.param_list.params[index].param.as_any().downcast_ref::<P>().unwrap();
-        param.decode(self.inner.get_param(key.id()))
+    pub fn get_param(&self, id: ParamId) -> f64 {
+        self.inner.get_param(id)
     }
 
-    pub fn begin_edit<P: Param + 'static>(&self, key: ParamKey<P>) {
-        self.inner.begin_edit(key.id());
+    pub fn begin_edit(&self, id: ParamId) {
+        self.inner.begin_edit(id);
     }
 
-    pub fn perform_edit<P: Param + 'static>(&self, key: ParamKey<P>, value: P::Value) {
-        let index = self.param_list.indices[&key.id()];
-        let param = self.param_list.params[index].param.as_any().downcast_ref::<P>().unwrap();
-        self.inner.perform_edit(key.id(), param.encode(value));
+    pub fn perform_edit(&self, id: ParamId, value: f64) {
+        self.inner.perform_edit(id, value);
     }
 
-    pub fn end_edit<P: Param + 'static>(&self, key: ParamKey<P>) {
-        self.inner.end_edit(key.id());
+    pub fn end_edit(&self, id: ParamId) {
+        self.inner.end_edit(id);
     }
 }
 

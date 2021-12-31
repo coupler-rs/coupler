@@ -21,10 +21,8 @@ impl<'a> ProcessContext<'a> {
         self.output_layouts
     }
 
-    pub fn get_param<P: Param + 'static>(&self, key: ParamKey<P>) -> P::Value {
-        let index = self.param_list.indices[&key.id()];
-        let param = self.param_list.params[index].param.as_any().downcast_ref::<P>().unwrap();
-        param.decode(self.param_values[index])
+    pub fn get_param(&self, id: ParamId) -> f64 {
+        self.param_values[self.param_list.indices[&id]]
     }
 }
 

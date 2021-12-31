@@ -328,41 +328,43 @@ struct Vst3EditorContext {
 }
 
 impl EditorContextInner for Vst3EditorContext {
-    fn get_param(&self, param_id: ParamId) -> f64 {
-        let index = self.param_list.indices[&param_id];
+    fn get_param(&self, id: ParamId) -> f64 {
+        let index = self.param_list.indices[&id];
         self.param_values[index].get()
     }
 
-    fn begin_edit(&self, param_id: ParamId) {
+    fn begin_edit(&self, id: ParamId) {
         let component_handler = self.component_handler.get();
         if self.alive.get() && !component_handler.is_null() {
             unsafe {
-                ((*(*component_handler)).begin_edit)(component_handler as *mut c_void, param_id);
+                ((*(*component_handler)).begin_edit)(component_handler as *mut c_void, id);
             }
         }
     }
 
-    fn perform_edit(&self, param_id: ParamId, value: f64) {
+    fn perform_edit(&self, id: ParamId, value: f64) {
+        let index = self.param_list.indices[&id];
+        self.param_values[index].set(value);
+
+        let unmapped = self.param_list.params[index].format.unmap(value);
+
         let component_handler = self.component_handler.get();
         if self.alive.get() && !component_handler.is_null() {
             unsafe {
                 ((*(*component_handler)).perform_edit)(
                     component_handler as *mut c_void,
-                    param_id,
-                    value,
+                    id,
+                    unmapped,
                 );
             }
-
-            let index = self.param_list.indices[&param_id];
-            self.param_values[index].set(value);
         }
     }
 
-    fn end_edit(&self, param_id: ParamId) {
+    fn end_edit(&self, id: ParamId) {
         let component_handler = self.component_handler.get();
         if self.alive.get() && !component_handler.is_null() {
             unsafe {
-                ((*(*component_handler)).end_edit)(component_handler as *mut c_void, param_id);
+                ((*(*component_handler)).end_edit)(component_handler as *mut c_void, id);
             }
         }
     }
@@ -942,20 +944,18 @@ impl<P: Plugin> Wrapper<P> {
                         continue;
                     }
 
-                    processor_state.param_changes.push(ParamChange {
-                        id: param_id,
-                        offset: offset as usize,
-                        value,
-                    });
-
                     if let Some(&index) = wrapper.param_list.indices.get(&param_id) {
-                        if let Some(param) = processor_state.param_values.get_mut(index) {
-                            *param = value;
-                        }
+                        let mapped = wrapper.param_list.params[index].format.map(value);
 
-                        if let Some(param) = wrapper.param_values.get(index) {
-                            param.store(value);
-                        }
+                        processor_state.param_changes.push(ParamChange {
+                            id: param_id,
+                            offset: offset as usize,
+                            value: mapped,
+                        });
+
+                        processor_state.param_values[index] = mapped;
+
+                        wrapper.param_values[index].store(mapped);
                     }
                 }
             }
@@ -1179,15 +1179,19 @@ impl<P: Plugin> Wrapper<P> {
     ) -> TResult {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
-        if let Some(param_def) = wrapper.param_list.params.get(param_index as usize) {
+        if let Some(param_info) = wrapper.param_list.params.get(param_index as usize) {
             let info = &mut *info;
 
             info.id = param_index as u32;
-            copy_wstring(&param_def.name, &mut info.title);
-            copy_wstring(&param_def.name, &mut info.short_title);
-            copy_wstring(&param_def.info.units, &mut info.units);
-            info.step_count = param_def.info.steps.unwrap_or(0) as i32;
-            info.default_normalized_value = param_def.default;
+            copy_wstring(&param_info.name, &mut info.title);
+            copy_wstring(&param_info.name, &mut info.short_title);
+            copy_wstring(&param_info.units, &mut info.units);
+            info.step_count = if let Some(steps) = param_info.format.steps() {
+                steps.saturating_sub(1) as i32
+            } else {
+                0
+            };
+            info.default_normalized_value = param_info.format.unmap(param_info.default);
             info.unit_id = 0;
             info.flags = ParameterInfo::CAN_AUTOMATE;
 
@@ -1206,13 +1210,14 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
         if let Some(&index) = wrapper.param_list.indices.get(&id) {
-            if let Some(param_def) = wrapper.param_list.params.get(index) {
-                let mut display = String::new();
-                param_def.param.display_encoded(value_normalized, &mut display);
-                copy_wstring(&display, &mut *string);
+            let param_info = &wrapper.param_list.params[index];
 
-                return result::OK;
-            }
+            let mut display = String::new();
+            let mapped = param_info.format.map(value_normalized);
+            param_info.format.display(mapped, &mut display);
+            copy_wstring(&display, &mut *string);
+
+            return result::OK;
         }
 
         result::INVALID_ARGUMENT
@@ -1227,15 +1232,15 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
         if let Some(&index) = wrapper.param_list.indices.get(&id) {
-            if let Some(param_def) = wrapper.param_list.params.get(index) {
-                let len = len_wstring(string);
-                if let Ok(string) =
-                    String::from_utf16(slice::from_raw_parts(string as *const u16, len))
-                {
-                    if let Ok(value) = param_def.param.parse_encoded(&string) {
-                        *value_normalized = value;
-                        return result::OK;
-                    }
+            let param_info = &wrapper.param_list.params[index];
+
+            let len = len_wstring(string);
+            if let Ok(string) = String::from_utf16(slice::from_raw_parts(string as *const u16, len))
+            {
+                if let Ok(value) = param_info.format.parse(&string) {
+                    let unmapped = param_info.format.unmap(value);
+                    *value_normalized = unmapped;
+                    return result::OK;
                 }
             }
         }
@@ -1251,13 +1256,7 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
         if let Some(&index) = wrapper.param_list.indices.get(&id) {
-            if let Some(param_def) = wrapper.param_list.params.get(index) {
-                return if let Some(steps) = param_def.info.steps {
-                    (value_normalized * steps as f64).round()
-                } else {
-                    value_normalized
-                };
-            }
+            return wrapper.param_list.params[index].format.map(value_normalized);
         }
 
         0.0
@@ -1271,13 +1270,7 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
         if let Some(&index) = wrapper.param_list.indices.get(&id) {
-            if let Some(param_def) = wrapper.param_list.params.get(index) {
-                return if let Some(steps) = param_def.info.steps {
-                    plain_value / steps as f64
-                } else {
-                    plain_value
-                };
-            }
+            return wrapper.param_list.params[index].format.unmap(plain_value);
         }
 
         0.0
@@ -1288,9 +1281,8 @@ impl<P: Plugin> Wrapper<P> {
         let editor_state = &*wrapper.editor_state.get();
 
         if let Some(&index) = wrapper.param_list.indices.get(&id) {
-            if let Some(value) = editor_state.context.param_values.get(index) {
-                return value.get();
-            }
+            let value = editor_state.context.param_values[index].get();
+            return wrapper.param_list.params[index].format.unmap(value);
         }
 
         0.0
@@ -1305,10 +1297,10 @@ impl<P: Plugin> Wrapper<P> {
         let editor_state = &*wrapper.editor_state.get();
 
         if let Some(&index) = wrapper.param_list.indices.get(&id) {
-            if let Some(param) = editor_state.context.param_values.get(index) {
-                param.set(value);
-                return result::OK;
-            }
+            let mapped = wrapper.param_list.params[index].format.map(value);
+            editor_state.context.param_values[index].set(mapped);
+
+            return result::OK;
         }
 
         result::INVALID_ARGUMENT
@@ -1418,10 +1410,7 @@ impl<P: Plugin> Wrapper<P> {
             RawWindowHandle::Xcb(XcbHandle { window: parent as u32, ..XcbHandle::empty() })
         };
 
-        let editor_context = EditorContext {
-            param_list: wrapper.param_list.clone(),
-            inner: editor_state.context.clone(),
-        };
+        let editor_context = EditorContext { inner: editor_state.context.clone() };
         let editor = wrapper.plugin.editor(editor_context, Some(&ParentWindow(parent)));
 
         #[cfg(target_os = "linux")]

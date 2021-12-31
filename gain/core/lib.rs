@@ -8,37 +8,7 @@ use std::cell::{Cell, RefCell};
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
-const GAIN: ParamKey<GainParam> = ParamKey::new(0);
-
-struct GainParam;
-
-impl Param for GainParam {
-    type Value = f64;
-
-    fn info(&self) -> ParamInfo {
-        ParamInfo { units: "".to_string(), steps: None }
-    }
-
-    fn default(&self) -> Self::Value {
-        1.0
-    }
-
-    fn display(&self, value: Self::Value, write: &mut dyn std::fmt::Write) {
-        let _ = write!(write, "{}", value);
-    }
-
-    fn parse(&self, string: &str) -> Result<Self::Value, ()> {
-        string.parse().map_err(|_| ())
-    }
-
-    fn encode(&self, value: Self::Value) -> f64 {
-        value
-    }
-
-    fn decode(&self, value: f64) -> Self::Value {
-        value
-    }
-}
+const GAIN: ParamId = 0;
 
 pub struct Gain {}
 
@@ -75,7 +45,13 @@ impl Plugin for Gain {
     }
 
     fn params(&self) -> ParamList {
-        ParamList::new().add(GAIN, "gain", GainParam)
+        ParamList::new().add(ParamInfo {
+            id: GAIN,
+            name: "Gain".to_string(),
+            units: "dB".to_string(),
+            default: 1.0,
+            format: Box::new(FloatParam::new(0.0, 1.0)),
+        })
     }
 
     fn serialize(&self, params: &ParamValues, write: &mut impl std::io::Write) -> Result<(), ()> {
