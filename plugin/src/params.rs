@@ -7,15 +7,19 @@ pub type ParamId = u32;
 pub struct ParamInfo {
     pub id: ParamId,
     pub name: String,
-    pub units: String,
     pub default: f64,
-    pub format: Box<dyn ParamFormat>,
+    pub map: Box<dyn Map>,
+    pub steps: Option<usize>,
+    pub format: Box<dyn Format>,
+    pub units: String,
 }
 
-pub trait ParamFormat {
-    fn steps(&self) -> Option<usize>;
+pub trait Map {
     fn map(&self, value: f64) -> f64;
     fn unmap(&self, value: f64) -> f64;
+}
+
+pub trait Format {
     fn display(&self, value: f64, write: &mut dyn std::fmt::Write);
     fn parse(&self, string: &str) -> Result<f64, ()>;
 }
@@ -52,30 +56,30 @@ impl<'a> ParamValues<'a> {
     }
 }
 
-pub struct FloatParam {
-    min: f64,
-    max: f64,
+pub struct Linear {
+    pub min: f64,
+    pub max: f64,
 }
 
-impl FloatParam {
-    pub fn new(min: f64, max: f64) -> FloatParam {
-        FloatParam { min, max }
+impl Linear {
+    pub fn new(min: f64, max: f64) -> Linear {
+        Linear { min, max }
     }
 }
 
-impl ParamFormat for FloatParam {
-    fn steps(&self) -> Option<usize> {
-        None
-    }
-
+impl Map for Linear {
     fn map(&self, value: f64) -> f64 {
-        self.min + (self.max - self.min) * value
+        self.min + value * (self.max - self.min)
     }
 
     fn unmap(&self, value: f64) -> f64 {
         (value - self.min) / (self.max - self.min)
     }
+}
 
+pub struct Decimal;
+
+impl Format for Decimal {
     fn display(&self, value: f64, write: &mut dyn std::fmt::Write) {
         let _ = write!(write, "{}", value);
     }

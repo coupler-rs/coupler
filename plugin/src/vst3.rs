@@ -346,7 +346,7 @@ impl EditorContextInner for Vst3EditorContext {
         let index = self.param_list.indices[&id];
         self.param_values[index].set(value);
 
-        let unmapped = self.param_list.params[index].format.unmap(value);
+        let unmapped = self.param_list.params[index].map.unmap(value);
 
         let component_handler = self.component_handler.get();
         if self.alive.get() && !component_handler.is_null() {
@@ -947,7 +947,7 @@ impl<P: Plugin> Wrapper<P> {
                     }
 
                     if let Some(&index) = wrapper.param_list.indices.get(&param_id) {
-                        let mapped = wrapper.param_list.params[index].format.map(value);
+                        let mapped = wrapper.param_list.params[index].map.map(value);
 
                         processor_state.param_changes.push(ParamChange {
                             id: param_id,
@@ -1188,12 +1188,9 @@ impl<P: Plugin> Wrapper<P> {
             copy_wstring(&param_info.name, &mut info.title);
             copy_wstring(&param_info.name, &mut info.short_title);
             copy_wstring(&param_info.units, &mut info.units);
-            info.step_count = if let Some(steps) = param_info.format.steps() {
-                steps.saturating_sub(1) as i32
-            } else {
-                0
-            };
-            info.default_normalized_value = param_info.format.unmap(param_info.default);
+            info.step_count =
+                if let Some(steps) = param_info.steps { steps.saturating_sub(1) as i32 } else { 0 };
+            info.default_normalized_value = param_info.map.unmap(param_info.default);
             info.unit_id = 0;
             info.flags = ParameterInfo::CAN_AUTOMATE;
 
@@ -1215,7 +1212,7 @@ impl<P: Plugin> Wrapper<P> {
             let param_info = &wrapper.param_list.params[index];
 
             let mut display = String::new();
-            let mapped = param_info.format.map(value_normalized);
+            let mapped = param_info.map.map(value_normalized);
             param_info.format.display(mapped, &mut display);
             copy_wstring(&display, &mut *string);
 
@@ -1240,7 +1237,7 @@ impl<P: Plugin> Wrapper<P> {
             if let Ok(string) = String::from_utf16(slice::from_raw_parts(string as *const u16, len))
             {
                 if let Ok(value) = param_info.format.parse(&string) {
-                    let unmapped = param_info.format.unmap(value);
+                    let unmapped = param_info.map.unmap(value);
                     *value_normalized = unmapped;
                     return result::OK;
                 }
@@ -1258,7 +1255,7 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
         if let Some(&index) = wrapper.param_list.indices.get(&id) {
-            return wrapper.param_list.params[index].format.map(value_normalized);
+            return wrapper.param_list.params[index].map.map(value_normalized);
         }
 
         0.0
@@ -1272,7 +1269,7 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
         if let Some(&index) = wrapper.param_list.indices.get(&id) {
-            return wrapper.param_list.params[index].format.unmap(plain_value);
+            return wrapper.param_list.params[index].map.unmap(plain_value);
         }
 
         0.0
@@ -1284,7 +1281,7 @@ impl<P: Plugin> Wrapper<P> {
 
         if let Some(&index) = wrapper.param_list.indices.get(&id) {
             let value = editor_state.context.param_values[index].get();
-            return wrapper.param_list.params[index].format.unmap(value);
+            return wrapper.param_list.params[index].map.unmap(value);
         }
 
         0.0
@@ -1299,7 +1296,7 @@ impl<P: Plugin> Wrapper<P> {
         let editor_state = &*wrapper.editor_state.get();
 
         if let Some(&index) = wrapper.param_list.indices.get(&id) {
-            let mapped = wrapper.param_list.params[index].format.map(value);
+            let mapped = wrapper.param_list.params[index].map.map(value);
             editor_state.context.param_values[index].set(mapped);
 
             return result::OK;

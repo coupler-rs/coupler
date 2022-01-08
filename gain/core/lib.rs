@@ -48,9 +48,11 @@ impl Plugin for Gain {
         ParamList::new().add(ParamInfo {
             id: GAIN,
             name: "Gain".to_string(),
-            units: "dB".to_string(),
             default: 1.0,
-            format: Box::new(FloatParam::new(0.0, 1.0)),
+            map: Box::new(Linear::new(0.0, 1.0)),
+            steps: None,
+            format: Box::new(Decimal),
+            units: "dB".to_string(),
         })
     }
 
