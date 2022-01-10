@@ -1184,7 +1184,7 @@ impl<P: Plugin> Wrapper<P> {
         if let Some(param_info) = wrapper.param_list.params.get(param_index as usize) {
             let info = &mut *info;
 
-            info.id = param_index as u32;
+            info.id = param_info.id;
             copy_wstring(&param_info.name, &mut info.title);
             copy_wstring(&param_info.name, &mut info.short_title);
             copy_wstring(&param_info.units, &mut info.units);
