@@ -1,8 +1,10 @@
 mod geom;
 mod path;
+mod text;
 
 pub use geom::*;
 pub use path::*;
+pub use text::*;
 
 #[derive(Copy, Clone)]
 pub struct Color(u32);
@@ -284,5 +286,67 @@ impl Canvas {
 
     pub fn stroke_path(&mut self, path: &Path, width: f32, color: Color) {
         self.fill_path(&path.stroke(width), color);
+    }
+
+    pub fn fill_text(&mut self, text: &str, font: &Font, size: f32, color: Color) {
+        use swash::scale::*;
+        use swash::shape::*;
+        use zeno::*;
+
+        let mut shape_context = ShapeContext::new();
+        let mut shaper = shape_context.builder(font.as_ref()).size(size).build();
+
+        let mut scale_context = ScaleContext::new();
+        let mut scaler = scale_context.builder(font.as_ref()).size(size).build();
+
+        let mut offset = 1.0;
+        shaper.add_str(text);
+        shaper.shape_with(|cluster| {
+            for glyph in cluster.glyphs {
+                if let Some(outline) = scaler.scale_outline(glyph.id) {
+                    let mut path = Path::builder();
+
+                    let mut points = outline.points().iter();
+                    for verb in outline.verbs() {
+                        match verb {
+                            Verb::MoveTo => {
+                                let point = points.next().unwrap();
+                                path.move_to(Vec2::new(point.x + offset, -point.y + size));
+                            }
+                            Verb::LineTo => {
+                                let point = points.next().unwrap();
+                                path.line_to(Vec2::new(point.x + offset, -point.y + size));
+                            }
+                            Verb::CurveTo => {
+                                let control1 = points.next().unwrap();
+                                let control2 = points.next().unwrap();
+                                let point = points.next().unwrap();
+                                path.cubic_to(
+                                    Vec2::new(control1.x + offset, -control1.y + size),
+                                    Vec2::new(control2.x + offset, -control2.y + size),
+                                    Vec2::new(point.x + offset, -point.y + size),
+                                );
+                            }
+                            Verb::QuadTo => {
+                                let control = points.next().unwrap();
+                                let point = points.next().unwrap();
+                                path.quadratic_to(
+                                    Vec2::new(control.x + offset, -control.y + size),
+                                    Vec2::new(point.x + offset, -point.y + size),
+                                );
+                            }
+                            Verb::Close => {
+                                path.close();
+                            }
+                        }
+                    }
+
+                    let path = path.build();
+                    self.fill_path(&path, color);
+
+                    offset += glyph.advance;
+                }
+            }
+        });
     }
 }

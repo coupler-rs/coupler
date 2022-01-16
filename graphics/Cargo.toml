@@ -6,6 +6,8 @@ edition = "2018"
 publish = false
 
 [dependencies]
+swash = "0.1.4"
+zeno = "0.2.2"
 
 [dev-dependencies]
 png = "0.11"
