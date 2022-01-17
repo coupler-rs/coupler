@@ -17,18 +17,11 @@ pub enum PathCmd {
     Close,
 }
 
-pub struct PathBuilder {
-    commands: Vec<PathCmd>,
-    points: Vec<Vec2>,
-}
-
 impl Path {
-    pub fn builder() -> PathBuilder {
-        PathBuilder { commands: Vec::new(), points: Vec::new() }
+    pub fn new() -> Path {
+        Path { commands: Vec::new(), points: Vec::new() }
     }
-}
 
-impl PathBuilder {
     pub fn move_to(&mut self, point: Vec2) -> &mut Self {
         self.commands.push(PathCmd::Move);
         self.points.push(point);
@@ -102,14 +95,8 @@ impl PathBuilder {
         self
     }
 
-    pub fn build(self) -> Path {
-        Path { commands: self.commands, points: self.points }
-    }
-}
-
-impl Path {
     pub(crate) fn flatten(&self) -> Path {
-        let mut path = Path::builder();
+        let mut path = Path::new();
         let mut last = Vec2::new(0.0, 0.0);
         let mut points = self.points.iter();
         for command in self.commands.iter() {
@@ -162,13 +149,14 @@ impl Path {
                 }
             }
         }
-        path.build()
+
+        path
     }
 
     pub(crate) fn stroke(&self, width: f32) -> Path {
         #[inline]
         fn join(
-            path: &mut PathBuilder,
+            path: &mut Path,
             width: f32,
             prev_normal: Vec2,
             next_normal: Vec2,
@@ -185,7 +173,7 @@ impl Path {
 
         #[inline]
         fn offset(
-            path: &mut PathBuilder,
+            path: &mut Path,
             width: f32,
             contour: &[Vec2],
             closed: bool,
@@ -229,7 +217,7 @@ impl Path {
             }
         }
 
-        let mut path = Path::builder();
+        let mut path = Path::new();
 
         let flattened = self.flatten();
 
@@ -287,6 +275,6 @@ impl Path {
             }
         }
 
-        path.build()
+        path
     }
 }

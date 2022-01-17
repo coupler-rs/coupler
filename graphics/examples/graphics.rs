@@ -21,11 +21,10 @@ impl WindowHandler for Handler {
     fn display(&self, window: &Window) {
         self.canvas.borrow_mut().clear(Color::rgba(0, 0, 0, 255));
 
-        let mut path = Path::builder();
+        let mut path = Path::new();
         path.move_to(Vec2::new(200.0, 300.0))
             .quadratic_to(Vec2::new(300.0, 200.0), Vec2::new(200.0, 100.0))
             .cubic_to(Vec2::new(150.0, 150.0), Vec2::new(-100.0, 250.0), Vec2::new(200.0, 300.0));
-        let path = path.build();
 
         self.canvas.borrow_mut().fill_path(&path, Color::rgba(255, 255, 255, 255));
 

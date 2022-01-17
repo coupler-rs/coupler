@@ -200,26 +200,24 @@ impl WindowHandler for GainWindowHandler {
         let radius = 32.0;
         let angle1 = 0.75 * std::f32::consts::PI;
         let angle2 = angle1 + value * 1.5 * std::f32::consts::PI;
-        let mut path = Path::builder();
+        let mut path = Path::new();
         path.move_to(center + radius * Vec2::new(angle1.cos(), angle1.sin()));
         path.arc(radius, angle1, angle2);
         path.line_to(center + (radius - 4.0) * Vec2::new(angle2.cos(), angle2.sin()));
         path.arc(radius - 4.0, angle2, angle1);
         path.close();
-        let path = path.build();
         canvas.fill_path(&path, Color::rgba(240, 240, 245, 255));
 
         let center = Vec2::new(128.0, 128.0);
         let radius = 32.0;
         let angle = 0.75 * std::f32::consts::PI;
         let span = 1.5 * std::f32::consts::PI;
-        let mut path = Path::builder();
+        let mut path = Path::new();
         path.move_to(center + radius * Vec2::new(angle.cos(), angle.sin()));
         path.arc(radius, angle, angle + span);
         path.line_to(center + (radius - 4.0) * Vec2::new(-angle.cos(), angle.sin()));
         path.arc(radius - 4.0, angle + span, angle);
         path.close();
-        let path = path.build();
         canvas.stroke_path(&path, 1.0, Color::rgba(240, 240, 245, 255));
 
         window.update_contents(canvas.data(), 256, 256);

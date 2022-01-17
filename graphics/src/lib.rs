@@ -304,7 +304,7 @@ impl Canvas {
         shaper.shape_with(|cluster| {
             for glyph in cluster.glyphs {
                 if let Some(outline) = scaler.scale_outline(glyph.id) {
-                    let mut path = Path::builder();
+                    let mut path = Path::new();
 
                     let mut points = outline.points().iter();
                     for verb in outline.verbs() {
@@ -341,7 +341,6 @@ impl Canvas {
                         }
                     }
 
-                    let path = path.build();
                     self.fill_path(&path, color);
 
                     offset += glyph.advance;

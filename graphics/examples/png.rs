@@ -17,7 +17,7 @@ fn main() {
                 )
                 .then(Transform::scale(1.0));
 
-                let mut path = Path::builder();
+                let mut path = Path::new();
                 for segment in p.data.0.iter() {
                     match *segment {
                         usvg::PathSegment::MoveTo { x, y } => {
@@ -47,7 +47,6 @@ fn main() {
                         }
                     }
                 }
-                let path = path.build();
 
                 if let Some(ref fill) = p.fill {
                     if let usvg::Paint::Color(color) = fill.paint {
