@@ -4,12 +4,12 @@ const TOLERANCE: f32 = 0.1;
 
 #[derive(Clone)]
 pub struct Path {
-    pub(crate) commands: Vec<PathCmd>,
+    pub(crate) verbs: Vec<Verb>,
     pub(crate) points: Vec<Vec2>,
 }
 
 #[derive(Copy, Clone)]
-pub enum PathCmd {
+pub(crate) enum Verb {
     Move,
     Line,
     Quadratic,
@@ -19,30 +19,30 @@ pub enum PathCmd {
 
 impl Path {
     pub fn new() -> Path {
-        Path { commands: Vec::new(), points: Vec::new() }
+        Path { verbs: Vec::new(), points: Vec::new() }
     }
 
     pub fn move_to(&mut self, point: Vec2) -> &mut Self {
-        self.commands.push(PathCmd::Move);
+        self.verbs.push(Verb::Move);
         self.points.push(point);
         self
     }
 
     pub fn line_to(&mut self, point: Vec2) -> &mut Self {
-        self.commands.push(PathCmd::Line);
+        self.verbs.push(Verb::Line);
         self.points.push(point);
         self
     }
 
     pub fn quadratic_to(&mut self, control: Vec2, point: Vec2) -> &mut Self {
-        self.commands.push(PathCmd::Quadratic);
+        self.verbs.push(Verb::Quadratic);
         self.points.push(control);
         self.points.push(point);
         self
     }
 
     pub fn cubic_to(&mut self, control1: Vec2, control2: Vec2, point: Vec2) -> &mut Self {
-        self.commands.push(PathCmd::Cubic);
+        self.verbs.push(Verb::Cubic);
         self.points.push(control1);
         self.points.push(control2);
         self.points.push(point);
@@ -91,7 +91,7 @@ impl Path {
     }
 
     pub fn close(&mut self) -> &mut Self {
-        self.commands.push(PathCmd::Close);
+        self.verbs.push(Verb::Close);
         self
     }
 
@@ -99,19 +99,19 @@ impl Path {
         let mut path = Path::new();
         let mut last = Vec2::new(0.0, 0.0);
         let mut points = self.points.iter();
-        for command in self.commands.iter() {
-            match *command {
-                PathCmd::Move => {
+        for verb in self.verbs.iter() {
+            match *verb {
+                Verb::Move => {
                     let point = *points.next().unwrap();
                     path.move_to(point);
                     last = point;
                 }
-                PathCmd::Line => {
+                Verb::Line => {
                     let point = *points.next().unwrap();
                     path.line_to(point);
                     last = point;
                 }
-                PathCmd::Quadratic => {
+                Verb::Quadratic => {
                     let control = *points.next().unwrap();
                     let point = *points.next().unwrap();
                     let dt = ((4.0 * TOLERANCE) / (last - 2.0 * control + point).length()).sqrt();
@@ -124,7 +124,7 @@ impl Path {
                     }
                     last = point;
                 }
-                PathCmd::Cubic => {
+                Verb::Cubic => {
                     let control1 = *points.next().unwrap();
                     let control2 = *points.next().unwrap();
                     let point = *points.next().unwrap();
@@ -144,7 +144,7 @@ impl Path {
                     }
                     last = point;
                 }
-                PathCmd::Close => {
+                Verb::Close => {
                     path.close();
                 }
             }
@@ -224,44 +224,44 @@ impl Path {
         let mut contour_start = 0;
         let mut contour_end = 0;
         let mut closed = false;
-        let mut commands = flattened.commands.iter();
+        let mut verbs = flattened.verbs.iter();
         loop {
-            let command = commands.next();
+            let verb = verbs.next();
 
-            if let Some(PathCmd::Close) = command {
+            if let Some(Verb::Close) = verb {
                 closed = true;
             }
 
-            if let None | Some(PathCmd::Move) | Some(PathCmd::Close) = command {
+            if let None | Some(Verb::Move) | Some(Verb::Close) = verb {
                 if contour_start != contour_end {
                     let contour = &flattened.points[contour_start..contour_end];
 
-                    let base = path.commands.len();
+                    let base = path.verbs.len();
                     offset(&mut path, width, contour, closed, false);
-                    path.commands[base] = PathCmd::Move;
+                    path.verbs[base] = Verb::Move;
                     if closed {
                         path.close();
                     }
 
-                    let base = path.commands.len();
+                    let base = path.verbs.len();
                     offset(&mut path, width, contour, closed, true);
                     if closed {
-                        path.commands[base] = PathCmd::Move;
+                        path.verbs[base] = Verb::Move;
                     }
                     path.close();
                 }
             }
 
-            if let Some(command) = command {
-                match command {
-                    PathCmd::Move => {
+            if let Some(verb) = verb {
+                match verb {
+                    Verb::Move => {
                         contour_start = contour_end;
                         contour_end = contour_start + 1;
                     }
-                    PathCmd::Line => {
+                    Verb::Line => {
                         contour_end += 1;
                     }
-                    PathCmd::Close => {
+                    Verb::Close => {
                         contour_start = contour_end;
                         contour_end = contour_start;
                         closed = true;

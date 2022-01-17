@@ -96,29 +96,29 @@ impl Canvas {
         let mut first = Vec2::new(0.0, 0.0);
         let mut last = Vec2::new(0.0, 0.0);
 
-        let mut commands = flattened.commands.iter();
+        let mut verbs = flattened.verbs.iter();
         let mut points = flattened.points.iter();
         loop {
-            let command = commands.next();
+            let verb = verbs.next();
 
             let p1;
             let p2;
-            if let Some(command) = command {
-                match command {
-                    PathCmd::Move => {
+            if let Some(verb) = verb {
+                match verb {
+                    Verb::Move => {
                         let point = *points.next().unwrap();
                         p1 = last;
                         p2 = first;
                         first = point;
                         last = point;
                     }
-                    PathCmd::Line => {
+                    Verb::Line => {
                         let point = *points.next().unwrap();
                         p1 = last;
                         p2 = point;
                         last = point;
                     }
-                    PathCmd::Close => {
+                    Verb::Close => {
                         continue;
                     }
                     _ => {
@@ -199,7 +199,7 @@ impl Canvas {
                 }
             }
 
-            if command.is_none() {
+            if verb.is_none() {
                 break;
             }
         }
