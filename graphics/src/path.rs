@@ -9,7 +9,7 @@ pub struct Path {
 }
 
 #[derive(Copy, Clone)]
-pub(crate) enum Verb {
+pub enum Verb {
     Move,
     Line,
     Quadratic,
@@ -155,13 +155,7 @@ impl Path {
 
     pub(crate) fn stroke(&self, width: f32) -> Path {
         #[inline]
-        fn join(
-            path: &mut Path,
-            width: f32,
-            prev_normal: Vec2,
-            next_normal: Vec2,
-            point: Vec2,
-        ) {
+        fn join(path: &mut Path, width: f32, prev_normal: Vec2, next_normal: Vec2, point: Vec2) {
             let offset = 1.0 / (1.0 + prev_normal.dot(next_normal));
             if offset.abs() > 2.0 {
                 path.line_to(point + 0.5 * width * prev_normal);
@@ -172,13 +166,7 @@ impl Path {
         }
 
         #[inline]
-        fn offset(
-            path: &mut Path,
-            width: f32,
-            contour: &[Vec2],
-            closed: bool,
-            reverse: bool,
-        ) {
+        fn offset(path: &mut Path, width: f32, contour: &[Vec2], closed: bool, reverse: bool) {
             let first_point = if closed == reverse { contour[0] } else { *contour.last().unwrap() };
             let mut prev_point = first_point;
             let mut prev_normal = Vec2::new(0.0, 0.0);
