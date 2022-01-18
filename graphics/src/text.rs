@@ -1,4 +1,4 @@
-use swash::{Attributes, CacheKey, Charmap, FontRef};
+use swash::{CacheKey, FontRef};
 
 pub struct Font {
     data: Vec<u8>,

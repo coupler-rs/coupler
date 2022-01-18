@@ -6,7 +6,7 @@ edition = "2018"
 publish = false
 
 [dependencies]
-swash = "0.1.4"
+swash = { version = "0.1.4", features = ["scale"], default_features = false }
 zeno = "0.2.2"
 
 [dev-dependencies]
