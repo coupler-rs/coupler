@@ -187,7 +187,7 @@ impl Canvas {
                 let current = self.tiles[tile_row * self.tiles_width + tile_span_start];
                 self.tiles[tile_row * self.tiles_width + tile_span_start] = false;
                 let mut tile_span_end = tile_span_start + 1;
-                while tile_span_end < self.tiles_width
+                while tile_span_end < (right >> 3) + 1
                     && self.tiles[tile_row * self.tiles_width + tile_span_end] == current
                 {
                     self.tiles[tile_row * self.tiles_width + tile_span_end] = false;
