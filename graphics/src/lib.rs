@@ -2,6 +2,7 @@ mod canvas;
 mod color;
 mod geom;
 mod path;
+mod raster;
 mod text;
 
 pub use canvas::*;
