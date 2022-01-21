@@ -20,16 +20,16 @@ pub struct Rasterizer {
     height: usize,
     coverage: Vec<f32>,
     tiles_width: usize,
-    tiles: Vec<bool>,
+    tiles: Vec<u64>,
     min: Vec2,
     max: Vec2,
 }
 
 impl Rasterizer {
     pub fn with_size(width: usize, height: usize) -> Rasterizer {
-        let tiles_width = (width + 8) >> 3;
+        let tiles_width = ((width + 8 * 64) >> 3) >> 6;
         let tiles_height = height;
-        let tiles = vec![false; tiles_width * tiles_height];
+        let tiles = vec![0; tiles_width * tiles_height];
 
         Rasterizer {
             width,
@@ -88,12 +88,12 @@ impl Rasterizer {
                 {
                     let tile_x = x as usize >> 3;
                     let tile_y = y as usize;
-                    self.tiles[tile_y * self.tiles_width + tile_x] = true;
+                    self.tiles[tile_y * self.tiles_width + (tile_x >> 6)] |= 1 << (63 - (tile_x & 0x3F));
                     self.coverage[(y as usize * self.width) + x as usize] += area;
 
                     let tile_x = (x + 1) as usize >> 3;
                     let tile_y = y as usize;
-                    self.tiles[tile_y * self.tiles_width + tile_x] = true;
+                    self.tiles[tile_y * self.tiles_width + (tile_x >> 6)] |= 1 << (63 - (tile_x & 0x3F));
                     self.coverage[(y as usize * self.width) + (x + 1) as usize] += height - area;
                 }
 
@@ -128,58 +128,64 @@ impl Rasterizer {
 
             let tile_row = row;
 
-            let mut tile_span_start = left >> 3;
-            while tile_span_start < (right >> 3) + 1 {
-                let current = self.tiles[tile_row * self.tiles_width + tile_span_start];
-                self.tiles[tile_row * self.tiles_width + tile_span_start] = false;
-                let mut tile_span_end = tile_span_start + 1;
-                while tile_span_end < (right >> 3) + 1
-                    && self.tiles[tile_row * self.tiles_width + tile_span_end] == current
-                {
-                    self.tiles[tile_row * self.tiles_width + tile_span_end] = false;
-                    tile_span_end += 1;
-                }
+            let mut tile_col = left >> 9;
+            while tile_col < (right >> 9) + 1 {
+                let mut tile = std::mem::replace(&mut self.tiles[tile_row * self.tiles_width + tile_col], 0);
 
-                let span_start = tile_span_start << 3;
-                let span_end = (tile_span_end << 3).min(self.width);
+                let mut start_index = 0;
+                let mut start_x = tile_col << 9;
+                loop {
+                    let index = tile.leading_zeros() as usize;
+                    let x = (tile_col << 9) + (index << 3);
 
-                if current {
-                    for col in span_start..span_end {
+                    if index > start_index {
+                        if coverage * 255.0 >= 254.5 {
+                            sink(Span {
+                                x: start_x,
+                                y: row,
+                                width: x - start_x,
+                                contents: Contents::Solid,
+                            });
+                        } else if coverage >= 1.0 / 255.0 {
+                            sink(Span {
+                                x: start_x,
+                                y: row,
+                                width: x - start_x,
+                                contents: Contents::Constant(coverage),
+                            });
+                        }
+                    }
+
+                    if index == 64 {
+                        break;
+                    }
+
+                    for col in x..x + 8 {
                         accum += self.coverage[row * self.width + col];
                         coverage = accum.abs().min(1.0);
                         self.coverage[row * self.width + col] = coverage;
                     }
 
                     sink(Span {
-                        x: span_start,
+                        x: x,
                         y: row,
-                        width: span_end - span_start,
+                        width: 8,
                         contents: Contents::Mask(
                             &self.coverage
-                                [row * self.width + span_start..row * self.width + span_end],
+                                [row * self.width + x..row * self.width + x + 8],
                         ),
                     });
 
-                    for col in span_start..span_end {
+                    for col in x..x + 8 {
                         self.coverage[row * self.width + col] = 0.0;
                     }
-                } else if coverage * 255.0 >= 254.5 {
-                    sink(Span {
-                        x: span_start,
-                        y: row,
-                        width: span_end - span_start,
-                        contents: Contents::Solid,
-                    });
-                } else if coverage >= 1.0 / 255.0 {
-                    sink(Span {
-                        x: span_start,
-                        y: row,
-                        width: span_end - span_start,
-                        contents: Contents::Constant(coverage),
-                    });
+
+                    tile &= !(1 << (63 - index));
+                    start_index = index + 1;
+                    start_x = x + 8;
                 }
 
-                tile_span_start = tile_span_end;
+                tile_col += 1;
             }
         }
 
