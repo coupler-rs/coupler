@@ -89,9 +89,7 @@ impl Canvas {
             }
             Contents::Constant(coverage) => {
                 let coverage = (coverage * 255.0) as u32;
-                for x in span.x..span.x + span.width {
-                    let pixel = data[span.y * width + x];
-
+                for pixel in data[span.y * width + span.x..span.y * width + span.x + span.width].iter_mut() {
                     let mut r = (coverage * color.r() as u32 + 127) / 255;
                     let mut g = (coverage * color.g() as u32 + 127) / 255;
                     let mut b = (coverage * color.b() as u32 + 127) / 255;
@@ -99,18 +97,17 @@ impl Canvas {
 
                     let inv_a = 255 - a;
 
-                    a += (inv_a * ((pixel >> 24) & 0xFF) + 127) / 255;
-                    r += (inv_a * ((pixel >> 16) & 0xFF) + 127) / 255;
-                    g += (inv_a * ((pixel >> 8) & 0xFF) + 127) / 255;
-                    b += (inv_a * ((pixel >> 0) & 0xFF) + 127) / 255;
+                    a += (inv_a * ((*pixel >> 24) & 0xFF) + 127) / 255;
+                    r += (inv_a * ((*pixel >> 16) & 0xFF) + 127) / 255;
+                    g += (inv_a * ((*pixel >> 8) & 0xFF) + 127) / 255;
+                    b += (inv_a * ((*pixel >> 0) & 0xFF) + 127) / 255;
 
-                    data[span.y * width + x] = (a << 24) | (r << 16) | (g << 8) | (b << 0);
+                    *pixel = (a << 24) | (r << 16) | (g << 8) | (b << 0);
                 }
             }
             Contents::Mask(mask) => {
-                for x in span.x..span.x + span.width {
-                    let pixel = data[span.y * width + x];
-                    let coverage = (mask[x - span.x] * 255.0) as u32;
+                for (pixel, coverage) in data[span.y * width + span.x..span.y * width + span.x + span.width].iter_mut().zip(mask.iter()) {
+                    let coverage = (*coverage * 255.0) as u32;
 
                     let mut r = (coverage * color.r() as u32 + 127) / 255;
                     let mut g = (coverage * color.g() as u32 + 127) / 255;
@@ -119,12 +116,12 @@ impl Canvas {
 
                     let inv_a = 255 - a;
 
-                    a += (inv_a * ((pixel >> 24) & 0xFF) + 127) / 255;
-                    r += (inv_a * ((pixel >> 16) & 0xFF) + 127) / 255;
-                    g += (inv_a * ((pixel >> 8) & 0xFF) + 127) / 255;
-                    b += (inv_a * ((pixel >> 0) & 0xFF) + 127) / 255;
+                    a += (inv_a * ((*pixel >> 24) & 0xFF) + 127) / 255;
+                    r += (inv_a * ((*pixel >> 16) & 0xFF) + 127) / 255;
+                    g += (inv_a * ((*pixel >> 8) & 0xFF) + 127) / 255;
+                    b += (inv_a * ((*pixel >> 0) & 0xFF) + 127) / 255;
 
-                    data[span.y * width + x] = (a << 24) | (r << 16) | (g << 8) | (b << 0);
+                    *pixel = (a << 24) | (r << 16) | (g << 8) | (b << 0);
                 }
             }
         });
