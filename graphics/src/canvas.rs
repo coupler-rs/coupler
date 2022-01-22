@@ -85,9 +85,7 @@ impl Canvas {
         let data = &mut self.data;
         self.rasterizer.finish(|span| match span.contents {
             Contents::Solid => {
-                for x in span.x..span.x + span.width {
-                    data[span.y * width + x] = color.into();
-                }
+                data[span.y * width + span.x..span.y * width + span.x + span.width].fill(color.into());
             }
             Contents::Constant(coverage) => {
                 let coverage = (coverage * 255.0) as u32;
