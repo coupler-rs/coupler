@@ -49,35 +49,26 @@ impl Canvas {
         let mut first = Vec2::new(0.0, 0.0);
         let mut last = Vec2::new(0.0, 0.0);
 
-        let mut verbs = flattened.verbs.iter();
         let mut points = flattened.points.iter();
-        loop {
-            let verb = verbs.next();
-
-            if let Some(verb) = verb {
-                match verb {
-                    Verb::Move => {
-                        let point = *points.next().unwrap();
-                        first = point;
-                        last = point;
-                    }
-                    Verb::Line => {
-                        let point = *points.next().unwrap();
-                        self.rasterizer.add_line(last, point);
-                        last = point;
-                    }
-                    Verb::Close => {
-                        self.rasterizer.add_line(last, first);
-                        continue;
-                    }
-                    _ => {
-                        unreachable!();
-                    }
+        for verb in flattened.verbs {
+            match verb {
+                Verb::Move => {
+                    let point = *points.next().unwrap();
+                    first = point;
+                    last = point;
                 }
-            }
-
-            if verb.is_none() {
-                break;
+                Verb::Line => {
+                    let point = *points.next().unwrap();
+                    self.rasterizer.add_line(last, point);
+                    last = point;
+                }
+                Verb::Close => {
+                    self.rasterizer.add_line(last, first);
+                    last = first;
+                }
+                _ => {
+                    unreachable!();
+                }
             }
         }
 
