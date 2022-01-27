@@ -1,7 +1,7 @@
 use crate::color::Color;
 use crate::geom::Vec2;
 use crate::path::{Path, Verb};
-use crate::raster::{Contents, Rasterizer};
+use crate::raster::{Contents, Rasterizer, TILE_SIZE, TILE_SIZE_BITS};
 use crate::text::Font;
 
 pub struct Canvas {
@@ -76,43 +76,39 @@ impl Canvas {
         let data = &mut self.data;
         self.rasterizer.finish(|span| match span.contents {
             Contents::Solid => {
-                data[span.y * width + span.x..span.y * width + span.x + span.width].fill(color.into());
-            }
-            Contents::Constant(coverage) => {
-                let coverage = (coverage * 255.0) as u32;
-                for pixel in data[span.y * width + span.x..span.y * width + span.x + span.width].iter_mut() {
-                    let mut r = (coverage * color.r() as u32 + 127) / 255;
-                    let mut g = (coverage * color.g() as u32 + 127) / 255;
-                    let mut b = (coverage * color.b() as u32 + 127) / 255;
-                    let mut a = (coverage * color.a() as u32 + 127) / 255;
-
-                    let inv_a = 255 - a;
-
-                    a += (inv_a * ((*pixel >> 24) & 0xFF) + 127) / 255;
-                    r += (inv_a * ((*pixel >> 16) & 0xFF) + 127) / 255;
-                    g += (inv_a * ((*pixel >> 8) & 0xFF) + 127) / 255;
-                    b += (inv_a * ((*pixel >> 0) & 0xFF) + 127) / 255;
-
-                    *pixel = (a << 24) | (r << 16) | (g << 8) | (b << 0);
+                for y in 0..TILE_SIZE {
+                    let start = ((span.tile_y << TILE_SIZE_BITS) + y) * width
+                        + (span.tile_x << TILE_SIZE_BITS);
+                    let end = start + (span.width << TILE_SIZE_BITS);
+                    data[start..end].fill(color.into());
                 }
             }
             Contents::Mask(mask) => {
-                for (pixel, coverage) in data[span.y * width + span.x..span.y * width + span.x + span.width].iter_mut().zip(mask.iter()) {
-                    let coverage = (*coverage * 255.0) as u32;
+                for tile_x in span.tile_x..span.tile_x + span.width {
+                    let x_offset = tile_x << TILE_SIZE_BITS;
+                    let y_offset = span.tile_y << TILE_SIZE_BITS;
+                    for y in 0..TILE_SIZE {
+                        for x in 0..TILE_SIZE {
+                            let pixel = &mut data[(y_offset + y) * width + x_offset + x];
+                            let coverage = mask[(y << TILE_SIZE_BITS) + x];
 
-                    let mut r = (coverage * color.r() as u32 + 127) / 255;
-                    let mut g = (coverage * color.g() as u32 + 127) / 255;
-                    let mut b = (coverage * color.b() as u32 + 127) / 255;
-                    let mut a = (coverage * color.a() as u32 + 127) / 255;
+                            let coverage = (coverage * 255.0) as u32;
 
-                    let inv_a = 255 - a;
+                            let mut r = (coverage * color.r() as u32 + 127) / 255;
+                            let mut g = (coverage * color.g() as u32 + 127) / 255;
+                            let mut b = (coverage * color.b() as u32 + 127) / 255;
+                            let mut a = (coverage * color.a() as u32 + 127) / 255;
 
-                    a += (inv_a * ((*pixel >> 24) & 0xFF) + 127) / 255;
-                    r += (inv_a * ((*pixel >> 16) & 0xFF) + 127) / 255;
-                    g += (inv_a * ((*pixel >> 8) & 0xFF) + 127) / 255;
-                    b += (inv_a * ((*pixel >> 0) & 0xFF) + 127) / 255;
+                            let inv_a = 255 - a;
 
-                    *pixel = (a << 24) | (r << 16) | (g << 8) | (b << 0);
+                            a += (inv_a * ((*pixel >> 24) & 0xFF) + 127) / 255;
+                            r += (inv_a * ((*pixel >> 16) & 0xFF) + 127) / 255;
+                            g += (inv_a * ((*pixel >> 8) & 0xFF) + 127) / 255;
+                            b += (inv_a * ((*pixel >> 0) & 0xFF) + 127) / 255;
+
+                            *pixel = (a << 24) | (r << 16) | (g << 8) | (b << 0);
+                        }
+                    }
                 }
             }
         });

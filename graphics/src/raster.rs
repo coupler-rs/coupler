@@ -1,9 +1,15 @@
 use crate::geom::Vec2;
 
+pub const TILE_SIZE: usize = 4;
+pub const TILE_SIZE_BITS: usize = 2;
+
+const BITMASK_SIZE: usize = u64::BITS as usize;
+const BITMASK_SIZE_BITS: usize = 6;
+
 #[derive(Debug)]
 pub struct Span<'a> {
-    pub x: usize,
-    pub y: usize,
+    pub tile_x: usize,
+    pub tile_y: usize,
     pub width: usize,
     pub contents: Contents<'a>,
 }
@@ -11,7 +17,6 @@ pub struct Span<'a> {
 #[derive(Debug)]
 pub enum Contents<'a> {
     Solid,
-    Constant(f32),
     Mask(&'a [f32]),
 }
 
@@ -19,35 +24,40 @@ pub struct Rasterizer {
     width: usize,
     height: usize,
     coverage: Vec<f32>,
-    tiles_width: usize,
-    tiles: Vec<u64>,
-    min: Vec2,
-    max: Vec2,
+    bitmasks_width: usize,
+    bitmasks: Vec<u64>,
+    min_tile_x: usize,
+    min_tile_y: usize,
+    max_tile_x: usize,
+    max_tile_y: usize,
 }
 
 impl Rasterizer {
     pub fn with_size(width: usize, height: usize) -> Rasterizer {
-        let tiles_width = ((width + 8 * 64) >> 3) >> 6;
-        let tiles_height = height;
-        let tiles = vec![0; tiles_width * tiles_height];
+        // round up to next multiple of tile size
+        let width_rounded = (width + TILE_SIZE - 1) & !(TILE_SIZE - 1);
+        let height_rounded = (height + TILE_SIZE - 1) & !(TILE_SIZE - 1);
+
+        // round up to next multiple of bitmask size
+        let bitmasks_width = (width_rounded + (TILE_SIZE * BITMASK_SIZE) - 1)
+            >> (TILE_SIZE_BITS + BITMASK_SIZE_BITS);
+        let bitmasks_height = height_rounded >> TILE_SIZE_BITS;
+        let bitmasks = vec![0; bitmasks_width * bitmasks_height];
 
         Rasterizer {
-            width,
-            height,
-            coverage: vec![0.0; width * height + 1],
-            tiles_width,
-            tiles,
-            min: Vec2::new(width as f32, height as f32),
-            max: Vec2::new(0.0, 0.0),
+            width: width_rounded,
+            height: height_rounded,
+            coverage: vec![0.0; width_rounded * height_rounded],
+            bitmasks_width,
+            bitmasks,
+            min_tile_x: width_rounded >> TILE_SIZE_BITS,
+            min_tile_y: height_rounded >> TILE_SIZE_BITS,
+            max_tile_x: 0,
+            max_tile_y: 0,
         }
     }
 
     pub fn add_line(&mut self, p1: Vec2, p2: Vec2) {
-        self.min = self.min.min(p1);
-        self.min = self.min.min(p2);
-        self.max = self.max.max(p1);
-        self.max = self.max.max(p2);
-
         if p1.y != p2.y {
             let x_dir = (p2.x - p1.x).signum() as isize;
             let y_dir = (p2.y - p1.y).signum() as isize;
@@ -86,15 +96,25 @@ impl Rasterizer {
                     && y >= 0 as isize
                     && y < self.height as isize
                 {
-                    let tile_x = x as usize >> 3;
-                    let tile_y = y as usize;
-                    self.tiles[tile_y * self.tiles_width + (tile_x >> 6)] |= 1 << (63 - (tile_x & 0x3F));
+                    let tile_x = x as usize >> TILE_SIZE_BITS;
+                    let tile_y = y as usize >> TILE_SIZE_BITS;
+                    let tile_bit = 1 << (BITMASK_SIZE - 1 - (tile_x & (BITMASK_SIZE - 1)));
+                    self.bitmasks[tile_y * self.bitmasks_width + (tile_x >> BITMASK_SIZE_BITS)] |=
+                        tile_bit;
                     self.coverage[(y as usize * self.width) + x as usize] += area;
 
-                    let tile_x = (x + 1) as usize >> 3;
-                    let tile_y = y as usize;
-                    self.tiles[tile_y * self.tiles_width + (tile_x >> 6)] |= 1 << (63 - (tile_x & 0x3F));
+                    self.min_tile_x = self.min_tile_x.min(tile_x);
+                    self.min_tile_y = self.min_tile_y.min(tile_y);
+
+                    let tile_x = (x + 1) as usize >> TILE_SIZE_BITS;
+                    let tile_y = y as usize >> TILE_SIZE_BITS;
+                    let tile_bit = 1 << (BITMASK_SIZE - 1 - (tile_x & (BITMASK_SIZE - 1)));
+                    self.bitmasks[tile_y * self.bitmasks_width + (tile_x >> BITMASK_SIZE_BITS)] |=
+                        tile_bit;
                     self.coverage[(y as usize * self.width) + (x + 1) as usize] += height - area;
+
+                    self.max_tile_x = self.max_tile_x.max(tile_x);
+                    self.max_tile_y = self.max_tile_y.max(tile_y);
                 }
 
                 if row_t1 < col_t1 {
@@ -117,79 +137,95 @@ impl Rasterizer {
     }
 
     pub fn finish(&mut self, mut sink: impl FnMut(Span)) {
-        let left = (self.min.x.floor() as isize).max(0).min(self.width as isize) as usize;
-        let right = (self.max.x.floor() as isize + 8).max(0).min(self.width as isize) as usize;
-        let top = (self.min.y.floor() as isize).max(0).min(self.height as isize) as usize;
-        let bottom = (self.max.y.floor() as isize + 1).max(0).min(self.height as isize) as usize;
+        for tile_y in self.min_tile_y..=self.max_tile_y {
+            let mut accum = [0.0; TILE_SIZE];
+            let mut coverages = [0.0; TILE_SIZE];
 
-        for row in top..bottom {
-            let mut accum = 0.0;
-            let mut coverage = 0.0;
+            let mut tile_x = self.min_tile_x;
 
-            let tile_row = row;
+            let bitmask_start = self.min_tile_x >> BITMASK_SIZE_BITS;
+            let bitmask_end = (self.max_tile_x + BITMASK_SIZE - 1) >> BITMASK_SIZE_BITS;
+            for bitmask_x in bitmask_start..=bitmask_end {
+                let bitmask_tile_x = bitmask_x << BITMASK_SIZE_BITS;
+                let mut tile = self.bitmasks[tile_y * self.bitmasks_width + bitmask_x];
+                self.bitmasks[tile_y * self.bitmasks_width + bitmask_x] = 0;
 
-            let mut tile_col = left >> 9;
-            while tile_col < (right >> 9) + 1 {
-                let mut tile = std::mem::replace(&mut self.tiles[tile_row * self.tiles_width + tile_col], 0);
-
-                let mut start_index = 0;
-                let mut start_x = tile_col << 9;
                 loop {
                     let index = tile.leading_zeros() as usize;
-                    let x = (tile_col << 9) + (index << 3);
+                    let next_tile_x = bitmask_tile_x + index;
 
-                    if index > start_index {
-                        if coverage * 255.0 >= 254.5 {
+                    if next_tile_x > tile_x {
+                        let mut solid = true;
+                        for coverage in coverages {
+                            if coverage < 254.5 / 255.0 {
+                                solid = false;
+                            }
+                        }
+
+                        if solid {
                             sink(Span {
-                                x: start_x,
-                                y: row,
-                                width: x - start_x,
+                                tile_x,
+                                tile_y,
+                                width: next_tile_x - tile_x,
                                 contents: Contents::Solid,
                             });
-                        } else if coverage >= 1.0 / 255.0 {
-                            sink(Span {
-                                x: start_x,
-                                y: row,
-                                width: x - start_x,
-                                contents: Contents::Constant(coverage),
-                            });
+                        } else {
+                            let mut empty = true;
+                            for coverage in coverages {
+                                if coverage >= 0.5 / 255.0 {
+                                    empty = false;
+                                }
+                            }
+
+                            if !empty {
+                                let mut mask = [0.0; TILE_SIZE * TILE_SIZE];
+                                for y in 0..TILE_SIZE {
+                                    for x in 0..TILE_SIZE {
+                                        mask[(y << TILE_SIZE_BITS) + x] = coverages[y];
+                                    }
+                                }
+
+                                sink(Span {
+                                    tile_x,
+                                    tile_y,
+                                    width: next_tile_x - tile_x,
+                                    contents: Contents::Mask(&mask),
+                                });
+                            }
                         }
                     }
 
-                    if index == 64 {
+                    if index == BITMASK_SIZE {
                         break;
                     }
 
-                    for col in x..x + 8 {
-                        accum += self.coverage[row * self.width + col];
-                        coverage = accum.abs().min(1.0);
-                        self.coverage[row * self.width + col] = coverage;
+                    tile_x = next_tile_x;
+
+                    let mut mask = [0.0; TILE_SIZE * TILE_SIZE];
+
+                    let x_offset = tile_x << TILE_SIZE_BITS;
+                    let y_offset = tile_y << TILE_SIZE_BITS;
+                    for y in 0..TILE_SIZE {
+                        for x in 0..TILE_SIZE {
+                            let coverage =
+                                &mut self.coverage[(y_offset + y) * self.width + x_offset + x];
+                            accum[y] += std::mem::replace(coverage, 0.0);
+                            coverages[y] = accum[y].abs().min(1.0);
+                            mask[(y << TILE_SIZE_BITS) + x] = coverages[y];
+                        }
                     }
 
-                    sink(Span {
-                        x: x,
-                        y: row,
-                        width: 8,
-                        contents: Contents::Mask(
-                            &self.coverage
-                                [row * self.width + x..row * self.width + x + 8],
-                        ),
-                    });
+                    sink(Span { tile_x, tile_y, width: 1, contents: Contents::Mask(&mask) });
 
-                    for col in x..x + 8 {
-                        self.coverage[row * self.width + col] = 0.0;
-                    }
-
-                    tile &= !(1 << (63 - index));
-                    start_index = index + 1;
-                    start_x = x + 8;
+                    tile &= !(1 << (BITMASK_SIZE - 1 - index));
+                    tile_x += 1;
                 }
-
-                tile_col += 1;
             }
         }
 
-        self.min = Vec2::new(self.width as f32, self.height as f32);
-        self.max = Vec2::new(0.0, 0.0);
+        self.min_tile_x = self.width >> TILE_SIZE_BITS;
+        self.min_tile_y = self.height >> TILE_SIZE_BITS;
+        self.max_tile_x = 0;
+        self.max_tile_y = 0;
     }
 }
