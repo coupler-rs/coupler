@@ -137,6 +137,11 @@ impl Rasterizer {
     }
 
     pub fn finish(&mut self, mut sink: impl FnMut(Span)) {
+        self.min_tile_x = self.min_tile_x.max(0);
+        self.min_tile_y = self.min_tile_y.max(0);
+        self.max_tile_x = self.max_tile_x.min((self.width - 1) >> TILE_SIZE_BITS);
+        self.max_tile_y = self.max_tile_y.min((self.height - 1) >> TILE_SIZE_BITS);
+
         for tile_y in self.min_tile_y..=self.max_tile_y {
             let mut accum = [0.0; TILE_SIZE];
             let mut coverages = [0.0; TILE_SIZE];
@@ -144,7 +149,7 @@ impl Rasterizer {
             let mut tile_x = self.min_tile_x;
 
             let bitmask_start = self.min_tile_x >> BITMASK_SIZE_BITS;
-            let bitmask_end = (self.max_tile_x + BITMASK_SIZE - 1) >> BITMASK_SIZE_BITS;
+            let bitmask_end = self.max_tile_x >> BITMASK_SIZE_BITS;
             for bitmask_x in bitmask_start..=bitmask_end {
                 let bitmask_tile_x = bitmask_x << BITMASK_SIZE_BITS;
                 let mut tile = self.bitmasks[tile_y * self.bitmasks_width + bitmask_x];
