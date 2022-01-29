@@ -105,6 +105,20 @@ impl f32x4 {
     }
 }
 
+impl From<u32x4> for f32x4 {
+    #[inline]
+    fn from(value: u32x4) -> f32x4 {
+        unsafe { f32x4(_mm_cvtepi32_ps(value.0)) }
+    }
+}
+
+impl From<i32x4> for f32x4 {
+    #[inline]
+    fn from(value: i32x4) -> f32x4 {
+        unsafe { f32x4(_mm_cvtepi32_ps(value.0)) }
+    }
+}
+
 impl Add<f32x4> for f32x4 {
     type Output = f32x4;
 
@@ -280,6 +294,20 @@ impl u32x4 {
     #[inline]
     pub fn max(&self, other: u32x4) -> u32x4 {
         u32x4::select(self.gt(other), *self, other)
+    }
+}
+
+impl From<f32x4> for u32x4 {
+    #[inline]
+    fn from(value: f32x4) -> u32x4 {
+        unsafe { u32x4(_mm_cvtps_epi32(value.0)) }
+    }
+}
+
+impl From<i32x4> for u32x4 {
+    #[inline]
+    fn from(value: i32x4) -> u32x4 {
+        u32x4(value.0)
     }
 }
 
@@ -500,6 +528,20 @@ impl i32x4 {
     #[inline]
     pub fn max(&self, other: i32x4) -> i32x4 {
         i32x4::select(self.gt(other), *self, other)
+    }
+}
+
+impl From<f32x4> for i32x4 {
+    #[inline]
+    fn from(value: f32x4) -> i32x4 {
+        unsafe { i32x4(_mm_cvtps_epi32(value.0)) }
+    }
+}
+
+impl From<u32x4> for i32x4 {
+    #[inline]
+    fn from(value: u32x4) -> i32x4 {
+        i32x4(value.0)
     }
 }
 
