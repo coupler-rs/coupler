@@ -92,7 +92,7 @@ impl Rasterizer {
                 let area = 0.5 * height * ((right_edge - prev.x) + (right_edge - next.x)) as f32;
 
                 if x >= 0 as isize
-                    && x < self.width as isize
+                    && x < self.width as isize - 1
                     && y >= 0 as isize
                     && y < self.height as isize
                 {
@@ -155,9 +155,9 @@ impl Rasterizer {
                 let mut tile = self.bitmasks[tile_y * self.bitmasks_width + bitmask_x];
                 self.bitmasks[tile_y * self.bitmasks_width + bitmask_x] = 0;
 
-                loop {
+                while tile_x <= self.max_tile_x {
                     let index = tile.leading_zeros() as usize;
-                    let next_tile_x = bitmask_tile_x + index;
+                    let next_tile_x = (bitmask_tile_x + index).min(self.max_tile_x);
 
                     if next_tile_x > tile_x {
                         let mut solid = true;
