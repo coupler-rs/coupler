@@ -400,35 +400,35 @@ impl Not for u32x4 {
     }
 }
 
-impl Shl<u32x4> for u32x4 {
+impl Shl<usize> for u32x4 {
     type Output = u32x4;
 
     #[inline]
-    fn shl(self, other: u32x4) -> u32x4 {
-        unsafe { u32x4(_mm_sll_epi32(self.0, other.0)) }
+    fn shl(self, bits: usize) -> u32x4 {
+        unsafe { u32x4(_mm_sll_epi32(self.0, _mm_setr_epi32(bits as i32, 0, 0, 0))) }
     }
 }
 
-impl ShlAssign<u32x4> for u32x4 {
+impl ShlAssign<usize> for u32x4 {
     #[inline]
-    fn shl_assign(&mut self, other: u32x4) {
-        *self = *self << other;
+    fn shl_assign(&mut self, bits: usize) {
+        *self = *self << bits;
     }
 }
 
-impl Shr<u32x4> for u32x4 {
+impl Shr<usize> for u32x4 {
     type Output = u32x4;
 
     #[inline]
-    fn shr(self, other: u32x4) -> u32x4 {
-        unsafe { u32x4(_mm_srl_epi32(self.0, other.0)) }
+    fn shr(self, bits: usize) -> u32x4 {
+        unsafe { u32x4(_mm_srl_epi32(self.0, _mm_setr_epi32(bits as i32, 0, 0, 0))) }
     }
 }
 
-impl ShrAssign<u32x4> for u32x4 {
+impl ShrAssign<usize> for u32x4 {
     #[inline]
-    fn shr_assign(&mut self, other: u32x4) {
-        *self = *self >> other;
+    fn shr_assign(&mut self, bits: usize) {
+        *self = *self >> bits;
     }
 }
 
@@ -634,35 +634,35 @@ impl Not for i32x4 {
     }
 }
 
-impl Shl<i32x4> for i32x4 {
+impl Shl<usize> for i32x4 {
     type Output = i32x4;
 
     #[inline]
-    fn shl(self, other: i32x4) -> i32x4 {
-        unsafe { i32x4(_mm_sll_epi32(self.0, other.0)) }
+    fn shl(self, bits: usize) -> i32x4 {
+        unsafe { i32x4(_mm_sll_epi32(self.0, _mm_setr_epi32(bits as i32, 0, 0, 0))) }
     }
 }
 
-impl ShlAssign<i32x4> for i32x4 {
+impl ShlAssign<usize> for i32x4 {
     #[inline]
-    fn shl_assign(&mut self, other: i32x4) {
-        *self = *self << other;
+    fn shl_assign(&mut self, bits: usize) {
+        *self = *self << bits;
     }
 }
 
-impl Shr<i32x4> for i32x4 {
+impl Shr<usize> for i32x4 {
     type Output = i32x4;
 
     #[inline]
-    fn shr(self, other: i32x4) -> i32x4 {
-        unsafe { i32x4(_mm_sra_epi32(self.0, other.0)) }
+    fn shr(self, bits: usize) -> i32x4 {
+        unsafe { i32x4(_mm_sra_epi32(self.0, _mm_setr_epi32(bits as i32, 0, 0, 0))) }
     }
 }
 
-impl ShrAssign<i32x4> for i32x4 {
+impl ShrAssign<usize> for i32x4 {
     #[inline]
-    fn shr_assign(&mut self, other: i32x4) {
-        *self = *self >> other;
+    fn shr_assign(&mut self, bits: usize) {
+        *self = *self >> bits;
     }
 }
 
