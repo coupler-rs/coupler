@@ -6,6 +6,7 @@ edition = "2018"
 publish = false
 
 [dependencies]
+simd = { path = "../simd" }
 swash = { version = "0.1.4", features = ["scale"], default_features = false }
 zeno = "0.2.2"
 

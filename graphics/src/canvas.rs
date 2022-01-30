@@ -4,6 +4,8 @@ use crate::path::{Path, Verb};
 use crate::raster::{Contents, Rasterizer, TILE_SIZE, TILE_SIZE_BITS};
 use crate::text::Font;
 
+use simd::*;
+
 pub struct Canvas {
     width: usize,
     height: usize,
@@ -72,6 +74,13 @@ impl Canvas {
             }
         }
 
+        let r = f32x4::splat(color.r() as f32);
+        let g = f32x4::splat(color.g() as f32);
+        let b = f32x4::splat(color.b() as f32);
+        let a = f32x4::splat(color.a() as f32);
+
+        let a_unit = a * f32x4::splat(1.0 / 255.0);
+
         let width = self.width;
         let data = &mut self.data;
         self.rasterizer.finish(|span| match span.contents {
@@ -88,26 +97,33 @@ impl Canvas {
                     let x_offset = tile_x << TILE_SIZE_BITS;
                     let y_offset = span.tile_y << TILE_SIZE_BITS;
                     for y in 0..TILE_SIZE {
-                        for x in 0..TILE_SIZE {
-                            let pixel = &mut data[(y_offset + y) * width + x_offset + x];
-                            let coverage = mask[(y << TILE_SIZE_BITS) + x];
+                        let pixels_offset = (y_offset + y) * width + x_offset;
+                        let pixels = &mut data[pixels_offset..pixels_offset + TILE_SIZE];
 
-                            let coverage = (coverage * 255.0) as u32;
+                        let coverage_offset = y << TILE_SIZE_BITS;
+                        let coverage = &mask[coverage_offset..coverage_offset + TILE_SIZE];
 
-                            let mut r = (coverage * color.r() as u32 + 127) / 255;
-                            let mut g = (coverage * color.g() as u32 + 127) / 255;
-                            let mut b = (coverage * color.b() as u32 + 127) / 255;
-                            let mut a = (coverage * color.a() as u32 + 127) / 255;
+                        let pxs = u32x4::from_slice(pixels);
+                        let cvg = f32x4::from_slice(coverage);
 
-                            let inv_a = 255 - a;
+                        let src_a = cvg * a;
+                        let src_r = cvg * r;
+                        let src_g = cvg * g;
+                        let src_b = cvg * b;
 
-                            a += (inv_a * ((*pixel >> 24) & 0xFF) + 127) / 255;
-                            r += (inv_a * ((*pixel >> 16) & 0xFF) + 127) / 255;
-                            g += (inv_a * ((*pixel >> 8) & 0xFF) + 127) / 255;
-                            b += (inv_a * ((*pixel >> 0) & 0xFF) + 127) / 255;
+                        let dst_a = f32x4::from((pxs >> 24) & u32x4::splat(0xFF));
+                        let dst_r = f32x4::from((pxs >> 16) & u32x4::splat(0xFF));
+                        let dst_g = f32x4::from((pxs >> 8) & u32x4::splat(0xFF));
+                        let dst_b = f32x4::from((pxs >> 0) & u32x4::splat(0xFF));
 
-                            *pixel = (a << 24) | (r << 16) | (g << 8) | (b << 0);
-                        }
+                        let inv_a = f32x4::splat(1.0) - cvg * a_unit;
+                        let out_a = u32x4::from(src_a + inv_a * dst_a);
+                        let out_r = u32x4::from(src_r + inv_a * dst_r);
+                        let out_g = u32x4::from(src_g + inv_a * dst_g);
+                        let out_b = u32x4::from(src_b + inv_a * dst_b);
+
+                        let out = (out_a << 24) | (out_r << 16) | (out_g << 8) | (out_b << 0);
+                        out.write_to_slice(pixels);
                     }
                 }
             }
