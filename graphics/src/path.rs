@@ -17,6 +17,15 @@ pub enum Verb {
     Close,
 }
 
+#[derive(Copy, Clone)]
+pub enum Command {
+    Move(Vec2),
+    Line(Vec2),
+    Quadratic(Vec2, Vec2),
+    Cubic(Vec2, Vec2, Vec2),
+    Close,
+}
+
 impl Path {
     pub fn new() -> Path {
         Path { verbs: Vec::new(), points: Vec::new() }
@@ -95,20 +104,39 @@ impl Path {
         self
     }
 
-    pub(crate) fn flatten(&self) -> Path {
-        let mut path = Path::new();
+    pub fn push(&mut self, command: Command) {
+        match command {
+            Command::Move(point) => {
+                self.move_to(point);
+            }
+            Command::Line(point) => {
+                self.line_to(point);
+            }
+            Command::Quadratic(control, point) => {
+                self.quadratic_to(control, point);
+            }
+            Command::Cubic(control1, control2, point) => {
+                self.cubic_to(control1, control2, point);
+            }
+            Command::Close => {
+                self.close();
+            }
+        }
+    }
+
+    pub(crate) fn flatten(&self, mut sink: impl FnMut(Command)) {
         let mut last = Vec2::new(0.0, 0.0);
         let mut points = self.points.iter();
         for verb in self.verbs.iter() {
             match *verb {
                 Verb::Move => {
                     let point = *points.next().unwrap();
-                    path.move_to(point);
+                    sink(Command::Move(point));
                     last = point;
                 }
                 Verb::Line => {
                     let point = *points.next().unwrap();
-                    path.line_to(point);
+                    sink(Command::Line(point));
                     last = point;
                 }
                 Verb::Quadratic => {
@@ -120,7 +148,7 @@ impl Path {
                         t = (t + dt).min(1.0);
                         let p01 = Vec2::lerp(t, last, control);
                         let p12 = Vec2::lerp(t, control, point);
-                        path.line_to(Vec2::lerp(t, p01, p12));
+                        sink(Command::Line(Vec2::lerp(t, p01, p12)));
                     }
                     last = point;
                 }
@@ -140,17 +168,15 @@ impl Path {
                         let p23 = Vec2::lerp(t, control2, point);
                         let p012 = Vec2::lerp(t, p01, p12);
                         let p123 = Vec2::lerp(t, p12, p23);
-                        path.line_to(Vec2::lerp(t, p012, p123));
+                        sink(Command::Line(Vec2::lerp(t, p012, p123)));
                     }
                     last = point;
                 }
                 Verb::Close => {
-                    path.close();
+                    sink(Command::Close);
                 }
             }
         }
-
-        path
     }
 
     pub(crate) fn stroke(&self, width: f32) -> Path {
@@ -205,9 +231,10 @@ impl Path {
             }
         }
 
-        let mut path = Path::new();
+        let mut flattened = Path::new();
+        self.flatten(|command| flattened.push(command));
 
-        let flattened = self.flatten();
+        let mut path = Path::new();
 
         let mut contour_start = 0;
         let mut contour_end = 0;

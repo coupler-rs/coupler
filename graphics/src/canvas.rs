@@ -1,6 +1,6 @@
 use crate::color::Color;
 use crate::geom::Vec2;
-use crate::path::{Path, Verb};
+use crate::path::{Command, Path};
 use crate::raster::{Contents, Rasterizer, TILE_SIZE, TILE_SIZE_BITS};
 use crate::text::Font;
 
@@ -46,33 +46,26 @@ impl Canvas {
             return;
         }
 
-        let flattened = path.flatten();
-
         let mut first = Vec2::new(0.0, 0.0);
         let mut last = Vec2::new(0.0, 0.0);
 
-        let mut points = flattened.points.iter();
-        for verb in flattened.verbs {
-            match verb {
-                Verb::Move => {
-                    let point = *points.next().unwrap();
-                    first = point;
-                    last = point;
-                }
-                Verb::Line => {
-                    let point = *points.next().unwrap();
-                    self.rasterizer.add_line(last, point);
-                    last = point;
-                }
-                Verb::Close => {
-                    self.rasterizer.add_line(last, first);
-                    last = first;
-                }
-                _ => {
-                    unreachable!();
-                }
+        path.flatten(|command| match command {
+            Command::Move(point) => {
+                first = point;
+                last = point;
             }
-        }
+            Command::Line(point) => {
+                self.rasterizer.add_line(last, point);
+                last = point;
+            }
+            Command::Close => {
+                self.rasterizer.add_line(last, first);
+                last = first;
+            }
+            _ => {
+                unreachable!();
+            }
+        });
 
         let r = f32x4::splat(color.r() as f32);
         let g = f32x4::splat(color.g() as f32);
