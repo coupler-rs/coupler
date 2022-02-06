@@ -1,7 +1,7 @@
 use crate::color::Color;
 use crate::geom::Vec2;
 use crate::path::{Command, Path};
-use crate::raster::{Contents, Rasterizer, TILE_SIZE, TILE_SIZE_BITS};
+use crate::raster::{Contents, Rasterizer};
 use crate::text::Font;
 
 use simd::*;
@@ -78,46 +78,35 @@ impl Canvas {
         let data = &mut self.data;
         self.rasterizer.finish(|span| match span.contents {
             Contents::Solid => {
-                for y in 0..TILE_SIZE {
-                    let start = ((span.tile_y << TILE_SIZE_BITS) + y) * width
-                        + (span.tile_x << TILE_SIZE_BITS);
-                    let end = start + (span.width << TILE_SIZE_BITS);
-                    data[start..end].fill(color.into());
-                }
+                let start = span.y * width + span.x;
+                let end = start + span.width;
+                data[start..end].fill(color.into());
             }
             Contents::Mask(mask) => {
-                for tile_x in span.tile_x..span.tile_x + span.width {
-                    let x_offset = tile_x << TILE_SIZE_BITS;
-                    let y_offset = span.tile_y << TILE_SIZE_BITS;
-                    for y in 0..TILE_SIZE {
-                        let pixels_offset = (y_offset + y) * width + x_offset;
-                        let pixels = &mut data[pixels_offset..pixels_offset + TILE_SIZE];
+                let start = span.y * width + span.x;
+                let end = start + span.width;
+                for (pixels, coverage) in data[start..end].chunks_mut(4).zip(mask.chunks(4)) {
+                    let pxs = u32x4::from_slice(pixels);
+                    let cvg = f32x4::from_slice(coverage);
 
-                        let coverage_offset = y << TILE_SIZE_BITS;
-                        let coverage = &mask[coverage_offset..coverage_offset + TILE_SIZE];
+                    let src_a = cvg * a;
+                    let src_r = cvg * r;
+                    let src_g = cvg * g;
+                    let src_b = cvg * b;
 
-                        let pxs = u32x4::from_slice(pixels);
-                        let cvg = f32x4::from_slice(coverage);
+                    let dst_a = f32x4::from((pxs >> 24) & u32x4::splat(0xFF));
+                    let dst_r = f32x4::from((pxs >> 16) & u32x4::splat(0xFF));
+                    let dst_g = f32x4::from((pxs >> 8) & u32x4::splat(0xFF));
+                    let dst_b = f32x4::from((pxs >> 0) & u32x4::splat(0xFF));
 
-                        let src_a = cvg * a;
-                        let src_r = cvg * r;
-                        let src_g = cvg * g;
-                        let src_b = cvg * b;
+                    let inv_a = f32x4::splat(1.0) - cvg * a_unit;
+                    let out_a = u32x4::from(src_a + inv_a * dst_a);
+                    let out_r = u32x4::from(src_r + inv_a * dst_r);
+                    let out_g = u32x4::from(src_g + inv_a * dst_g);
+                    let out_b = u32x4::from(src_b + inv_a * dst_b);
 
-                        let dst_a = f32x4::from((pxs >> 24) & u32x4::splat(0xFF));
-                        let dst_r = f32x4::from((pxs >> 16) & u32x4::splat(0xFF));
-                        let dst_g = f32x4::from((pxs >> 8) & u32x4::splat(0xFF));
-                        let dst_b = f32x4::from((pxs >> 0) & u32x4::splat(0xFF));
-
-                        let inv_a = f32x4::splat(1.0) - cvg * a_unit;
-                        let out_a = u32x4::from(src_a + inv_a * dst_a);
-                        let out_r = u32x4::from(src_r + inv_a * dst_r);
-                        let out_g = u32x4::from(src_g + inv_a * dst_g);
-                        let out_b = u32x4::from(src_b + inv_a * dst_b);
-
-                        let out = (out_a << 24) | (out_r << 16) | (out_g << 8) | (out_b << 0);
-                        out.write_to_slice(pixels);
-                    }
+                    let out = (out_a << 24) | (out_r << 16) | (out_g << 8) | (out_b << 0);
+                    out.write_to_slice(pixels);
                 }
             }
         });
