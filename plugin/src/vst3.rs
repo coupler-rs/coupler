@@ -14,7 +14,6 @@ use std::{ffi, io, mem, ptr, slice};
 
 use raw_window_handle::RawWindowHandle;
 
-pub use vst3_sys;
 use vst3_sys::{BusInfo, *};
 
 fn copy_cstring(src: &str, dst: &mut [c_char]) {
@@ -71,23 +70,44 @@ fn speaker_arrangement_to_bus_layout(speaker_arrangement: SpeakerArrangement) ->
 
 #[repr(C)]
 pub struct Factory<P> {
-    pub plugin_factory_3: *const IPluginFactory3,
-    pub component: *const IComponent,
-    pub audio_processor: *const IAudioProcessor,
-    pub process_context_requirements: *const IProcessContextRequirements,
-    pub edit_controller: *const IEditController,
-    pub plug_view: *const IPlugView,
-    pub event_handler: *const IEventHandler,
-    pub timer_handler: *const ITimerHandler,
-    pub uid: TUID,
-    pub plugin_info: PluginInfo,
-    pub phantom: PhantomData<P>,
+    plugin_factory_3: *const IPluginFactory3,
+    uid: TUID,
+    plugin_info: PluginInfo,
+    phantom: PhantomData<P>,
 }
 
 unsafe impl<P> Sync for Factory<P> {}
 
 impl<P: Plugin> Factory<P> {
-    pub unsafe extern "system" fn query_interface(
+    const PLUGIN_FACTORY_3_VTABLE: IPluginFactory3 = IPluginFactory3 {
+        plugin_factory_2: IPluginFactory2 {
+            plugin_factory: IPluginFactory {
+                unknown: FUnknown {
+                    query_interface: Self::query_interface,
+                    add_ref: Self::add_ref,
+                    release: Self::release,
+                },
+                get_factory_info: Self::get_factory_info,
+                count_classes: Self::count_classes,
+                get_class_info: Self::get_class_info,
+                create_instance: Self::create_instance,
+            },
+            get_class_info_2: Self::get_class_info_2,
+        },
+        get_class_info_unicode: Self::get_class_info_unicode,
+        set_host_context: Self::set_host_context,
+    };
+
+    pub fn create(plugin_uid: [u32; 4]) -> *mut Factory<P> {
+        Arc::into_raw(Arc::new(Factory::<P> {
+            plugin_factory_3: &Self::PLUGIN_FACTORY_3_VTABLE as *const _,
+            uid: uid(plugin_uid[0], plugin_uid[1], plugin_uid[2], plugin_uid[3]),
+            plugin_info: P::info(),
+            phantom: PhantomData,
+        })) as *mut Factory<P>
+    }
+
+    unsafe extern "system" fn query_interface(
         this: *mut c_void,
         iid: *const TUID,
         obj: *mut *mut c_void,
@@ -107,7 +127,7 @@ impl<P: Plugin> Factory<P> {
         result::NO_INTERFACE
     }
 
-    pub unsafe extern "system" fn add_ref(this: *mut c_void) -> u32 {
+    unsafe extern "system" fn add_ref(this: *mut c_void) -> u32 {
         let factory = Arc::from_raw(this as *const Factory<P>);
         let _ = Arc::into_raw(factory.clone());
         let count = Arc::strong_count(&factory);
@@ -116,7 +136,7 @@ impl<P: Plugin> Factory<P> {
         count as u32
     }
 
-    pub unsafe extern "system" fn release(this: *mut c_void) -> u32 {
+    unsafe extern "system" fn release(this: *mut c_void) -> u32 {
         let factory = Arc::from_raw(this as *const Factory<P>);
         let count = Arc::strong_count(&factory) - 1;
         drop(factory);
@@ -124,7 +144,7 @@ impl<P: Plugin> Factory<P> {
         count as u32
     }
 
-    pub unsafe extern "system" fn get_factory_info(
+    unsafe extern "system" fn get_factory_info(
         this: *mut c_void,
         info: *mut PFactoryInfo,
     ) -> TResult {
@@ -140,11 +160,11 @@ impl<P: Plugin> Factory<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn count_classes(_this: *mut c_void) -> i32 {
+    unsafe extern "system" fn count_classes(_this: *mut c_void) -> i32 {
         1
     }
 
-    pub unsafe extern "system" fn get_class_info(
+    unsafe extern "system" fn get_class_info(
         this: *mut c_void,
         index: i32,
         info: *mut PClassInfo,
@@ -165,7 +185,7 @@ impl<P: Plugin> Factory<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn create_instance(
+    unsafe extern "system" fn create_instance(
         this: *mut c_void,
         cid: *const c_char,
         iid: *const c_char,
@@ -179,88 +199,12 @@ impl<P: Plugin> Factory<P> {
             return result::INVALID_ARGUMENT;
         }
 
-        let bus_list = P::buses();
-
-        let mut input_layouts = Vec::with_capacity(bus_list.inputs().len());
-        let mut inputs_enabled = Vec::with_capacity(bus_list.inputs().len());
-        for bus_info in bus_list.inputs() {
-            input_layouts.push(bus_info.default_layout.clone());
-            inputs_enabled.push(true);
-        }
-
-        let mut output_layouts = Vec::with_capacity(bus_list.outputs().len());
-        let mut outputs_enabled = Vec::with_capacity(bus_list.outputs().len());
-        for bus_info in bus_list.outputs() {
-            output_layouts.push(bus_info.default_layout.clone());
-            outputs_enabled.push(true);
-        }
-
-        let plugin = P::create();
-
-        let param_list = Arc::new(plugin.params());
-
-        let mut plugin_param_values = Vec::with_capacity(param_list.params.len());
-        let mut processor_param_values = Vec::with_capacity(param_list.params.len());
-        let mut editor_param_values = Vec::with_capacity(param_list.params.len());
-        for param in param_list.params.iter() {
-            plugin_param_values.push(AtomicF64::new(param.default));
-            processor_param_values.push(param.default);
-            editor_param_values.push(Cell::new(param.default));
-        }
-
-        let processor_state = UnsafeCell::new(ProcessorState {
-            input_buses: Vec::with_capacity(bus_list.inputs().len()),
-            output_buses: Vec::with_capacity(bus_list.outputs().len()),
-            sample_rate: 44_100.0,
-            // We can't know the maximum number of param changes in a
-            // block, so make a reasonable guess and hope we don't have to
-            // allocate more
-            param_changes: Vec::with_capacity(4 * param_list.params.len()),
-            param_values: processor_param_values,
-            processor: None,
-        });
-
-        let editor_context = Rc::new(Vst3EditorContext {
-            alive: Cell::new(true),
-            component_handler: Cell::new(ptr::null_mut()),
-            param_list: param_list.clone(),
-            param_values: editor_param_values,
-        });
-
-        let editor_state = UnsafeCell::new(EditorState {
-            plug_frame: ptr::null_mut(),
-            context: editor_context,
-            editor: None,
-        });
-
-        *obj = Arc::into_raw(Arc::new(Wrapper {
-            component: factory.component,
-            audio_processor: factory.audio_processor,
-            process_context_requirements: factory.process_context_requirements,
-            edit_controller: factory.edit_controller,
-            plug_view: factory.plug_view,
-            event_handler: factory.event_handler,
-            timer_handler: factory.timer_handler,
-            bus_list,
-            has_editor: factory.plugin_info.has_editor,
-            bus_states: UnsafeCell::new(BusStates {
-                input_layouts,
-                output_layouts,
-                inputs_enabled,
-                outputs_enabled,
-            }),
-            param_list,
-            param_values: plugin_param_values,
-            params_dirty: AtomicBool::new(false),
-            plugin,
-            processor_state,
-            editor_state,
-        })) as *mut c_void;
+        *obj = Wrapper::<P>::create(&factory.plugin_info) as *mut c_void;
 
         result::OK
     }
 
-    pub unsafe extern "system" fn get_class_info_2(
+    unsafe extern "system" fn get_class_info_2(
         this: *mut c_void,
         index: i32,
         info: *mut PClassInfo2,
@@ -286,7 +230,7 @@ impl<P: Plugin> Factory<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn get_class_info_unicode(
+    unsafe extern "system" fn get_class_info_unicode(
         this: *mut c_void,
         index: i32,
         info: *mut PClassInfoW,
@@ -312,7 +256,7 @@ impl<P: Plugin> Factory<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn set_host_context(
+    unsafe extern "system" fn set_host_context(
         _this: *mut c_void,
         _context: *mut *const FUnknown,
     ) -> TResult {
@@ -371,7 +315,7 @@ impl EditorContextInner for Vst3EditorContext {
 }
 
 #[repr(C)]
-pub struct Wrapper<P: Plugin> {
+struct Wrapper<P: Plugin> {
     component: *const IComponent,
     audio_processor: *const IAudioProcessor,
     process_context_requirements: *const IProcessContextRequirements,
@@ -418,6 +362,116 @@ struct EditorState<P: Plugin> {
 unsafe impl<P: Plugin> Sync for Wrapper<P> {}
 
 impl<P: Plugin> Wrapper<P> {
+    const COMPONENT_VTABLE: IComponent = IComponent {
+        plugin_base: IPluginBase {
+            unknown: FUnknown {
+                query_interface: Self::component_query_interface,
+                add_ref: Self::component_add_ref,
+                release: Self::component_release,
+            },
+            initialize: Self::component_initialize,
+            terminate: Self::component_terminate,
+        },
+        get_controller_class_id: Self::get_controller_class_id,
+        set_io_mode: Self::set_io_mode,
+        get_bus_count: Self::get_bus_count,
+        get_bus_info: Self::get_bus_info,
+        get_routing_info: Self::get_routing_info,
+        activate_bus: Self::activate_bus,
+        set_active: Self::set_active,
+        set_state: Self::component_set_state,
+        get_state: Self::component_get_state,
+    };
+
+    const AUDIO_PROCESSOR_VTABLE: IAudioProcessor = IAudioProcessor {
+        unknown: FUnknown {
+            query_interface: Self::audio_processor_query_interface,
+            add_ref: Self::audio_processor_add_ref,
+            release: Self::audio_processor_release,
+        },
+        set_bus_arrangements: Self::set_bus_arrangements,
+        get_bus_arrangement: Self::get_bus_arrangement,
+        can_process_sample_size: Self::can_process_sample_size,
+        get_latency_samples: Self::get_latency_samples,
+        setup_processing: Self::setup_processing,
+        set_processing: Self::set_processing,
+        process: Self::process,
+        get_tail_samples: Self::get_tail_samples,
+    };
+
+    const PROCESS_CONTEXT_REQUIREMENTS_VTABLE: IProcessContextRequirements =
+        IProcessContextRequirements {
+            unknown: FUnknown {
+                query_interface: Self::process_context_requirements_query_interface,
+                add_ref: Self::process_context_requirements_add_ref,
+                release: Self::process_context_requirements_release,
+            },
+            get_process_context_requirements: Self::get_process_context_requirements,
+        };
+
+    const EDIT_CONTROLLER_VTABLE: IEditController = IEditController {
+        plugin_base: IPluginBase {
+            unknown: FUnknown {
+                query_interface: Self::edit_controller_query_interface,
+                add_ref: Self::edit_controller_add_ref,
+                release: Self::edit_controller_release,
+            },
+            initialize: Self::edit_controller_initialize,
+            terminate: Self::edit_controller_terminate,
+        },
+        set_component_state: Self::set_component_state,
+        set_state: Self::edit_controller_set_state,
+        get_state: Self::edit_controller_get_state,
+        get_parameter_count: Self::get_parameter_count,
+        get_parameter_info: Self::get_parameter_info,
+        get_param_string_by_value: Self::get_param_string_by_value,
+        get_param_value_by_string: Self::get_param_value_by_string,
+        normalized_param_to_plain: Self::normalized_param_to_plain,
+        plain_param_to_normalized: Self::plain_param_to_normalized,
+        get_param_normalized: Self::get_param_normalized,
+        set_param_normalized: Self::set_param_normalized,
+        set_component_handler: Self::set_component_handler,
+        create_view: Self::create_view,
+    };
+
+    const PLUG_VIEW_VTABLE: IPlugView = IPlugView {
+        unknown: FUnknown {
+            query_interface: Self::plug_view_query_interface,
+            add_ref: Self::plug_view_add_ref,
+            release: Self::plug_view_release,
+        },
+        is_platform_type_supported: Self::is_platform_type_supported,
+        attached: Self::attached,
+        removed: Self::removed,
+        on_wheel: Self::on_wheel,
+        on_key_down: Self::on_key_down,
+        on_key_up: Self::on_key_up,
+        get_size: Self::get_size,
+        on_size: Self::on_size,
+        on_focus: Self::on_focus,
+        set_frame: Self::set_frame,
+        can_resize: Self::can_resize,
+        check_size_constraint: Self::check_size_constraint,
+    };
+
+    const EVENT_HANDLER_VTABLE: IEventHandler = IEventHandler {
+        unknown: FUnknown {
+            query_interface: Self::event_handler_query_interface,
+            add_ref: Self::event_handler_add_ref,
+            release: Self::event_handler_release,
+        },
+        on_fd_is_set: Self::on_fd_is_set,
+    };
+
+    const TIMER_HANDLER_VTABLE: ITimerHandler = ITimerHandler {
+        unknown: FUnknown {
+            query_interface: Self::timer_handler_query_interface,
+            add_ref: Self::timer_handler_add_ref,
+            release: Self::timer_handler_release,
+        },
+        on_timer: Self::on_timer,
+    };
+
     const COMPONENT_OFFSET: isize = 0;
     const AUDIO_PROCESSOR_OFFSET: isize =
         Self::COMPONENT_OFFSET + mem::size_of::<*const IComponent>() as isize;
@@ -431,6 +485,87 @@ impl<P: Plugin> Wrapper<P> {
         Self::PLUG_VIEW_OFFSET + mem::size_of::<*const IPlugView>() as isize;
     const TIMER_HANDLER_OFFSET: isize =
         Self::EVENT_HANDLER_OFFSET + mem::size_of::<*const IEventHandler>() as isize;
+
+    pub fn create(plugin_info: &PluginInfo) -> *mut Wrapper<P> {
+        let bus_list = P::buses();
+
+        let mut input_layouts = Vec::with_capacity(bus_list.inputs().len());
+        let mut inputs_enabled = Vec::with_capacity(bus_list.inputs().len());
+        for bus_info in bus_list.inputs() {
+            input_layouts.push(bus_info.default_layout.clone());
+            inputs_enabled.push(true);
+        }
+
+        let mut output_layouts = Vec::with_capacity(bus_list.outputs().len());
+        let mut outputs_enabled = Vec::with_capacity(bus_list.outputs().len());
+        for bus_info in bus_list.outputs() {
+            output_layouts.push(bus_info.default_layout.clone());
+            outputs_enabled.push(true);
+        }
+
+        let plugin = P::create();
+
+        let param_list = Arc::new(plugin.params());
+
+        let mut plugin_param_values = Vec::with_capacity(param_list.params.len());
+        let mut processor_param_values = Vec::with_capacity(param_list.params.len());
+        let mut editor_param_values = Vec::with_capacity(param_list.params.len());
+        for param in param_list.params.iter() {
+            plugin_param_values.push(AtomicF64::new(param.default));
+            processor_param_values.push(param.default);
+            editor_param_values.push(Cell::new(param.default));
+        }
+
+        let processor_state = UnsafeCell::new(ProcessorState {
+            input_buses: Vec::with_capacity(bus_list.inputs().len()),
+            output_buses: Vec::with_capacity(bus_list.outputs().len()),
+            sample_rate: 44_100.0,
+            // We can't know the maximum number of param changes in a
+            // block, so make a reasonable guess and hope we don't have to
+            // allocate more
+            param_changes: Vec::with_capacity(4 * param_list.params.len()),
+            param_values: processor_param_values,
+            processor: None,
+        });
+
+        let editor_context = Rc::new(Vst3EditorContext {
+            alive: Cell::new(true),
+            component_handler: Cell::new(ptr::null_mut()),
+            param_list: param_list.clone(),
+            param_values: editor_param_values,
+        });
+
+        let editor_state = UnsafeCell::new(EditorState {
+            plug_frame: ptr::null_mut(),
+            context: editor_context,
+            editor: None,
+        });
+
+        Arc::into_raw(Arc::new(Wrapper {
+            component: &Wrapper::<P>::COMPONENT_VTABLE as *const _,
+            audio_processor: &Wrapper::<P>::AUDIO_PROCESSOR_VTABLE as *const _,
+            process_context_requirements: &Wrapper::<P>::PROCESS_CONTEXT_REQUIREMENTS_VTABLE
+                as *const _,
+            edit_controller: &Wrapper::<P>::EDIT_CONTROLLER_VTABLE as *const _,
+            plug_view: &Wrapper::<P>::PLUG_VIEW_VTABLE as *const _,
+            event_handler: &Wrapper::<P>::EVENT_HANDLER_VTABLE as *const _,
+            timer_handler: &Wrapper::<P>::TIMER_HANDLER_VTABLE as *const _,
+            bus_list,
+            has_editor: plugin_info.has_editor,
+            bus_states: UnsafeCell::new(BusStates {
+                input_layouts,
+                output_layouts,
+                inputs_enabled,
+                outputs_enabled,
+            }),
+            param_list,
+            param_values: plugin_param_values,
+            params_dirty: AtomicBool::new(false),
+            plugin,
+            processor_state,
+            editor_state,
+        })) as *mut Wrapper<P>
+    }
 
     unsafe fn query_interface(
         this: *mut c_void,
@@ -503,7 +638,7 @@ impl<P: Plugin> Wrapper<P> {
         count as u32
     }
 
-    pub unsafe extern "system" fn component_query_interface(
+    unsafe extern "system" fn component_query_interface(
         this: *mut c_void,
         iid: *const TUID,
         obj: *mut *mut c_void,
@@ -511,37 +646,37 @@ impl<P: Plugin> Wrapper<P> {
         Self::query_interface(this.offset(-Self::COMPONENT_OFFSET), iid, obj)
     }
 
-    pub unsafe extern "system" fn component_add_ref(this: *mut c_void) -> u32 {
+    unsafe extern "system" fn component_add_ref(this: *mut c_void) -> u32 {
         Self::add_ref(this.offset(-Self::COMPONENT_OFFSET))
     }
 
-    pub unsafe extern "system" fn component_release(this: *mut c_void) -> u32 {
+    unsafe extern "system" fn component_release(this: *mut c_void) -> u32 {
         Self::release(this.offset(-Self::COMPONENT_OFFSET))
     }
 
-    pub unsafe extern "system" fn component_initialize(
+    unsafe extern "system" fn component_initialize(
         _this: *mut c_void,
         _context: *mut FUnknown,
     ) -> TResult {
         result::OK
     }
 
-    pub unsafe extern "system" fn component_terminate(_this: *mut c_void) -> TResult {
+    unsafe extern "system" fn component_terminate(_this: *mut c_void) -> TResult {
         result::OK
     }
 
-    pub unsafe extern "system" fn get_controller_class_id(
+    unsafe extern "system" fn get_controller_class_id(
         _this: *mut c_void,
         _class_id: *mut TUID,
     ) -> TResult {
         result::NOT_IMPLEMENTED
     }
 
-    pub unsafe extern "system" fn set_io_mode(_this: *mut c_void, _mode: IoMode) -> TResult {
+    unsafe extern "system" fn set_io_mode(_this: *mut c_void, _mode: IoMode) -> TResult {
         result::OK
     }
 
-    pub unsafe extern "system" fn get_bus_count(
+    unsafe extern "system" fn get_bus_count(
         this: *mut c_void,
         media_type: MediaType,
         dir: BusDirection,
@@ -559,7 +694,7 @@ impl<P: Plugin> Wrapper<P> {
         }
     }
 
-    pub unsafe extern "system" fn get_bus_info(
+    unsafe extern "system" fn get_bus_info(
         this: *mut c_void,
         media_type: MediaType,
         dir: BusDirection,
@@ -603,7 +738,7 @@ impl<P: Plugin> Wrapper<P> {
         result::INVALID_ARGUMENT
     }
 
-    pub unsafe extern "system" fn get_routing_info(
+    unsafe extern "system" fn get_routing_info(
         _this: *mut c_void,
         _in_info: *mut RoutingInfo,
         _out_info: *mut RoutingInfo,
@@ -611,7 +746,7 @@ impl<P: Plugin> Wrapper<P> {
         result::NOT_IMPLEMENTED
     }
 
-    pub unsafe extern "system" fn activate_bus(
+    unsafe extern "system" fn activate_bus(
         this: *mut c_void,
         media_type: MediaType,
         dir: BusDirection,
@@ -641,7 +776,7 @@ impl<P: Plugin> Wrapper<P> {
         result::INVALID_ARGUMENT
     }
 
-    pub unsafe extern "system" fn set_active(this: *mut c_void, state: TBool) -> TResult {
+    unsafe extern "system" fn set_active(this: *mut c_void, state: TBool) -> TResult {
         let wrapper = &*(this.offset(-Self::COMPONENT_OFFSET) as *const Wrapper<P>);
         let bus_states = &mut *wrapper.bus_states.get();
         let processor_state = &mut *wrapper.processor_state.get();
@@ -666,7 +801,7 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn component_set_state(
+    unsafe extern "system" fn component_set_state(
         this: *mut c_void,
         state: *mut *const IBStream,
     ) -> TResult {
@@ -705,7 +840,7 @@ impl<P: Plugin> Wrapper<P> {
         }
     }
 
-    pub unsafe extern "system" fn component_get_state(
+    unsafe extern "system" fn component_get_state(
         this: *mut c_void,
         state: *mut *const IBStream,
     ) -> TResult {
@@ -745,7 +880,7 @@ impl<P: Plugin> Wrapper<P> {
         }
     }
 
-    pub unsafe extern "system" fn audio_processor_query_interface(
+    unsafe extern "system" fn audio_processor_query_interface(
         this: *mut c_void,
         iid: *const TUID,
         obj: *mut *mut c_void,
@@ -753,15 +888,15 @@ impl<P: Plugin> Wrapper<P> {
         Self::query_interface(this.offset(-Self::AUDIO_PROCESSOR_OFFSET), iid, obj)
     }
 
-    pub unsafe extern "system" fn audio_processor_add_ref(this: *mut c_void) -> u32 {
+    unsafe extern "system" fn audio_processor_add_ref(this: *mut c_void) -> u32 {
         Self::add_ref(this.offset(-Self::AUDIO_PROCESSOR_OFFSET))
     }
 
-    pub unsafe extern "system" fn audio_processor_release(this: *mut c_void) -> u32 {
+    unsafe extern "system" fn audio_processor_release(this: *mut c_void) -> u32 {
         Self::release(this.offset(-Self::AUDIO_PROCESSOR_OFFSET))
     }
 
-    pub unsafe extern "system" fn set_bus_arrangements(
+    unsafe extern "system" fn set_bus_arrangements(
         this: *mut c_void,
         inputs: *const SpeakerArrangement,
         num_ins: i32,
@@ -815,7 +950,7 @@ impl<P: Plugin> Wrapper<P> {
         result::TRUE
     }
 
-    pub unsafe extern "system" fn get_bus_arrangement(
+    unsafe extern "system" fn get_bus_arrangement(
         this: *mut c_void,
         dir: BusDirection,
         index: i32,
@@ -838,7 +973,7 @@ impl<P: Plugin> Wrapper<P> {
         result::INVALID_ARGUMENT
     }
 
-    pub unsafe extern "system" fn can_process_sample_size(
+    unsafe extern "system" fn can_process_sample_size(
         _this: *mut c_void,
         symbolic_sample_size: i32,
     ) -> TResult {
@@ -849,11 +984,11 @@ impl<P: Plugin> Wrapper<P> {
         }
     }
 
-    pub unsafe extern "system" fn get_latency_samples(_this: *mut c_void) -> u32 {
+    unsafe extern "system" fn get_latency_samples(_this: *mut c_void) -> u32 {
         0
     }
 
-    pub unsafe extern "system" fn setup_processing(
+    unsafe extern "system" fn setup_processing(
         this: *mut c_void,
         setup: *mut ProcessSetup,
     ) -> TResult {
@@ -867,7 +1002,7 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn set_processing(this: *mut c_void, state: TBool) -> TResult {
+    unsafe extern "system" fn set_processing(this: *mut c_void, state: TBool) -> TResult {
         let wrapper = &*(this.offset(-Self::AUDIO_PROCESSOR_OFFSET) as *const Wrapper<P>);
         let bus_states = &*wrapper.bus_states.get();
         let processor_state = &mut *wrapper.processor_state.get();
@@ -893,7 +1028,7 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn process(this: *mut c_void, data: *mut ProcessData) -> TResult {
+    unsafe extern "system" fn process(this: *mut c_void, data: *mut ProcessData) -> TResult {
         let wrapper = &*(this.offset(-Self::AUDIO_PROCESSOR_OFFSET) as *const Wrapper<P>);
         let bus_states = &*wrapper.bus_states.get();
         let processor_state = &mut *wrapper.processor_state.get();
@@ -1069,11 +1204,11 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn get_tail_samples(_this: *mut c_void) -> u32 {
+    unsafe extern "system" fn get_tail_samples(_this: *mut c_void) -> u32 {
         0
     }
 
-    pub unsafe extern "system" fn process_context_requirements_query_interface(
+    unsafe extern "system" fn process_context_requirements_query_interface(
         this: *mut c_void,
         iid: *const TUID,
         obj: *mut *mut c_void,
@@ -1081,19 +1216,19 @@ impl<P: Plugin> Wrapper<P> {
         Self::query_interface(this.offset(-Self::PROCESS_CONTEXT_REQUIREMENTS_OFFSET), iid, obj)
     }
 
-    pub unsafe extern "system" fn process_context_requirements_add_ref(this: *mut c_void) -> u32 {
+    unsafe extern "system" fn process_context_requirements_add_ref(this: *mut c_void) -> u32 {
         Self::add_ref(this.offset(-Self::PROCESS_CONTEXT_REQUIREMENTS_OFFSET))
     }
 
-    pub unsafe extern "system" fn process_context_requirements_release(this: *mut c_void) -> u32 {
+    unsafe extern "system" fn process_context_requirements_release(this: *mut c_void) -> u32 {
         Self::release(this.offset(-Self::PROCESS_CONTEXT_REQUIREMENTS_OFFSET))
     }
 
-    pub unsafe extern "system" fn get_process_context_requirements(_this: *mut c_void) -> u32 {
+    unsafe extern "system" fn get_process_context_requirements(_this: *mut c_void) -> u32 {
         0
     }
 
-    pub unsafe extern "system" fn edit_controller_query_interface(
+    unsafe extern "system" fn edit_controller_query_interface(
         this: *mut c_void,
         iid: *const TUID,
         obj: *mut *mut c_void,
@@ -1101,22 +1236,22 @@ impl<P: Plugin> Wrapper<P> {
         Self::query_interface(this.offset(-Self::EDIT_CONTROLLER_OFFSET), iid, obj)
     }
 
-    pub unsafe extern "system" fn edit_controller_add_ref(this: *mut c_void) -> u32 {
+    unsafe extern "system" fn edit_controller_add_ref(this: *mut c_void) -> u32 {
         Self::add_ref(this.offset(-Self::EDIT_CONTROLLER_OFFSET))
     }
 
-    pub unsafe extern "system" fn edit_controller_release(this: *mut c_void) -> u32 {
+    unsafe extern "system" fn edit_controller_release(this: *mut c_void) -> u32 {
         Self::release(this.offset(-Self::EDIT_CONTROLLER_OFFSET))
     }
 
-    pub unsafe extern "system" fn edit_controller_initialize(
+    unsafe extern "system" fn edit_controller_initialize(
         _this: *mut c_void,
         _context: *mut FUnknown,
     ) -> TResult {
         result::OK
     }
 
-    pub unsafe extern "system" fn edit_controller_terminate(this: *mut c_void) -> TResult {
+    unsafe extern "system" fn edit_controller_terminate(this: *mut c_void) -> TResult {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
@@ -1135,7 +1270,7 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn set_component_state(
+    unsafe extern "system" fn set_component_state(
         this: *mut c_void,
         _state: *mut *const IBStream,
     ) -> TResult {
@@ -1154,27 +1289,27 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn edit_controller_set_state(
+    unsafe extern "system" fn edit_controller_set_state(
         _this: *mut c_void,
         _state: *mut *const IBStream,
     ) -> TResult {
         result::OK
     }
 
-    pub unsafe extern "system" fn edit_controller_get_state(
+    unsafe extern "system" fn edit_controller_get_state(
         _this: *mut c_void,
         _state: *mut *const IBStream,
     ) -> TResult {
         result::OK
     }
 
-    pub unsafe extern "system" fn get_parameter_count(this: *mut c_void) -> i32 {
+    unsafe extern "system" fn get_parameter_count(this: *mut c_void) -> i32 {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
 
         wrapper.param_list.params.len() as i32
     }
 
-    pub unsafe extern "system" fn get_parameter_info(
+    unsafe extern "system" fn get_parameter_info(
         this: *mut c_void,
         param_index: i32,
         info: *mut ParameterInfo,
@@ -1200,7 +1335,7 @@ impl<P: Plugin> Wrapper<P> {
         }
     }
 
-    pub unsafe extern "system" fn get_param_string_by_value(
+    unsafe extern "system" fn get_param_string_by_value(
         this: *mut c_void,
         id: u32,
         value_normalized: f64,
@@ -1222,7 +1357,7 @@ impl<P: Plugin> Wrapper<P> {
         result::INVALID_ARGUMENT
     }
 
-    pub unsafe extern "system" fn get_param_value_by_string(
+    unsafe extern "system" fn get_param_value_by_string(
         this: *mut c_void,
         id: u32,
         string: *const TChar,
@@ -1247,7 +1382,7 @@ impl<P: Plugin> Wrapper<P> {
         result::INVALID_ARGUMENT
     }
 
-    pub unsafe extern "system" fn normalized_param_to_plain(
+    unsafe extern "system" fn normalized_param_to_plain(
         this: *mut c_void,
         id: u32,
         value_normalized: f64,
@@ -1261,7 +1396,7 @@ impl<P: Plugin> Wrapper<P> {
         0.0
     }
 
-    pub unsafe extern "system" fn plain_param_to_normalized(
+    unsafe extern "system" fn plain_param_to_normalized(
         this: *mut c_void,
         id: u32,
         plain_value: f64,
@@ -1275,7 +1410,7 @@ impl<P: Plugin> Wrapper<P> {
         0.0
     }
 
-    pub unsafe extern "system" fn get_param_normalized(this: *mut c_void, id: u32) -> f64 {
+    unsafe extern "system" fn get_param_normalized(this: *mut c_void, id: u32) -> f64 {
         let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &*wrapper.editor_state.get();
 
@@ -1287,7 +1422,7 @@ impl<P: Plugin> Wrapper<P> {
         0.0
     }
 
-    pub unsafe extern "system" fn set_param_normalized(
+    unsafe extern "system" fn set_param_normalized(
         this: *mut c_void,
         id: u32,
         value: f64,
@@ -1305,7 +1440,7 @@ impl<P: Plugin> Wrapper<P> {
         result::INVALID_ARGUMENT
     }
 
-    pub unsafe extern "system" fn set_component_handler(
+    unsafe extern "system" fn set_component_handler(
         this: *mut c_void,
         handler: *mut *const IComponentHandler,
     ) -> TResult {
@@ -1320,7 +1455,7 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn create_view(
+    unsafe extern "system" fn create_view(
         this: *mut c_void,
         name: *const c_char,
     ) -> *mut *const IPlugView {
@@ -1339,7 +1474,7 @@ impl<P: Plugin> Wrapper<P> {
         ptr::null_mut()
     }
 
-    pub unsafe extern "system" fn plug_view_query_interface(
+    unsafe extern "system" fn plug_view_query_interface(
         this: *mut c_void,
         iid: *const TUID,
         obj: *mut *mut c_void,
@@ -1347,15 +1482,15 @@ impl<P: Plugin> Wrapper<P> {
         Self::query_interface(this.offset(-Self::PLUG_VIEW_OFFSET), iid, obj)
     }
 
-    pub unsafe extern "system" fn plug_view_add_ref(this: *mut c_void) -> u32 {
+    unsafe extern "system" fn plug_view_add_ref(this: *mut c_void) -> u32 {
         Self::add_ref(this.offset(-Self::PLUG_VIEW_OFFSET))
     }
 
-    pub unsafe extern "system" fn plug_view_release(this: *mut c_void) -> u32 {
+    unsafe extern "system" fn plug_view_release(this: *mut c_void) -> u32 {
         Self::release(this.offset(-Self::PLUG_VIEW_OFFSET))
     }
 
-    pub unsafe extern "system" fn is_platform_type_supported(
+    unsafe extern "system" fn is_platform_type_supported(
         _this: *mut c_void,
         platform_type: *const c_char,
     ) -> TResult {
@@ -1379,7 +1514,7 @@ impl<P: Plugin> Wrapper<P> {
         result::FALSE
     }
 
-    pub unsafe extern "system" fn attached(
+    unsafe extern "system" fn attached(
         this: *mut c_void,
         parent: *mut c_void,
         platform_type: *const c_char,
@@ -1448,7 +1583,7 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn removed(this: *mut c_void) -> TResult {
+    unsafe extern "system" fn removed(this: *mut c_void) -> TResult {
         let wrapper = &*(this.offset(-Self::PLUG_VIEW_OFFSET) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
@@ -1489,11 +1624,11 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn on_wheel(_this: *mut c_void, _distance: f32) -> TResult {
+    unsafe extern "system" fn on_wheel(_this: *mut c_void, _distance: f32) -> TResult {
         result::NOT_IMPLEMENTED
     }
 
-    pub unsafe extern "system" fn on_key_down(
+    unsafe extern "system" fn on_key_down(
         _this: *mut c_void,
         _key: i16,
         _key_code: i16,
@@ -1502,7 +1637,7 @@ impl<P: Plugin> Wrapper<P> {
         result::NOT_IMPLEMENTED
     }
 
-    pub unsafe extern "system" fn on_key_up(
+    unsafe extern "system" fn on_key_up(
         _this: *mut c_void,
         _key: i16,
         _key_code: i16,
@@ -1511,7 +1646,7 @@ impl<P: Plugin> Wrapper<P> {
         result::NOT_IMPLEMENTED
     }
 
-    pub unsafe extern "system" fn get_size(_this: *mut c_void, size: *mut ViewRect) -> TResult {
+    unsafe extern "system" fn get_size(_this: *mut c_void, size: *mut ViewRect) -> TResult {
         let (width, height) = P::Editor::initial_size();
 
         let size = &mut *size;
@@ -1523,18 +1658,18 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn on_size(
+    unsafe extern "system" fn on_size(
         _this: *mut c_void,
         _new_size: *const ViewRect,
     ) -> TResult {
         result::NOT_IMPLEMENTED
     }
 
-    pub unsafe extern "system" fn on_focus(_this: *mut c_void, _state: TBool) -> TResult {
+    unsafe extern "system" fn on_focus(_this: *mut c_void, _state: TBool) -> TResult {
         result::NOT_IMPLEMENTED
     }
 
-    pub unsafe extern "system" fn set_frame(
+    unsafe extern "system" fn set_frame(
         this: *mut c_void,
         frame: *mut *const IPlugFrame,
     ) -> TResult {
@@ -1552,18 +1687,18 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    pub unsafe extern "system" fn can_resize(_this: *mut c_void) -> TResult {
+    unsafe extern "system" fn can_resize(_this: *mut c_void) -> TResult {
         result::FALSE
     }
 
-    pub unsafe extern "system" fn check_size_constraint(
+    unsafe extern "system" fn check_size_constraint(
         _this: *mut c_void,
         _rect: *mut ViewRect,
     ) -> TResult {
         result::NOT_IMPLEMENTED
     }
 
-    pub unsafe extern "system" fn event_handler_query_interface(
+    unsafe extern "system" fn event_handler_query_interface(
         this: *mut c_void,
         iid: *const TUID,
         obj: *mut *mut c_void,
@@ -1571,16 +1706,16 @@ impl<P: Plugin> Wrapper<P> {
         Self::query_interface(this.offset(-Self::EVENT_HANDLER_OFFSET), iid, obj)
     }
 
-    pub unsafe extern "system" fn event_handler_add_ref(this: *mut c_void) -> u32 {
+    unsafe extern "system" fn event_handler_add_ref(this: *mut c_void) -> u32 {
         Self::add_ref(this.offset(-Self::EVENT_HANDLER_OFFSET))
     }
 
-    pub unsafe extern "system" fn event_handler_release(this: *mut c_void) -> u32 {
+    unsafe extern "system" fn event_handler_release(this: *mut c_void) -> u32 {
         Self::release(this.offset(-Self::EVENT_HANDLER_OFFSET))
     }
 
     #[cfg(target_os = "linux")]
-    pub unsafe extern "system" fn on_fd_is_set(this: *mut c_void, _fd: c_int) {
+    unsafe extern "system" fn on_fd_is_set(this: *mut c_void, _fd: c_int) {
         let wrapper = &*(this.offset(-Self::EVENT_HANDLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
@@ -1590,9 +1725,9 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     #[cfg(not(target_os = "linux"))]
-    pub unsafe extern "system" fn on_fd_is_set(_this: *mut c_void, _fd: c_int) {}
+    unsafe extern "system" fn on_fd_is_set(_this: *mut c_void, _fd: c_int) {}
 
-    pub unsafe extern "system" fn timer_handler_query_interface(
+    unsafe extern "system" fn timer_handler_query_interface(
         this: *mut c_void,
         iid: *const TUID,
         obj: *mut *mut c_void,
@@ -1600,16 +1735,16 @@ impl<P: Plugin> Wrapper<P> {
         Self::query_interface(this.offset(-Self::TIMER_HANDLER_OFFSET), iid, obj)
     }
 
-    pub unsafe extern "system" fn timer_handler_add_ref(this: *mut c_void) -> u32 {
+    unsafe extern "system" fn timer_handler_add_ref(this: *mut c_void) -> u32 {
         Self::add_ref(this.offset(-Self::TIMER_HANDLER_OFFSET))
     }
 
-    pub unsafe extern "system" fn timer_handler_release(this: *mut c_void) -> u32 {
+    unsafe extern "system" fn timer_handler_release(this: *mut c_void) -> u32 {
         Self::release(this.offset(-Self::TIMER_HANDLER_OFFSET))
     }
 
     #[cfg(target_os = "linux")]
-    pub unsafe extern "system" fn on_timer(this: *mut c_void) {
+    unsafe extern "system" fn on_timer(this: *mut c_void) {
         let wrapper = &*(this.offset(-Self::TIMER_HANDLER_OFFSET) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
@@ -1619,7 +1754,7 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     #[cfg(not(target_os = "linux"))]
-    pub unsafe extern "system" fn on_timer(_this: *mut c_void) {}
+    unsafe extern "system" fn on_timer(_this: *mut c_void) {}
 }
 
 #[macro_export]
@@ -1627,143 +1762,10 @@ macro_rules! vst3 {
     ($plugin:ty, $uid:expr) => {
         mod vst3_impl {
             use std::ffi::c_void;
-            use std::marker::PhantomData;
             use std::sync::Arc;
 
             use $crate::plugin::*;
-            use $crate::vst3::vst3_sys::*;
             use $crate::vst3::*;
-
-            static PLUGIN_FACTORY_3_VTABLE: IPluginFactory3 = IPluginFactory3 {
-                plugin_factory_2: IPluginFactory2 {
-                    plugin_factory: IPluginFactory {
-                        unknown: FUnknown {
-                            query_interface: Factory::<$plugin>::query_interface,
-                            add_ref: Factory::<$plugin>::add_ref,
-                            release: Factory::<$plugin>::release,
-                        },
-                        get_factory_info: Factory::<$plugin>::get_factory_info,
-                        count_classes: Factory::<$plugin>::count_classes,
-                        get_class_info: Factory::<$plugin>::get_class_info,
-                        create_instance: Factory::<$plugin>::create_instance,
-                    },
-                    get_class_info_2: Factory::<$plugin>::get_class_info_2,
-                },
-                get_class_info_unicode: Factory::<$plugin>::get_class_info_unicode,
-                set_host_context: Factory::<$plugin>::set_host_context,
-            };
-
-            static COMPONENT_VTABLE: IComponent = IComponent {
-                plugin_base: IPluginBase {
-                    unknown: FUnknown {
-                        query_interface: Wrapper::<$plugin>::component_query_interface,
-                        add_ref: Wrapper::<$plugin>::component_add_ref,
-                        release: Wrapper::<$plugin>::component_release,
-                    },
-                    initialize: Wrapper::<$plugin>::component_initialize,
-                    terminate: Wrapper::<$plugin>::component_terminate,
-                },
-                get_controller_class_id: Wrapper::<$plugin>::get_controller_class_id,
-                set_io_mode: Wrapper::<$plugin>::set_io_mode,
-                get_bus_count: Wrapper::<$plugin>::get_bus_count,
-                get_bus_info: Wrapper::<$plugin>::get_bus_info,
-                get_routing_info: Wrapper::<$plugin>::get_routing_info,
-                activate_bus: Wrapper::<$plugin>::activate_bus,
-                set_active: Wrapper::<$plugin>::set_active,
-                set_state: Wrapper::<$plugin>::component_set_state,
-                get_state: Wrapper::<$plugin>::component_get_state,
-            };
-
-            static AUDIO_PROCESSOR_VTABLE: IAudioProcessor = IAudioProcessor {
-                unknown: FUnknown {
-                    query_interface: Wrapper::<$plugin>::audio_processor_query_interface,
-                    add_ref: Wrapper::<$plugin>::audio_processor_add_ref,
-                    release: Wrapper::<$plugin>::audio_processor_release,
-                },
-                set_bus_arrangements: Wrapper::<$plugin>::set_bus_arrangements,
-                get_bus_arrangement: Wrapper::<$plugin>::get_bus_arrangement,
-                can_process_sample_size: Wrapper::<$plugin>::can_process_sample_size,
-                get_latency_samples: Wrapper::<$plugin>::get_latency_samples,
-                setup_processing: Wrapper::<$plugin>::setup_processing,
-                set_processing: Wrapper::<$plugin>::set_processing,
-                process: Wrapper::<$plugin>::process,
-                get_tail_samples: Wrapper::<$plugin>::get_tail_samples,
-            };
-
-            static PROCESS_CONTEXT_REQUIREMENTS_VTABLE: IProcessContextRequirements =
-                IProcessContextRequirements {
-                    unknown: FUnknown {
-                        query_interface:
-                            Wrapper::<$plugin>::process_context_requirements_query_interface,
-                        add_ref: Wrapper::<$plugin>::process_context_requirements_add_ref,
-                        release: Wrapper::<$plugin>::process_context_requirements_release,
-                    },
-                    get_process_context_requirements:
-                        Wrapper::<$plugin>::get_process_context_requirements,
-                };
-
-            static EDIT_CONTROLLER_VTABLE: IEditController = IEditController {
-                plugin_base: IPluginBase {
-                    unknown: FUnknown {
-                        query_interface: Wrapper::<$plugin>::edit_controller_query_interface,
-                        add_ref: Wrapper::<$plugin>::edit_controller_add_ref,
-                        release: Wrapper::<$plugin>::edit_controller_release,
-                    },
-                    initialize: Wrapper::<$plugin>::edit_controller_initialize,
-                    terminate: Wrapper::<$plugin>::edit_controller_terminate,
-                },
-                set_component_state: Wrapper::<$plugin>::set_component_state,
-                set_state: Wrapper::<$plugin>::edit_controller_set_state,
-                get_state: Wrapper::<$plugin>::edit_controller_get_state,
-                get_parameter_count: Wrapper::<$plugin>::get_parameter_count,
-                get_parameter_info: Wrapper::<$plugin>::get_parameter_info,
-                get_param_string_by_value: Wrapper::<$plugin>::get_param_string_by_value,
-                get_param_value_by_string: Wrapper::<$plugin>::get_param_value_by_string,
-                normalized_param_to_plain: Wrapper::<$plugin>::normalized_param_to_plain,
-                plain_param_to_normalized: Wrapper::<$plugin>::plain_param_to_normalized,
-                get_param_normalized: Wrapper::<$plugin>::get_param_normalized,
-                set_param_normalized: Wrapper::<$plugin>::set_param_normalized,
-                set_component_handler: Wrapper::<$plugin>::set_component_handler,
-                create_view: Wrapper::<$plugin>::create_view,
-            };
-
-            static PLUG_VIEW_VTABLE: IPlugView = IPlugView {
-                unknown: FUnknown {
-                    query_interface: Wrapper::<$plugin>::plug_view_query_interface,
-                    add_ref: Wrapper::<$plugin>::plug_view_add_ref,
-                    release: Wrapper::<$plugin>::plug_view_release,
-                },
-                is_platform_type_supported: Wrapper::<$plugin>::is_platform_type_supported,
-                attached: Wrapper::<$plugin>::attached,
-                removed: Wrapper::<$plugin>::removed,
-                on_wheel: Wrapper::<$plugin>::on_wheel,
-                on_key_down: Wrapper::<$plugin>::on_key_down,
-                on_key_up: Wrapper::<$plugin>::on_key_up,
-                get_size: Wrapper::<$plugin>::get_size,
-                on_size: Wrapper::<$plugin>::on_size,
-                on_focus: Wrapper::<$plugin>::on_focus,
-                set_frame: Wrapper::<$plugin>::set_frame,
-                can_resize: Wrapper::<$plugin>::can_resize,
-                check_size_constraint: Wrapper::<$plugin>::check_size_constraint,
-            };
-
-            static EVENT_HANDLER_VTABLE: IEventHandler = IEventHandler {
-                unknown: FUnknown {
-                    query_interface: Wrapper::<$plugin>::event_handler_query_interface,
-                    add_ref: Wrapper::<$plugin>::event_handler_add_ref,
-                    release: Wrapper::<$plugin>::event_handler_release,
-                },
-                on_fd_is_set: Wrapper::<$plugin>::on_fd_is_set,
-            };
-
-            static TIMER_HANDLER_VTABLE: ITimerHandler = ITimerHandler {
-                unknown: FUnknown {
-                    query_interface: Wrapper::<$plugin>::timer_handler_query_interface,
-                    add_ref: Wrapper::<$plugin>::timer_handler_add_ref,
-                    release: Wrapper::<$plugin>::timer_handler_release,
-                },
-                on_timer: Wrapper::<$plugin>::on_timer,
-            };
 
             #[cfg(target_os = "windows")]
             #[no_mangle]
@@ -1803,19 +1805,7 @@ macro_rules! vst3 {
 
             #[no_mangle]
             extern "system" fn GetPluginFactory() -> *mut c_void {
-                Arc::into_raw(Arc::new(Factory::<$plugin> {
-                    plugin_factory_3: &PLUGIN_FACTORY_3_VTABLE,
-                    component: &COMPONENT_VTABLE,
-                    audio_processor: &AUDIO_PROCESSOR_VTABLE,
-                    process_context_requirements: &PROCESS_CONTEXT_REQUIREMENTS_VTABLE,
-                    edit_controller: &EDIT_CONTROLLER_VTABLE,
-                    plug_view: &PLUG_VIEW_VTABLE,
-                    event_handler: &EVENT_HANDLER_VTABLE,
-                    timer_handler: &TIMER_HANDLER_VTABLE,
-                    uid: uid($uid[0], $uid[1], $uid[2], $uid[3]),
-                    plugin_info: <$plugin>::info(),
-                    phantom: PhantomData,
-                })) as *mut c_void
+                Factory::<$plugin>::create($uid) as *mut c_void
             }
         }
     };
