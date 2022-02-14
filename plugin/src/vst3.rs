@@ -10,11 +10,23 @@ use std::os::raw::{c_char, c_int};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::{ffi, io, mem, ptr, slice};
+use std::{ffi, io, ptr, slice};
 
 use raw_window_handle::RawWindowHandle;
 
 use vst3_sys::{BusInfo, *};
+
+macro_rules! offset_of {
+    ($struct:ty, $field:ident) => {
+        {
+            let dummy = std::mem::MaybeUninit::<$struct>::uninit();
+            let base = dummy.as_ptr();
+            let field = std::ptr::addr_of!((*base).$field);
+
+            (field as *const c_void).offset_from(base as *const c_void)
+        }
+    }
+}
 
 fn copy_cstring(src: &str, dst: &mut [c_char]) {
     let c_string = CString::new(src).unwrap_or_else(|_| CString::default());
@@ -472,20 +484,6 @@ impl<P: Plugin> Wrapper<P> {
         on_timer: Self::on_timer,
     };
 
-    const COMPONENT_OFFSET: isize = 0;
-    const AUDIO_PROCESSOR_OFFSET: isize =
-        Self::COMPONENT_OFFSET + mem::size_of::<*const IComponent>() as isize;
-    const PROCESS_CONTEXT_REQUIREMENTS_OFFSET: isize =
-        Self::AUDIO_PROCESSOR_OFFSET + mem::size_of::<*const IAudioProcessor>() as isize;
-    const EDIT_CONTROLLER_OFFSET: isize = Self::PROCESS_CONTEXT_REQUIREMENTS_OFFSET
-        + mem::size_of::<*const IProcessContextRequirements>() as isize;
-    const PLUG_VIEW_OFFSET: isize =
-        Self::EDIT_CONTROLLER_OFFSET + mem::size_of::<*const IEditController>() as isize;
-    const EVENT_HANDLER_OFFSET: isize =
-        Self::PLUG_VIEW_OFFSET + mem::size_of::<*const IPlugView>() as isize;
-    const TIMER_HANDLER_OFFSET: isize =
-        Self::EVENT_HANDLER_OFFSET + mem::size_of::<*const IEventHandler>() as isize;
-
     pub fn create(plugin_info: &PluginInfo) -> *mut Wrapper<P> {
         let bus_list = P::buses();
 
@@ -578,43 +576,43 @@ impl<P: Plugin> Wrapper<P> {
 
         if iid == FUnknown::IID || iid == IComponent::IID {
             Self::add_ref(this);
-            *obj = this.offset(Self::COMPONENT_OFFSET);
+            *obj = this.offset(offset_of!(Self, component));
             return result::OK;
         }
 
         if iid == IAudioProcessor::IID {
             Self::add_ref(this);
-            *obj = this.offset(Self::AUDIO_PROCESSOR_OFFSET);
+            *obj = this.offset(offset_of!(Self, audio_processor));
             return result::OK;
         }
 
         if iid == IProcessContextRequirements::IID {
             Self::add_ref(this);
-            *obj = this.offset(Self::PROCESS_CONTEXT_REQUIREMENTS_OFFSET);
+            *obj = this.offset(offset_of!(Self, process_context_requirements));
             return result::OK;
         }
 
         if iid == IEditController::IID {
             Self::add_ref(this);
-            *obj = this.offset(Self::EDIT_CONTROLLER_OFFSET);
+            *obj = this.offset(offset_of!(Self, edit_controller));
             return result::OK;
         }
 
         if iid == IPlugView::IID && wrapper.has_editor {
             Self::add_ref(this);
-            *obj = this.offset(Self::PLUG_VIEW_OFFSET);
+            *obj = this.offset(offset_of!(Self, plug_view));
             return result::OK;
         }
 
         if iid == IEventHandler::IID {
             Self::add_ref(this);
-            *obj = this.offset(Self::EVENT_HANDLER_OFFSET);
+            *obj = this.offset(offset_of!(Self, event_handler));
             return result::OK;
         }
 
         if iid == ITimerHandler::IID {
             Self::add_ref(this);
-            *obj = this.offset(Self::TIMER_HANDLER_OFFSET);
+            *obj = this.offset(offset_of!(Self, timer_handler));
             return result::OK;
         }
 
@@ -643,15 +641,15 @@ impl<P: Plugin> Wrapper<P> {
         iid: *const TUID,
         obj: *mut *mut c_void,
     ) -> TResult {
-        Self::query_interface(this.offset(-Self::COMPONENT_OFFSET), iid, obj)
+        Self::query_interface(this.offset(-offset_of!(Self, component)), iid, obj)
     }
 
     unsafe extern "system" fn component_add_ref(this: *mut c_void) -> u32 {
-        Self::add_ref(this.offset(-Self::COMPONENT_OFFSET))
+        Self::add_ref(this.offset(-offset_of!(Self, component)))
     }
 
     unsafe extern "system" fn component_release(this: *mut c_void) -> u32 {
-        Self::release(this.offset(-Self::COMPONENT_OFFSET))
+        Self::release(this.offset(-offset_of!(Self, component)))
     }
 
     unsafe extern "system" fn component_initialize(
@@ -681,7 +679,7 @@ impl<P: Plugin> Wrapper<P> {
         media_type: MediaType,
         dir: BusDirection,
     ) -> i32 {
-        let wrapper = &*(this.offset(-Self::COMPONENT_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, component)) as *const Wrapper<P>);
 
         match media_type {
             media_types::AUDIO => match dir {
@@ -701,7 +699,7 @@ impl<P: Plugin> Wrapper<P> {
         index: i32,
         bus: *mut BusInfo,
     ) -> TResult {
-        let wrapper = &*(this.offset(-Self::COMPONENT_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, component)) as *const Wrapper<P>);
         let bus_states = &*wrapper.bus_states.get();
 
         match media_type {
@@ -753,7 +751,7 @@ impl<P: Plugin> Wrapper<P> {
         index: i32,
         state: TBool,
     ) -> TResult {
-        let wrapper = &*(this.offset(-Self::COMPONENT_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, component)) as *const Wrapper<P>);
         let bus_states = &mut *wrapper.bus_states.get();
 
         match media_type {
@@ -777,7 +775,7 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     unsafe extern "system" fn set_active(this: *mut c_void, state: TBool) -> TResult {
-        let wrapper = &*(this.offset(-Self::COMPONENT_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, component)) as *const Wrapper<P>);
         let bus_states = &mut *wrapper.bus_states.get();
         let processor_state = &mut *wrapper.processor_state.get();
 
@@ -827,7 +825,7 @@ impl<P: Plugin> Wrapper<P> {
             }
         }
 
-        let wrapper = &*(this.offset(-Self::COMPONENT_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, component)) as *const Wrapper<P>);
 
         let mut param_values =
             ParamValues { param_list: &wrapper.param_list, values: &wrapper.param_values };
@@ -870,7 +868,7 @@ impl<P: Plugin> Wrapper<P> {
             }
         }
 
-        let wrapper = &*(this.offset(-Self::COMPONENT_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, component)) as *const Wrapper<P>);
 
         let param_values =
             ParamValues { param_list: &wrapper.param_list, values: &wrapper.param_values };
@@ -885,15 +883,15 @@ impl<P: Plugin> Wrapper<P> {
         iid: *const TUID,
         obj: *mut *mut c_void,
     ) -> TResult {
-        Self::query_interface(this.offset(-Self::AUDIO_PROCESSOR_OFFSET), iid, obj)
+        Self::query_interface(this.offset(-offset_of!(Self, audio_processor)), iid, obj)
     }
 
     unsafe extern "system" fn audio_processor_add_ref(this: *mut c_void) -> u32 {
-        Self::add_ref(this.offset(-Self::AUDIO_PROCESSOR_OFFSET))
+        Self::add_ref(this.offset(-offset_of!(Self, audio_processor)))
     }
 
     unsafe extern "system" fn audio_processor_release(this: *mut c_void) -> u32 {
-        Self::release(this.offset(-Self::AUDIO_PROCESSOR_OFFSET))
+        Self::release(this.offset(-offset_of!(Self, audio_processor)))
     }
 
     unsafe extern "system" fn set_bus_arrangements(
@@ -903,7 +901,7 @@ impl<P: Plugin> Wrapper<P> {
         outputs: *const SpeakerArrangement,
         num_outs: i32,
     ) -> TResult {
-        let wrapper = &*(this.offset(-Self::AUDIO_PROCESSOR_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, audio_processor)) as *const Wrapper<P>);
         let bus_states = &mut *wrapper.bus_states.get();
 
         if num_ins as usize != wrapper.bus_list.inputs().len()
@@ -956,7 +954,7 @@ impl<P: Plugin> Wrapper<P> {
         index: i32,
         arr: *mut SpeakerArrangement,
     ) -> TResult {
-        let wrapper = &*(this.offset(-Self::AUDIO_PROCESSOR_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, audio_processor)) as *const Wrapper<P>);
         let bus_states = &*wrapper.bus_states.get();
 
         let bus_layout = match dir {
@@ -992,7 +990,7 @@ impl<P: Plugin> Wrapper<P> {
         this: *mut c_void,
         setup: *mut ProcessSetup,
     ) -> TResult {
-        let wrapper = &*(this.offset(-Self::AUDIO_PROCESSOR_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, audio_processor)) as *const Wrapper<P>);
         let processor_state = &mut *wrapper.processor_state.get();
 
         let setup = &*setup;
@@ -1003,7 +1001,7 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     unsafe extern "system" fn set_processing(this: *mut c_void, state: TBool) -> TResult {
-        let wrapper = &*(this.offset(-Self::AUDIO_PROCESSOR_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, audio_processor)) as *const Wrapper<P>);
         let bus_states = &*wrapper.bus_states.get();
         let processor_state = &mut *wrapper.processor_state.get();
 
@@ -1029,7 +1027,7 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     unsafe extern "system" fn process(this: *mut c_void, data: *mut ProcessData) -> TResult {
-        let wrapper = &*(this.offset(-Self::AUDIO_PROCESSOR_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, audio_processor)) as *const Wrapper<P>);
         let bus_states = &*wrapper.bus_states.get();
         let processor_state = &mut *wrapper.processor_state.get();
 
@@ -1213,15 +1211,15 @@ impl<P: Plugin> Wrapper<P> {
         iid: *const TUID,
         obj: *mut *mut c_void,
     ) -> TResult {
-        Self::query_interface(this.offset(-Self::PROCESS_CONTEXT_REQUIREMENTS_OFFSET), iid, obj)
+        Self::query_interface(this.offset(-offset_of!(Self, process_context_requirements)), iid, obj)
     }
 
     unsafe extern "system" fn process_context_requirements_add_ref(this: *mut c_void) -> u32 {
-        Self::add_ref(this.offset(-Self::PROCESS_CONTEXT_REQUIREMENTS_OFFSET))
+        Self::add_ref(this.offset(-offset_of!(Self, process_context_requirements)))
     }
 
     unsafe extern "system" fn process_context_requirements_release(this: *mut c_void) -> u32 {
-        Self::release(this.offset(-Self::PROCESS_CONTEXT_REQUIREMENTS_OFFSET))
+        Self::release(this.offset(-offset_of!(Self, process_context_requirements)))
     }
 
     unsafe extern "system" fn get_process_context_requirements(_this: *mut c_void) -> u32 {
@@ -1233,15 +1231,15 @@ impl<P: Plugin> Wrapper<P> {
         iid: *const TUID,
         obj: *mut *mut c_void,
     ) -> TResult {
-        Self::query_interface(this.offset(-Self::EDIT_CONTROLLER_OFFSET), iid, obj)
+        Self::query_interface(this.offset(-offset_of!(Self, edit_controller)), iid, obj)
     }
 
     unsafe extern "system" fn edit_controller_add_ref(this: *mut c_void) -> u32 {
-        Self::add_ref(this.offset(-Self::EDIT_CONTROLLER_OFFSET))
+        Self::add_ref(this.offset(-offset_of!(Self, edit_controller)))
     }
 
     unsafe extern "system" fn edit_controller_release(this: *mut c_void) -> u32 {
-        Self::release(this.offset(-Self::EDIT_CONTROLLER_OFFSET))
+        Self::release(this.offset(-offset_of!(Self, edit_controller)))
     }
 
     unsafe extern "system" fn edit_controller_initialize(
@@ -1252,7 +1250,7 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     unsafe extern "system" fn edit_controller_terminate(this: *mut c_void) -> TResult {
-        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
         editor_state.context.alive.set(false);
@@ -1279,7 +1277,7 @@ impl<P: Plugin> Wrapper<P> {
         // that deserialization has happened and we need to read back parameter
         // values from the shared copy.
 
-        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
         for (index, value) in wrapper.param_values.iter().enumerate() {
@@ -1304,7 +1302,7 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     unsafe extern "system" fn get_parameter_count(this: *mut c_void) -> i32 {
-        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
         wrapper.param_list.params.len() as i32
     }
@@ -1314,7 +1312,7 @@ impl<P: Plugin> Wrapper<P> {
         param_index: i32,
         info: *mut ParameterInfo,
     ) -> TResult {
-        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
         if let Some(param_info) = wrapper.param_list.params.get(param_index as usize) {
             let info = &mut *info;
@@ -1341,7 +1339,7 @@ impl<P: Plugin> Wrapper<P> {
         value_normalized: f64,
         string: *mut String128,
     ) -> TResult {
-        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
         if let Some(&index) = wrapper.param_list.indices.get(&id) {
             let param_info = &wrapper.param_list.params[index];
@@ -1363,7 +1361,7 @@ impl<P: Plugin> Wrapper<P> {
         string: *const TChar,
         value_normalized: *mut f64,
     ) -> TResult {
-        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
         if let Some(&index) = wrapper.param_list.indices.get(&id) {
             let param_info = &wrapper.param_list.params[index];
@@ -1387,7 +1385,7 @@ impl<P: Plugin> Wrapper<P> {
         id: u32,
         value_normalized: f64,
     ) -> f64 {
-        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
         if let Some(&index) = wrapper.param_list.indices.get(&id) {
             return wrapper.param_list.params[index].map.map(value_normalized);
@@ -1401,7 +1399,7 @@ impl<P: Plugin> Wrapper<P> {
         id: u32,
         plain_value: f64,
     ) -> f64 {
-        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
         if let Some(&index) = wrapper.param_list.indices.get(&id) {
             return wrapper.param_list.params[index].map.unmap(plain_value);
@@ -1411,7 +1409,7 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     unsafe extern "system" fn get_param_normalized(this: *mut c_void, id: u32) -> f64 {
-        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
         let editor_state = &*wrapper.editor_state.get();
 
         if let Some(&index) = wrapper.param_list.indices.get(&id) {
@@ -1427,7 +1425,7 @@ impl<P: Plugin> Wrapper<P> {
         id: u32,
         value: f64,
     ) -> TResult {
-        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
         let editor_state = &*wrapper.editor_state.get();
 
         if let Some(&index) = wrapper.param_list.indices.get(&id) {
@@ -1444,7 +1442,7 @@ impl<P: Plugin> Wrapper<P> {
         this: *mut c_void,
         handler: *mut *const IComponentHandler,
     ) -> TResult {
-        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
         let editor_state = &*wrapper.editor_state.get();
 
         if !handler.is_null() {
@@ -1459,15 +1457,15 @@ impl<P: Plugin> Wrapper<P> {
         this: *mut c_void,
         name: *const c_char,
     ) -> *mut *const IPlugView {
-        let wrapper = &*(this.offset(-Self::EDIT_CONTROLLER_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
         if !wrapper.has_editor {
             return ptr::null_mut();
         }
 
         if ffi::CStr::from_ptr(name) == ffi::CStr::from_ptr(view_types::EDITOR) {
-            Self::add_ref(this.offset(-Self::EDIT_CONTROLLER_OFFSET));
-            return this.offset(-Self::EDIT_CONTROLLER_OFFSET + Self::PLUG_VIEW_OFFSET)
+            Self::add_ref(this.offset(-offset_of!(Self, edit_controller)));
+            return this.offset(-offset_of!(Self, edit_controller) + offset_of!(Self, plug_view))
                 as *mut *const IPlugView;
         }
 
@@ -1479,15 +1477,15 @@ impl<P: Plugin> Wrapper<P> {
         iid: *const TUID,
         obj: *mut *mut c_void,
     ) -> TResult {
-        Self::query_interface(this.offset(-Self::PLUG_VIEW_OFFSET), iid, obj)
+        Self::query_interface(this.offset(-offset_of!(Self, plug_view)), iid, obj)
     }
 
     unsafe extern "system" fn plug_view_add_ref(this: *mut c_void) -> u32 {
-        Self::add_ref(this.offset(-Self::PLUG_VIEW_OFFSET))
+        Self::add_ref(this.offset(-offset_of!(Self, plug_view)))
     }
 
     unsafe extern "system" fn plug_view_release(this: *mut c_void) -> u32 {
-        Self::release(this.offset(-Self::PLUG_VIEW_OFFSET))
+        Self::release(this.offset(-offset_of!(Self, plug_view)))
     }
 
     unsafe extern "system" fn is_platform_type_supported(
@@ -1523,7 +1521,7 @@ impl<P: Plugin> Wrapper<P> {
             return result::NOT_IMPLEMENTED;
         }
 
-        let wrapper = &*(this.offset(-Self::PLUG_VIEW_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, plug_view)) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
         #[cfg(target_os = "macos")]
@@ -1560,7 +1558,7 @@ impl<P: Plugin> Wrapper<P> {
                     let run_loop = obj as *mut *const IRunLoop;
 
                     let event_handler = this
-                        .offset(-Self::PLUG_VIEW_OFFSET + Self::EVENT_HANDLER_OFFSET)
+                        .offset(-offset_of!(Self, plug_view) + offset_of!(Self, event_handler))
                         as *mut *const IEventHandler;
                     ((*(*run_loop)).register_event_handler)(
                         run_loop as *mut c_void,
@@ -1569,7 +1567,7 @@ impl<P: Plugin> Wrapper<P> {
                     );
 
                     let timer_handler = this
-                        .offset(-Self::PLUG_VIEW_OFFSET + Self::TIMER_HANDLER_OFFSET)
+                        .offset(-offset_of!(Self, plug_view) + offset_of!(Self, timer_handler))
                         as *mut *const ITimerHandler;
                     ((*(*run_loop)).register_timer)(run_loop as *mut c_void, timer_handler, 16);
 
@@ -1584,7 +1582,7 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     unsafe extern "system" fn removed(this: *mut c_void) -> TResult {
-        let wrapper = &*(this.offset(-Self::PLUG_VIEW_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, plug_view)) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
         if let Some(mut editor) = editor_state.editor.take() {
@@ -1604,7 +1602,7 @@ impl<P: Plugin> Wrapper<P> {
                     let run_loop = obj as *mut *const IRunLoop;
 
                     let event_handler = this
-                        .offset(-Self::PLUG_VIEW_OFFSET + Self::EVENT_HANDLER_OFFSET)
+                        .offset(-offset_of!(Self, plug_view) + offset_of!(Self, event_handler))
                         as *mut *const IEventHandler;
                     ((*(*run_loop)).unregister_event_handler)(
                         run_loop as *mut c_void,
@@ -1612,7 +1610,7 @@ impl<P: Plugin> Wrapper<P> {
                     );
 
                     let timer_handler = this
-                        .offset(-Self::PLUG_VIEW_OFFSET + Self::TIMER_HANDLER_OFFSET)
+                        .offset(-offset_of!(Self, plug_view) + offset_of!(Self, timer_handler))
                         as *mut *const ITimerHandler;
                     ((*(*run_loop)).unregister_timer)(run_loop as *mut c_void, timer_handler);
 
@@ -1673,7 +1671,7 @@ impl<P: Plugin> Wrapper<P> {
         this: *mut c_void,
         frame: *mut *const IPlugFrame,
     ) -> TResult {
-        let wrapper = &*(this.offset(-Self::PLUG_VIEW_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, plug_view)) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
         if !editor_state.plug_frame.is_null() {
@@ -1703,20 +1701,20 @@ impl<P: Plugin> Wrapper<P> {
         iid: *const TUID,
         obj: *mut *mut c_void,
     ) -> TResult {
-        Self::query_interface(this.offset(-Self::EVENT_HANDLER_OFFSET), iid, obj)
+        Self::query_interface(this.offset(-offset_of!(Self, event_handler)), iid, obj)
     }
 
     unsafe extern "system" fn event_handler_add_ref(this: *mut c_void) -> u32 {
-        Self::add_ref(this.offset(-Self::EVENT_HANDLER_OFFSET))
+        Self::add_ref(this.offset(-offset_of!(Self, event_handler)))
     }
 
     unsafe extern "system" fn event_handler_release(this: *mut c_void) -> u32 {
-        Self::release(this.offset(-Self::EVENT_HANDLER_OFFSET))
+        Self::release(this.offset(-offset_of!(Self, event_handler)))
     }
 
     #[cfg(target_os = "linux")]
     unsafe extern "system" fn on_fd_is_set(this: *mut c_void, _fd: c_int) {
-        let wrapper = &*(this.offset(-Self::EVENT_HANDLER_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, event_handler)) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
         if let Some(editor) = &mut editor_state.editor {
@@ -1732,20 +1730,20 @@ impl<P: Plugin> Wrapper<P> {
         iid: *const TUID,
         obj: *mut *mut c_void,
     ) -> TResult {
-        Self::query_interface(this.offset(-Self::TIMER_HANDLER_OFFSET), iid, obj)
+        Self::query_interface(this.offset(-offset_of!(Self, timer_handler)), iid, obj)
     }
 
     unsafe extern "system" fn timer_handler_add_ref(this: *mut c_void) -> u32 {
-        Self::add_ref(this.offset(-Self::TIMER_HANDLER_OFFSET))
+        Self::add_ref(this.offset(-offset_of!(Self, timer_handler)))
     }
 
     unsafe extern "system" fn timer_handler_release(this: *mut c_void) -> u32 {
-        Self::release(this.offset(-Self::TIMER_HANDLER_OFFSET))
+        Self::release(this.offset(-offset_of!(Self, timer_handler)))
     }
 
     #[cfg(target_os = "linux")]
     unsafe extern "system" fn on_timer(this: *mut c_void) {
-        let wrapper = &*(this.offset(-Self::TIMER_HANDLER_OFFSET) as *const Wrapper<P>);
+        let wrapper = &*(this.offset(-offset_of!(Self, timer_handler)) as *const Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
         if let Some(editor) = &mut editor_state.editor {
