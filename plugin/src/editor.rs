@@ -1,37 +1,15 @@
-use crate::params::*;
+use crate::{param::*, plugin::*};
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
+use std::marker::PhantomData;
 use std::rc::Rc;
+use std::sync::Arc;
 
-pub trait EditorContextInner {
-    fn get_param(&self, param_id: ParamId) -> f64;
+pub trait EditorContext {
     fn begin_edit(&self, param_id: ParamId);
     fn perform_edit(&self, param_id: ParamId, value: f64);
     fn end_edit(&self, param_id: ParamId);
-}
-
-#[derive(Clone)]
-pub struct EditorContext {
-    pub(crate) inner: Rc<dyn EditorContextInner>,
-}
-
-impl EditorContext {
-    pub fn get_param(&self, id: ParamId) -> f64 {
-        self.inner.get_param(id)
-    }
-
-    pub fn begin_edit(&self, id: ParamId) {
-        self.inner.begin_edit(id);
-    }
-
-    pub fn perform_edit(&self, id: ParamId, value: f64) {
-        self.inner.perform_edit(id, value);
-    }
-
-    pub fn end_edit(&self, id: ParamId) {
-        self.inner.end_edit(id);
-    }
 }
 
 pub struct ParentWindow(pub(crate) RawWindowHandle);
@@ -43,8 +21,15 @@ unsafe impl HasRawWindowHandle for ParentWindow {
 }
 
 pub trait Editor: Sized {
-    fn initial_size() -> (f64, f64);
+    type Plugin: Plugin;
+
+    fn open(
+        plugin: &Arc<Self::Plugin>,
+        context: &Rc<dyn EditorContext>,
+        parent: Option<&ParentWindow>,
+    ) -> Self;
     fn close(&mut self);
+    fn size() -> (f64, f64);
     fn raw_window_handle(&self) -> Option<RawWindowHandle>;
 
     #[cfg(target_os = "linux")]
@@ -53,13 +38,27 @@ pub trait Editor: Sized {
     fn poll(&mut self);
 }
 
-pub struct NoEditor;
+pub struct NoEditor<P> {
+    phantom: PhantomData<P>,
+}
 
-impl Editor for NoEditor {
-    fn initial_size() -> (f64, f64) {
+impl<P: Plugin> Editor for NoEditor<P> {
+    type Plugin = P;
+
+    fn open(
+        _plugin: &Arc<Self::Plugin>,
+        _context: &Rc<dyn EditorContext>,
+        _parent: Option<&ParentWindow>,
+    ) -> Self {
+        NoEditor { phantom: PhantomData }
+    }
+
+    fn close(&mut self) {}
+
+    fn size() -> (f64, f64) {
         (0.0, 0.0)
     }
-    fn close(&mut self) {}
+
     fn raw_window_handle(&self) -> Option<RawWindowHandle> {
         None
     }
@@ -68,6 +67,7 @@ impl Editor for NoEditor {
     fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
         None
     }
+
     #[cfg(target_os = "linux")]
     fn poll(&mut self) {}
 }

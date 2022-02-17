@@ -1,43 +1,28 @@
-use crate::{buffer::*, bus::*, params::*};
+use crate::{buffer::*, bus::*, param::*, plugin::*};
+
+use std::sync::Arc;
 
 pub struct ProcessContext<'a> {
-    pub(crate) sample_rate: f64,
-    pub(crate) input_layouts: &'a [BusLayout],
-    pub(crate) output_layouts: &'a [BusLayout],
-    pub(crate) param_list: &'a ParamList,
-    pub(crate) param_values: &'a [f64],
-}
-
-impl<'a> ProcessContext<'a> {
-    pub fn sample_rate(&self) -> f64 {
-        self.sample_rate
-    }
-
-    pub fn input_layouts(&self) -> &[BusLayout] {
-        self.input_layouts
-    }
-
-    pub fn output_layouts(&self) -> &[BusLayout] {
-        self.output_layouts
-    }
-
-    pub fn get_param(&self, id: ParamId) -> f64 {
-        self.param_values[self.param_list.indices[&id]]
-    }
+    pub sample_rate: f64,
+    pub input_layouts: &'a [BusLayout],
+    pub output_layouts: &'a [BusLayout],
 }
 
 pub struct ParamChange {
-    pub id: ParamId,
     pub offset: usize,
+    pub id: ParamId,
     pub value: f64,
 }
 
 pub trait Processor: Send + Sized {
+    type Plugin: Plugin;
+
+    fn create(plugin: &Arc<Self::Plugin>, context: &ProcessContext) -> Self;
+    fn reset(&mut self, context: &ProcessContext);
     fn process(
         &mut self,
         context: &ProcessContext,
-        buffers: &mut AudioBuffers,
+        buffers: &mut Buffers,
         param_changes: &[ParamChange],
     );
-    fn reset(&mut self, context: &ProcessContext);
 }

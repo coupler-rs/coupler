@@ -1,31 +1,24 @@
-use crate::{bus::*, editor::*, params::*, process::*};
+use crate::{bus::*, editor::*, param::*, process::*};
 
 pub struct PluginInfo {
-    pub name: String,
-    pub vendor: String,
-    pub url: String,
-    pub email: String,
+    pub name: &'static str,
+    pub vendor: &'static str,
+    pub url: &'static str,
+    pub email: &'static str,
     pub has_editor: bool,
 }
 
-pub trait Plugin: Send + Sync + Sized {
-    type Processor: Processor;
-    type Editor: Editor;
+pub trait Plugin: Send + Sync + Sized + 'static {
+    type Processor: Processor<Plugin = Self>;
+    type Editor: Editor<Plugin = Self>;
 
-    fn info() -> PluginInfo;
+    const INFO: PluginInfo;
+    const INPUTS: &'static [BusInfo];
+    const OUTPUTS: &'static [BusInfo];
+    const PARAMS: &'static [ParamKey<Self>];
 
     fn create() -> Self;
-    fn processor(&self, context: &ProcessContext) -> Self::Processor;
-    fn editor(&self, context: EditorContext, parent: Option<&ParentWindow>) -> Self::Editor;
-
-    fn buses() -> BusList;
     fn supports_layout(inputs: &[BusLayout], outputs: &[BusLayout]) -> bool;
-
-    fn params(&self) -> ParamList;
-    fn serialize(&self, params: &ParamValues, write: &mut impl std::io::Write) -> Result<(), ()>;
-    fn deserialize(
-        &self,
-        params: &mut ParamValues,
-        read: &mut impl std::io::Read,
-    ) -> Result<(), ()>;
+    fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()>;
+    fn deserialize(&self, read: &mut impl std::io::Read) -> Result<(), ()>;
 }

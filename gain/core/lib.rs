@@ -1,108 +1,90 @@
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
+use std::sync::Arc;
+
 use graphics::{Canvas, Color, Path, Vec2};
-use plugin::{buffer::*, bus::*, editor::*, params::*, plugin::*, process::*};
+use plugin::{buffer::*, bus::*, editor::*, param::*, plugin::*, process::*};
 use window::{
     Application, Cursor, MouseButton, Parent, Point, Rect, Window, WindowHandler, WindowOptions,
 };
 
-use std::cell::{Cell, RefCell};
-
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
-const GAIN: ParamId = 0;
-
-pub struct Gain {}
+pub struct Gain {
+    gain: FloatParam,
+}
 
 impl Plugin for Gain {
     type Processor = GainProcessor;
     type Editor = GainEditor;
 
-    fn info() -> PluginInfo {
-        PluginInfo {
-            name: "gain".to_string(),
-            vendor: "glowcoil".to_string(),
-            url: "https://glowcoil.com".to_string(),
-            email: "micah@glowcoil.com".to_string(),
-            has_editor: true,
-        }
-    }
+    const INFO: PluginInfo = PluginInfo {
+        name: "Gain",
+        vendor: "Photophore Systems",
+        url: "https://photophore.systems",
+        email: "support@photophore.systems",
+        has_editor: true,
+    };
 
-    fn buses() -> BusList {
-        BusList::new()
-            .add_input(BusInfo { name: "Input".to_string(), default_layout: BusLayout::Stereo })
-            .add_output(BusInfo { name: "Output".to_string(), default_layout: BusLayout::Stereo })
-    }
+    const INPUTS: &'static [BusInfo] = &[BusInfo { name: "Input", default: BusLayout::Stereo }];
+    const OUTPUTS: &'static [BusInfo] = &[BusInfo { name: "Output", default: BusLayout::Stereo }];
+
+    const PARAMS: &'static [ParamKey<Self>] = &[param!(gain)];
 
     fn create() -> Gain {
-        Gain {}
-    }
-
-    fn processor(&self, context: &ProcessContext) -> GainProcessor {
-        GainProcessor { gain: context.get_param(GAIN) as f32 }
-    }
-
-    fn editor(&self, context: EditorContext, parent: Option<&ParentWindow>) -> GainEditor {
-        GainEditor::open(context, parent)
-    }
-
-    fn params(&self) -> ParamList {
-        ParamList::new().add(ParamInfo {
-            id: GAIN,
-            name: "Gain".to_string(),
-            default: 1.0,
-            map: Box::new(Linear::new(0.0, 1.0)),
-            steps: None,
-            format: Box::new(Decimal),
-            units: "dB".to_string(),
-        })
-    }
-
-    fn serialize(&self, params: &ParamValues, write: &mut impl std::io::Write) -> Result<(), ()> {
-        let gain = params.get_param(GAIN);
-        write.write(&gain.to_le_bytes()).map(|_| ()).map_err(|_| ())
-    }
-
-    fn deserialize(
-        &self,
-        params: &mut ParamValues,
-        read: &mut impl std::io::Read,
-    ) -> Result<(), ()> {
-        let mut buf = [0; std::mem::size_of::<u64>()];
-        if read.read(&mut buf).is_ok() {
-            params.set_param(GAIN, f64::from_le_bytes(buf));
-            Ok(())
-        } else {
-            Err(())
-        }
+        Gain { gain: FloatParam::new(0, "gain", 1.0) }
     }
 
     fn supports_layout(inputs: &[BusLayout], outputs: &[BusLayout]) -> bool {
         inputs[0] == BusLayout::Stereo && outputs[0] == BusLayout::Stereo
     }
+
+    fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()> {
+        let gain = self.gain.get();
+        write.write(&gain.to_le_bytes()).map(|_| ()).map_err(|_| ())
+    }
+
+    fn deserialize(&self, read: &mut impl std::io::Read) -> Result<(), ()> {
+        let mut buf = [0; std::mem::size_of::<u32>()];
+        if read.read(&mut buf).is_ok() {
+            self.gain.set(f32::from_le_bytes(buf));
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
 }
 
 pub struct GainProcessor {
+    plugin: Arc<Gain>,
     gain: f32,
 }
 
 impl Processor for GainProcessor {
+    type Plugin = Gain;
+
+    fn create(plugin: &Arc<Self::Plugin>, _context: &ProcessContext) -> Self {
+        GainProcessor { plugin: plugin.clone(), gain: plugin.gain.get() }
+    }
+
+    fn reset(&mut self, _context: &ProcessContext) {
+        self.gain = self.plugin.gain.get();
+    }
+
     fn process(
         &mut self,
-        context: &ProcessContext,
-        buffers: &mut AudioBuffers,
+        _context: &ProcessContext,
+        buffers: &mut Buffers,
         _param_changes: &[ParamChange],
     ) {
-        let gain = context.get_param(GAIN) as f32;
-
         for i in 0..buffers.samples() {
-            self.gain = 0.9995 * self.gain + 0.0005 * gain;
-
             for channel in 0..2 {
+                self.gain = 0.9995 * self.gain + 0.0005 * self.plugin.gain.get();
+
                 buffers.outputs()[0][channel][i] = self.gain * buffers.inputs()[0][channel][i];
             }
         }
     }
-
-    fn reset(&mut self, _context: &ProcessContext) {}
 }
 
 pub struct GainEditor {
@@ -111,8 +93,14 @@ pub struct GainEditor {
     window: Window,
 }
 
-impl GainEditor {
-    fn open(context: EditorContext, parent: Option<&ParentWindow>) -> GainEditor {
+impl Editor for GainEditor {
+    type Plugin = Gain;
+
+    fn open(
+        plugin: &Arc<Self::Plugin>,
+        context: &Rc<dyn EditorContext>,
+        parent: Option<&ParentWindow>,
+    ) -> Self {
         let parent =
             if let Some(parent) = parent { Parent::Parent(parent) } else { Parent::Detached };
 
@@ -121,9 +109,9 @@ impl GainEditor {
         let window = Window::open(
             &application,
             WindowOptions {
-                rect: Rect { x: 0.0, y: 0.0, width: 512.0, height: 512.0 },
+                rect: Rect { x: 0.0, y: 0.0, width: 256.0, height: 256.0 },
                 parent,
-                handler: Box::new(GainWindowHandler::new(context)),
+                handler: Box::new(GainWindowHandler::new(plugin, context)),
                 ..WindowOptions::default()
             },
         )
@@ -131,15 +119,11 @@ impl GainEditor {
 
         GainEditor { application, window }
     }
-}
 
-impl Editor for GainEditor {
-    fn initial_size() -> (f64, f64) {
+    fn close(&mut self) {}
+
+    fn size() -> (f64, f64) {
         (256.0, 256.0)
-    }
-
-    fn close(&mut self) {
-        self.window.close().unwrap();
     }
 
     fn raw_window_handle(&self) -> Option<RawWindowHandle> {
@@ -147,27 +131,29 @@ impl Editor for GainEditor {
     }
 
     #[cfg(target_os = "linux")]
-    fn poll(&mut self) {
-        self.application.poll();
+    fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
+        Some(self.application.file_descriptor())
     }
 
     #[cfg(target_os = "linux")]
-    fn file_descriptor(&self) -> Option<std::os::raw::c_int> {
-        Some(self.application.file_descriptor())
+    fn poll(&mut self) {
+        self.application.poll();
     }
 }
 
 struct GainWindowHandler {
-    context: EditorContext,
+    plugin: Arc<Gain>,
+    context: Rc<dyn EditorContext>,
     canvas: RefCell<Canvas>,
     mouse: Cell<Point>,
-    down: Cell<Option<(Point, f64)>>,
+    down: Cell<Option<(Point, f32)>>,
 }
 
 impl GainWindowHandler {
-    fn new(context: EditorContext) -> GainWindowHandler {
+    fn new(plugin: &Arc<Gain>, context: &Rc<dyn EditorContext>) -> GainWindowHandler {
         GainWindowHandler {
-            context,
+            plugin: plugin.clone(),
+            context: context.clone(),
             canvas: RefCell::new(Canvas::with_size(256, 256)),
             mouse: Cell::new(Point { x: -1.0, y: -1.0 }),
             down: Cell::new(None),
@@ -194,7 +180,7 @@ impl WindowHandler for GainWindowHandler {
 
         canvas.clear(Color::rgba(21, 26, 31, 255));
 
-        let value = self.context.get_param(GAIN) as f32;
+        let value = self.plugin.gain.get();
 
         let center = Vec2::new(128.0, 128.0);
         let radius = 32.0;
@@ -227,8 +213,8 @@ impl WindowHandler for GainWindowHandler {
         self.mouse.set(position);
         if let Some((start_position, start_value)) = self.down.get() {
             let new_value =
-                (start_value - 0.005 * (position.y - start_position.y)).max(0.0).min(1.0);
-            self.context.perform_edit(GAIN, new_value);
+                (start_value - 0.005 * (position.y - start_position.y) as f32).max(0.0).min(1.0);
+            self.plugin.gain.perform_edit(&self.context, new_value);
         } else {
             self.update_cursor(window);
         }
@@ -240,9 +226,9 @@ impl WindowHandler for GainWindowHandler {
             if position.x >= 96.0 && position.x < 160.0 && position.y >= 96.0 && position.y < 160.0
             {
                 window.set_cursor(Cursor::SizeNs);
-                self.context.begin_edit(GAIN);
-                let value = self.context.get_param(GAIN);
-                self.context.perform_edit(GAIN, value);
+                self.plugin.gain.begin_edit(&self.context);
+                let value = self.plugin.gain.get();
+                self.plugin.gain.perform_edit(&self.context, self.plugin.gain.get());
                 self.down.set(Some((position, value)));
                 return true;
             }
@@ -254,7 +240,7 @@ impl WindowHandler for GainWindowHandler {
     fn mouse_up(&self, window: &Window, button: MouseButton) -> bool {
         if button == MouseButton::Left {
             if self.down.get().is_some() {
-                self.context.end_edit(GAIN);
+                self.plugin.gain.end_edit(&self.context);
                 self.down.set(None);
                 self.update_cursor(window);
                 return true;

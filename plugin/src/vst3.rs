@@ -1,31 +1,30 @@
 use crate::{
-    atomic::AtomicF64, buffer::*, bus::*, editor::*, params::*, plugin::*, process::ProcessContext,
-    process::*,
+    buffer::*, bus::*, editor::*, param::*, plugin::*, process::ProcessContext, process::*,
 };
 
 use std::cell::{Cell, UnsafeCell};
-use std::ffi::{c_void, CString};
+use std::collections::HashMap;
+use std::ffi::{c_void, CStr, CString};
 use std::marker::PhantomData;
 use std::os::raw::{c_char, c_int};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
-use std::{ffi, io, ptr, slice};
+use std::{io, ptr, slice};
 
 use raw_window_handle::RawWindowHandle;
 
 use vst3_sys::{BusInfo, *};
 
 macro_rules! offset_of {
-    ($struct:ty, $field:ident) => {
-        {
-            let dummy = std::mem::MaybeUninit::<$struct>::uninit();
-            let base = dummy.as_ptr();
-            let field = std::ptr::addr_of!((*base).$field);
+    ($struct:ty, $field:ident) => {{
+        let dummy = std::mem::MaybeUninit::<$struct>::uninit();
+        let base = dummy.as_ptr();
+        let field = std::ptr::addr_of!((*base).$field);
 
-            (field as *const c_void).offset_from(base as *const c_void)
-        }
-    }
+        (field as *const c_void).offset_from(base as *const c_void)
+    }};
 }
 
 fn copy_cstring(src: &str, dst: &mut [c_char]) {
@@ -80,218 +79,30 @@ fn speaker_arrangement_to_bus_layout(speaker_arrangement: SpeakerArrangement) ->
     }
 }
 
-#[repr(C)]
-pub struct Factory<P> {
-    plugin_factory_3: *const IPluginFactory3,
-    uid: TUID,
-    plugin_info: PluginInfo,
-    phantom: PhantomData<P>,
-}
-
-unsafe impl<P> Sync for Factory<P> {}
-
-impl<P: Plugin> Factory<P> {
-    const PLUGIN_FACTORY_3_VTABLE: IPluginFactory3 = IPluginFactory3 {
-        plugin_factory_2: IPluginFactory2 {
-            plugin_factory: IPluginFactory {
-                unknown: FUnknown {
-                    query_interface: Self::query_interface,
-                    add_ref: Self::add_ref,
-                    release: Self::release,
-                },
-                get_factory_info: Self::get_factory_info,
-                count_classes: Self::count_classes,
-                get_class_info: Self::get_class_info,
-                create_instance: Self::create_instance,
-            },
-            get_class_info_2: Self::get_class_info_2,
-        },
-        get_class_info_unicode: Self::get_class_info_unicode,
-        set_host_context: Self::set_host_context,
-    };
-
-    pub fn create(plugin_uid: [u32; 4]) -> *mut Factory<P> {
-        Arc::into_raw(Arc::new(Factory::<P> {
-            plugin_factory_3: &Self::PLUGIN_FACTORY_3_VTABLE as *const _,
-            uid: uid(plugin_uid[0], plugin_uid[1], plugin_uid[2], plugin_uid[3]),
-            plugin_info: P::info(),
-            phantom: PhantomData,
-        })) as *mut Factory<P>
-    }
-
-    unsafe extern "system" fn query_interface(
-        this: *mut c_void,
-        iid: *const TUID,
-        obj: *mut *mut c_void,
-    ) -> TResult {
-        let iid = *iid;
-
-        if iid == FUnknown::IID
-            || iid == IPluginFactory::IID
-            || iid == IPluginFactory2::IID
-            || iid == IPluginFactory3::IID
-        {
-            Self::add_ref(this);
-            *obj = this;
-            return result::OK;
-        }
-
-        result::NO_INTERFACE
-    }
-
-    unsafe extern "system" fn add_ref(this: *mut c_void) -> u32 {
-        let factory = Arc::from_raw(this as *const Factory<P>);
-        let _ = Arc::into_raw(factory.clone());
-        let count = Arc::strong_count(&factory);
-        let _ = Arc::into_raw(factory);
-
-        count as u32
-    }
-
-    unsafe extern "system" fn release(this: *mut c_void) -> u32 {
-        let factory = Arc::from_raw(this as *const Factory<P>);
-        let count = Arc::strong_count(&factory) - 1;
-        drop(factory);
-
-        count as u32
-    }
-
-    unsafe extern "system" fn get_factory_info(
-        this: *mut c_void,
-        info: *mut PFactoryInfo,
-    ) -> TResult {
-        let factory = &*(this as *const Factory<P>);
-
-        let info = &mut *info;
-
-        copy_cstring(&factory.plugin_info.vendor, &mut info.vendor);
-        copy_cstring(&factory.plugin_info.url, &mut info.url);
-        copy_cstring(&factory.plugin_info.email, &mut info.email);
-        info.flags = PFactoryInfo::UNICODE;
-
-        result::OK
-    }
-
-    unsafe extern "system" fn count_classes(_this: *mut c_void) -> i32 {
-        1
-    }
-
-    unsafe extern "system" fn get_class_info(
-        this: *mut c_void,
-        index: i32,
-        info: *mut PClassInfo,
-    ) -> TResult {
-        let factory = &*(this as *const Factory<P>);
-
-        if index != 0 {
-            return result::INVALID_ARGUMENT;
-        }
-
-        let info = &mut *info;
-
-        info.cid = factory.uid;
-        info.cardinality = PClassInfo::MANY_INSTANCES;
-        copy_cstring("Audio Module Class", &mut info.category);
-        copy_cstring(&factory.plugin_info.name, &mut info.name);
-
-        result::OK
-    }
-
-    unsafe extern "system" fn create_instance(
-        this: *mut c_void,
-        cid: *const c_char,
-        iid: *const c_char,
-        obj: *mut *mut c_void,
-    ) -> TResult {
-        let factory = &*(this as *const Factory<P>);
-
-        let cid = *(cid as *const TUID);
-        let iid = *(iid as *const TUID);
-        if cid != factory.uid || iid != IComponent::IID {
-            return result::INVALID_ARGUMENT;
-        }
-
-        *obj = Wrapper::<P>::create(&factory.plugin_info) as *mut c_void;
-
-        result::OK
-    }
-
-    unsafe extern "system" fn get_class_info_2(
-        this: *mut c_void,
-        index: i32,
-        info: *mut PClassInfo2,
-    ) -> TResult {
-        let factory = &*(this as *const Factory<P>);
-
-        if index != 0 {
-            return result::INVALID_ARGUMENT;
-        }
-
-        let info = &mut *info;
-
-        info.cid = factory.uid;
-        info.cardinality = PClassInfo::MANY_INSTANCES;
-        copy_cstring("Audio Module Class", &mut info.category);
-        copy_cstring(&factory.plugin_info.name, &mut info.name);
-        info.class_flags = 0;
-        copy_cstring("Fx", &mut info.sub_categories);
-        copy_cstring(&factory.plugin_info.vendor, &mut info.vendor);
-        copy_cstring("", &mut info.version);
-        copy_cstring("VST 3.7", &mut info.sdk_version);
-
-        result::OK
-    }
-
-    unsafe extern "system" fn get_class_info_unicode(
-        this: *mut c_void,
-        index: i32,
-        info: *mut PClassInfoW,
-    ) -> TResult {
-        let factory = &*(this as *const Factory<P>);
-
-        if index != 0 {
-            return result::INVALID_ARGUMENT;
-        }
-
-        let info = &mut *info;
-
-        info.cid = factory.uid;
-        info.cardinality = PClassInfo::MANY_INSTANCES;
-        copy_cstring("Audio Module Class", &mut info.category);
-        copy_wstring(&factory.plugin_info.name, &mut info.name);
-        info.class_flags = 0;
-        copy_cstring("Fx", &mut info.sub_categories);
-        copy_wstring(&factory.plugin_info.vendor, &mut info.vendor);
-        copy_wstring("", &mut info.version);
-        copy_wstring("VST 3.7", &mut info.sdk_version);
-
-        result::OK
-    }
-
-    unsafe extern "system" fn set_host_context(
-        _this: *mut c_void,
-        _context: *mut *const FUnknown,
-    ) -> TResult {
-        result::NOT_IMPLEMENTED
-    }
-}
-
 struct Vst3EditorContext {
-    alive: Cell<bool>,
-    component_handler: Cell<*mut *const IComponentHandler>,
-    param_list: Arc<ParamList>,
-    param_values: Vec<Cell<f64>>,
+    component_handler: Cell<Option<*mut *const IComponentHandler>>,
+    plug_frame: Cell<Option<*mut *const IPlugFrame>>,
 }
 
-impl EditorContextInner for Vst3EditorContext {
-    fn get_param(&self, id: ParamId) -> f64 {
-        let index = self.param_list.indices[&id];
-        self.param_values[index].get()
-    }
+impl Drop for Vst3EditorContext {
+    fn drop(&mut self) {
+        if let Some(handler) = self.component_handler.take() {
+            unsafe {
+                ((*(*handler)).unknown.release)(handler as *mut c_void);
+            }
+        }
 
+        if let Some(frame) = self.plug_frame.take() {
+            unsafe {
+                ((*(*frame)).unknown.release)(frame as *mut c_void);
+            }
+        }
+    }
+}
+
+impl EditorContext for Vst3EditorContext {
     fn begin_edit(&self, id: ParamId) {
-        let component_handler = self.component_handler.get();
-        if self.alive.get() && !component_handler.is_null() {
+        if let Some(component_handler) = self.component_handler.get() {
             unsafe {
                 ((*(*component_handler)).begin_edit)(component_handler as *mut c_void, id);
             }
@@ -299,31 +110,47 @@ impl EditorContextInner for Vst3EditorContext {
     }
 
     fn perform_edit(&self, id: ParamId, value: f64) {
-        let index = self.param_list.indices[&id];
-        self.param_values[index].set(value);
-
-        let unmapped = self.param_list.params[index].map.unmap(value);
-
-        let component_handler = self.component_handler.get();
-        if self.alive.get() && !component_handler.is_null() {
+        if let Some(component_handler) = self.component_handler.get() {
             unsafe {
-                ((*(*component_handler)).perform_edit)(
-                    component_handler as *mut c_void,
-                    id,
-                    unmapped,
-                );
+                ((*(*component_handler)).perform_edit)(component_handler as *mut c_void, id, value);
             }
         }
     }
 
     fn end_edit(&self, id: ParamId) {
-        let component_handler = self.component_handler.get();
-        if self.alive.get() && !component_handler.is_null() {
+        if let Some(component_handler) = self.component_handler.get() {
             unsafe {
                 ((*(*component_handler)).end_edit)(component_handler as *mut c_void, id);
             }
         }
     }
+}
+
+struct BusStates {
+    input_layouts: Vec<BusLayout>,
+    inputs_enabled: Vec<bool>,
+    output_layouts: Vec<BusLayout>,
+    outputs_enabled: Vec<bool>,
+}
+
+struct ParamDef<P> {
+    key: ParamKey<P>,
+    info: ParamInfo,
+    default: f64,
+}
+
+struct ProcessorState<P: Plugin> {
+    sample_rate: f64,
+    needs_reset: bool,
+    input_buses: Vec<Bus<'static>>,
+    output_buses: Vec<BusMut<'static>>,
+    param_changes: Vec<ParamChange>,
+    processor: Option<P::Processor>,
+}
+
+struct EditorState<P: Plugin> {
+    context: Rc<Vst3EditorContext>,
+    editor: Option<P::Editor>,
 }
 
 #[repr(C)]
@@ -335,40 +162,16 @@ struct Wrapper<P: Plugin> {
     plug_view: *const IPlugView,
     event_handler: *const IEventHandler,
     timer_handler: *const ITimerHandler,
-    has_editor: bool,
-    bus_list: BusList,
+    count: AtomicU32,
     // We only form an &mut to bus_states in set_bus_arrangements and
     // activate_bus, which aren't called concurrently with any other methods on
     // IComponent or IAudioProcessor per the spec.
     bus_states: UnsafeCell<BusStates>,
-    param_list: Arc<ParamList>,
-    param_values: Vec<AtomicF64>,
-    params_dirty: AtomicBool,
-    plugin: P,
+    params: HashMap<ParamId, ParamDef<P>>,
+    active: AtomicBool,
+    plugin: Arc<P>,
     processor_state: UnsafeCell<ProcessorState<P>>,
     editor_state: UnsafeCell<EditorState<P>>,
-}
-
-struct BusStates {
-    input_layouts: Vec<BusLayout>,
-    inputs_enabled: Vec<bool>,
-    output_layouts: Vec<BusLayout>,
-    outputs_enabled: Vec<bool>,
-}
-
-struct ProcessorState<P: Plugin> {
-    input_buses: Vec<AudioBus<'static>>,
-    output_buses: Vec<AudioBus<'static>>,
-    sample_rate: f64,
-    param_values: Vec<f64>,
-    param_changes: Vec<ParamChange>,
-    processor: Option<P::Processor>,
-}
-
-struct EditorState<P: Plugin> {
-    plug_frame: *mut *const IPlugFrame,
-    context: Rc<Vst3EditorContext>,
-    editor: Option<P::Editor>,
 }
 
 unsafe impl<P: Plugin> Sync for Wrapper<P> {}
@@ -484,62 +287,69 @@ impl<P: Plugin> Wrapper<P> {
         on_timer: Self::on_timer,
     };
 
-    pub fn create(plugin_info: &PluginInfo) -> *mut Wrapper<P> {
-        let bus_list = P::buses();
-
-        let mut input_layouts = Vec::with_capacity(bus_list.inputs().len());
-        let mut inputs_enabled = Vec::with_capacity(bus_list.inputs().len());
-        for bus_info in bus_list.inputs() {
-            input_layouts.push(bus_info.default_layout.clone());
+    pub fn create() -> *mut Wrapper<P> {
+        let mut input_layouts = Vec::with_capacity(P::INPUTS.len());
+        let mut inputs_enabled = Vec::with_capacity(P::INPUTS.len());
+        for bus_info in P::INPUTS {
+            input_layouts.push(bus_info.default.clone());
             inputs_enabled.push(true);
         }
 
-        let mut output_layouts = Vec::with_capacity(bus_list.outputs().len());
-        let mut outputs_enabled = Vec::with_capacity(bus_list.outputs().len());
-        for bus_info in bus_list.outputs() {
-            output_layouts.push(bus_info.default_layout.clone());
+        let mut output_layouts = Vec::with_capacity(P::OUTPUTS.len());
+        let mut outputs_enabled = Vec::with_capacity(P::OUTPUTS.len());
+        for bus_info in P::OUTPUTS {
+            output_layouts.push(bus_info.default.clone());
             outputs_enabled.push(true);
         }
 
-        let plugin = P::create();
+        let bus_states = UnsafeCell::new(BusStates {
+            input_layouts,
+            output_layouts,
+            inputs_enabled,
+            outputs_enabled,
+        });
 
-        let param_list = Arc::new(plugin.params());
+        let plugin = Arc::new(P::create());
 
-        let mut plugin_param_values = Vec::with_capacity(param_list.params.len());
-        let mut processor_param_values = Vec::with_capacity(param_list.params.len());
-        let mut editor_param_values = Vec::with_capacity(param_list.params.len());
-        for param in param_list.params.iter() {
-            plugin_param_values.push(AtomicF64::new(param.default));
-            processor_param_values.push(param.default);
-            editor_param_values.push(Cell::new(param.default));
+        let mut params = HashMap::with_capacity(P::PARAMS.len());
+        for param_key in P::PARAMS {
+            let param = param_key.apply(&plugin);
+            params.insert(
+                param.id(),
+                ParamDef { key: *param_key, info: param.info(), default: param.get_normalized() },
+            );
+        }
+
+        let mut input_buses = Vec::with_capacity(P::INPUTS.len());
+        for _ in 0..P::INPUTS.len() {
+            input_buses.push(Bus { channels: Vec::new() });
+        }
+
+        let mut output_buses = Vec::with_capacity(P::OUTPUTS.len());
+        for _ in 0..P::OUTPUTS.len() {
+            output_buses.push(BusMut { channels: Vec::new() });
         }
 
         let processor_state = UnsafeCell::new(ProcessorState {
-            input_buses: Vec::with_capacity(bus_list.inputs().len()),
-            output_buses: Vec::with_capacity(bus_list.outputs().len()),
             sample_rate: 44_100.0,
+            needs_reset: false,
+            input_buses,
+            output_buses,
             // We can't know the maximum number of param changes in a
             // block, so make a reasonable guess and hope we don't have to
             // allocate more
-            param_changes: Vec::with_capacity(4 * param_list.params.len()),
-            param_values: processor_param_values,
+            param_changes: Vec::with_capacity(4 * P::PARAMS.len()),
             processor: None,
         });
 
         let editor_context = Rc::new(Vst3EditorContext {
-            alive: Cell::new(true),
-            component_handler: Cell::new(ptr::null_mut()),
-            param_list: param_list.clone(),
-            param_values: editor_param_values,
+            component_handler: Cell::new(None),
+            plug_frame: Cell::new(None),
         });
 
-        let editor_state = UnsafeCell::new(EditorState {
-            plug_frame: ptr::null_mut(),
-            context: editor_context,
-            editor: None,
-        });
+        let editor_state = UnsafeCell::new(EditorState { context: editor_context, editor: None });
 
-        Arc::into_raw(Arc::new(Wrapper {
+        Box::into_raw(Box::new(Wrapper {
             component: &Wrapper::<P>::COMPONENT_VTABLE as *const _,
             audio_processor: &Wrapper::<P>::AUDIO_PROCESSOR_VTABLE as *const _,
             process_context_requirements: &Wrapper::<P>::PROCESS_CONTEXT_REQUIREMENTS_VTABLE
@@ -548,17 +358,10 @@ impl<P: Plugin> Wrapper<P> {
             plug_view: &Wrapper::<P>::PLUG_VIEW_VTABLE as *const _,
             event_handler: &Wrapper::<P>::EVENT_HANDLER_VTABLE as *const _,
             timer_handler: &Wrapper::<P>::TIMER_HANDLER_VTABLE as *const _,
-            bus_list,
-            has_editor: plugin_info.has_editor,
-            bus_states: UnsafeCell::new(BusStates {
-                input_layouts,
-                output_layouts,
-                inputs_enabled,
-                outputs_enabled,
-            }),
-            param_list,
-            param_values: plugin_param_values,
-            params_dirty: AtomicBool::new(false),
+            count: AtomicU32::new(1),
+            bus_states,
+            params,
+            active: AtomicBool::new(false),
             plugin,
             processor_state,
             editor_state,
@@ -570,8 +373,6 @@ impl<P: Plugin> Wrapper<P> {
         iid: *const TUID,
         obj: *mut *mut c_void,
     ) -> TResult {
-        let wrapper = &*(this as *const Wrapper<P>);
-
         let iid = *iid;
 
         if iid == FUnknown::IID || iid == IComponent::IID {
@@ -598,7 +399,7 @@ impl<P: Plugin> Wrapper<P> {
             return result::OK;
         }
 
-        if iid == IPlugView::IID && wrapper.has_editor {
+        if iid == IPlugView::IID && P::INFO.has_editor {
             Self::add_ref(this);
             *obj = this.offset(offset_of!(Self, plug_view));
             return result::OK;
@@ -620,20 +421,17 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     unsafe fn add_ref(this: *mut c_void) -> u32 {
-        let wrapper = Arc::from_raw(this as *const Wrapper<P>);
-        let _ = Arc::into_raw(wrapper.clone());
-        let count = Arc::strong_count(&wrapper);
-        let _ = Arc::into_raw(wrapper);
-
-        count as u32
+        (*(this as *const Wrapper<P>)).count.fetch_add(1, Ordering::Relaxed) + 1
     }
 
     unsafe fn release(this: *mut c_void) -> u32 {
-        let wrapper = Arc::from_raw(this as *const Wrapper<P>);
-        let count = Arc::strong_count(&wrapper) - 1;
-        drop(wrapper);
+        let count = (*(this as *const Wrapper<P>)).count.fetch_sub(1, Ordering::Release) - 1;
+        if count == 0 {
+            atomic::fence(Ordering::Acquire);
+            drop(Box::from_raw(this as *mut Wrapper<P>));
+        }
 
-        count as u32
+        count
     }
 
     unsafe extern "system" fn component_query_interface(
@@ -675,16 +473,14 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     unsafe extern "system" fn get_bus_count(
-        this: *mut c_void,
+        _this: *mut c_void,
         media_type: MediaType,
         dir: BusDirection,
     ) -> i32 {
-        let wrapper = &*(this.offset(-offset_of!(Self, component)) as *const Wrapper<P>);
-
         match media_type {
             media_types::AUDIO => match dir {
-                bus_directions::INPUT => wrapper.bus_list.inputs().len() as i32,
-                bus_directions::OUTPUT => wrapper.bus_list.outputs().len() as i32,
+                bus_directions::INPUT => P::INPUTS.len() as i32,
+                bus_directions::OUTPUT => P::OUTPUTS.len() as i32,
                 _ => 0,
             },
             media_types::EVENT => 0,
@@ -705,8 +501,8 @@ impl<P: Plugin> Wrapper<P> {
         match media_type {
             media_types::AUDIO => {
                 let bus_info = match dir {
-                    bus_directions::INPUT => wrapper.bus_list.inputs().get(index as usize),
-                    bus_directions::OUTPUT => wrapper.bus_list.outputs().get(index as usize),
+                    bus_directions::INPUT => P::INPUTS.get(index as usize),
+                    bus_directions::OUTPUT => P::OUTPUTS.get(index as usize),
                     _ => None,
                 };
 
@@ -722,7 +518,7 @@ impl<P: Plugin> Wrapper<P> {
                     bus.media_type = media_types::AUDIO;
                     bus.direction = dir;
                     bus.channel_count = bus_layout.channels() as i32;
-                    copy_wstring(&bus_info.name, &mut bus.name);
+                    copy_wstring(bus_info.name, &mut bus.name);
                     bus.bus_type = if index == 0 { bus_types::MAIN } else { bus_types::AUX };
                     bus.flags = BusInfo::DEFAULT_ACTIVE;
 
@@ -781,18 +577,36 @@ impl<P: Plugin> Wrapper<P> {
 
         match state {
             0 => {
+                wrapper.active.store(false, Ordering::Relaxed);
                 processor_state.processor = None;
             }
             _ => {
+                wrapper.active.store(true, Ordering::Relaxed);
+
                 let context = ProcessContext {
                     sample_rate: processor_state.sample_rate,
                     input_layouts: &bus_states.input_layouts[..],
                     output_layouts: &bus_states.output_layouts[..],
-                    param_list: &wrapper.param_list,
-                    param_values: &processor_state.param_values,
                 };
+                processor_state.processor = Some(P::Processor::create(&wrapper.plugin, &context));
 
-                processor_state.processor = Some(wrapper.plugin.processor(&context));
+                // Ensure that buffer pointer Vecs are the correct size:
+
+                for (layout, bus) in
+                    bus_states.input_layouts.iter().zip(processor_state.input_buses.iter_mut())
+                {
+                    let channels = layout.channels();
+                    bus.channels.reserve(channels);
+                    bus.channels.shrink_to(channels);
+                }
+
+                for (layout, bus) in
+                    bus_states.output_layouts.iter().zip(processor_state.output_buses.iter_mut())
+                {
+                    let channels = layout.channels();
+                    bus.channels.reserve(channels);
+                    bus.channels.shrink_to(channels);
+                }
             }
         }
 
@@ -827,13 +641,8 @@ impl<P: Plugin> Wrapper<P> {
 
         let wrapper = &*(this.offset(-offset_of!(Self, component)) as *const Wrapper<P>);
 
-        let mut param_values =
-            ParamValues { param_list: &wrapper.param_list, values: &wrapper.param_values };
-        match wrapper.plugin.deserialize(&mut param_values, &mut StreamReader(state)) {
-            Ok(_) => {
-                wrapper.params_dirty.store(true, Ordering::Release);
-                result::OK
-            }
+        match wrapper.plugin.deserialize(&mut StreamReader(state)) {
+            Ok(_) => result::OK,
             Err(_) => result::FALSE,
         }
     }
@@ -870,9 +679,7 @@ impl<P: Plugin> Wrapper<P> {
 
         let wrapper = &*(this.offset(-offset_of!(Self, component)) as *const Wrapper<P>);
 
-        let param_values =
-            ParamValues { param_list: &wrapper.param_list, values: &wrapper.param_values };
-        match wrapper.plugin.serialize(&param_values, &mut StreamWriter(state)) {
+        match wrapper.plugin.serialize(&mut StreamWriter(state)) {
             Ok(_) => result::OK,
             Err(_) => result::FALSE,
         }
@@ -904,9 +711,7 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-offset_of!(Self, audio_processor)) as *const Wrapper<P>);
         let bus_states = &mut *wrapper.bus_states.get();
 
-        if num_ins as usize != wrapper.bus_list.inputs().len()
-            || num_outs as usize != wrapper.bus_list.outputs().len()
-        {
+        if num_ins as usize != P::INPUTS.len() || num_outs as usize != P::OUTPUTS.len() {
             return result::FALSE;
         }
 
@@ -1009,18 +814,20 @@ impl<P: Plugin> Wrapper<P> {
             return result::NOT_INITIALIZED;
         }
 
-        if state == 0 {
+        if state != 0 {
+            // Don't need to call reset() the first time set_processing() is
+            // called with true.
+            if !processor_state.needs_reset {
+                processor_state.needs_reset = true;
+                return result::OK;
+            }
+
             let context = ProcessContext {
                 sample_rate: processor_state.sample_rate,
                 input_layouts: &bus_states.input_layouts[..],
                 output_layouts: &bus_states.output_layouts[..],
-                param_list: &wrapper.param_list,
-                param_values: &processor_state.param_values,
             };
-
-            if let Some(processor) = &mut processor_state.processor {
-                processor.reset(&context);
-            }
+            processor_state.processor.as_mut().unwrap().reset(&context);
         }
 
         result::OK
@@ -1036,15 +843,6 @@ impl<P: Plugin> Wrapper<P> {
         }
 
         processor_state.param_changes.clear();
-
-        // If params have been deserialized, read them out from the shared copy
-        if wrapper.params_dirty.swap(false, Ordering::Acquire) {
-            for (index, param) in wrapper.param_list.params.iter().enumerate() {
-                let value = wrapper.param_values[index].load();
-                processor_state.param_changes.push(ParamChange { id: param.id, offset: 0, value });
-                processor_state.param_values[index] = value;
-            }
-        }
 
         let process_data = &*data;
 
@@ -1062,35 +860,31 @@ impl<P: Plugin> Wrapper<P> {
                     continue;
                 }
 
-                let param_id = ((*(*param_data)).get_parameter_id)(param_data as *mut c_void);
+                let id = ((*(*param_data)).get_parameter_id)(param_data as *mut c_void);
                 let point_count = ((*(*param_data)).get_point_count)(param_data as *mut c_void);
 
-                for index in 0..point_count {
-                    let mut offset = 0;
-                    let mut value = 0.0;
-                    let result = ((*(*param_data)).get_point)(
-                        param_data as *mut c_void,
-                        index,
-                        &mut offset,
-                        &mut value,
-                    );
+                if let Some(param_def) = wrapper.params.get(&id) {
+                    for index in 0..point_count {
+                        let mut offset = 0;
+                        let mut value = 0.0;
+                        let result = ((*(*param_data)).get_point)(
+                            param_data as *mut c_void,
+                            index,
+                            &mut offset,
+                            &mut value,
+                        );
 
-                    if result != result::OK {
-                        continue;
-                    }
+                        if result != result::OK {
+                            continue;
+                        }
 
-                    if let Some(&index) = wrapper.param_list.indices.get(&param_id) {
-                        let mapped = wrapper.param_list.params[index].map.map(value);
+                        param_def.key.apply(&wrapper.plugin).set_normalized(value);
 
                         processor_state.param_changes.push(ParamChange {
-                            id: param_id,
+                            id,
                             offset: offset as usize,
-                            value: mapped,
+                            value,
                         });
-
-                        processor_state.param_values[index] = mapped;
-
-                        wrapper.param_values[index].store(mapped);
                     }
                 }
             }
@@ -1098,89 +892,88 @@ impl<P: Plugin> Wrapper<P> {
 
         processor_state.param_changes.sort_by_key(|param_change| param_change.offset);
 
-        processor_state.input_buses.clear();
-
-        if process_data.num_inputs > 0 {
-            if process_data.num_inputs as usize != wrapper.bus_list.inputs().len() {
-                return result::INVALID_ARGUMENT;
-            }
-
-            let inputs =
-                slice::from_raw_parts(process_data.inputs, process_data.num_inputs as usize);
-
-            for (index, input) in inputs.iter().enumerate() {
-                let bus_layout = &bus_states.input_layouts[index];
-                let bus_enabled = bus_states.inputs_enabled[index];
-
-                let channels = if !bus_enabled {
-                    None
-                } else if input.num_channels as usize == bus_layout.channels() {
-                    Some(if input.num_channels > 0 {
-                        slice::from_raw_parts(
-                            input.channel_buffers as *const *mut f32,
-                            input.num_channels as usize,
-                        )
-                    } else {
-                        &[]
-                    })
-                } else if input.num_channels == 0 {
-                    None
-                } else {
-                    return result::INVALID_ARGUMENT;
-                };
-
-                processor_state.input_buses.push(AudioBus {
-                    layout: bus_layout,
-                    samples: process_data.num_samples as usize,
-                    channels,
-                });
-            }
+        for input_bus in processor_state.input_buses.iter_mut() {
+            input_bus.channels.clear();
         }
 
-        processor_state.output_buses.clear();
-
-        if process_data.num_outputs > 0 {
-            if process_data.num_outputs as usize != wrapper.bus_list.outputs().len() {
-                return result::INVALID_ARGUMENT;
-            }
-
-            let outputs =
-                slice::from_raw_parts(process_data.outputs, process_data.num_outputs as usize);
-
-            for (index, output) in outputs.iter().enumerate() {
-                let bus_layout = &bus_states.output_layouts[index];
-                let bus_enabled = bus_states.outputs_enabled[index];
-
-                let channels = if !bus_enabled {
-                    None
-                } else if output.num_channels as usize == bus_layout.channels() {
-                    Some(if output.num_channels > 0 {
-                        slice::from_raw_parts(
-                            output.channel_buffers as *const *mut f32,
-                            output.num_channels as usize,
-                        )
-                    } else {
-                        &[]
-                    })
-                } else if output.num_channels == 0 {
-                    None
-                } else {
-                    return result::INVALID_ARGUMENT;
-                };
-
-                processor_state.output_buses.push(AudioBus {
-                    layout: bus_layout,
-                    samples: process_data.num_samples as usize,
-                    channels,
-                });
-            }
+        for output_bus in processor_state.output_buses.iter_mut() {
+            output_bus.channels.clear();
         }
 
         let samples = process_data.num_samples as usize;
-        let mut audio_buses = AudioBuffers {
+
+        if samples > 0 {
+            if process_data.num_inputs > 0 {
+                if process_data.num_inputs as usize != P::INPUTS.len() {
+                    return result::INVALID_ARGUMENT;
+                }
+
+                let inputs =
+                    slice::from_raw_parts(process_data.inputs, process_data.num_inputs as usize);
+
+                for index in 0..P::INPUTS.len() {
+                    let input = inputs[index];
+                    let bus_layout = &bus_states.input_layouts[index];
+                    let bus_enabled = bus_states.inputs_enabled[index];
+                    let bus = &mut processor_state.input_buses[index];
+
+                    if !bus_enabled || input.num_channels == 0 {
+                        continue;
+                    }
+
+                    if input.num_channels as usize != bus_layout.channels() {
+                        return result::INVALID_ARGUMENT;
+                    }
+
+                    let channels = slice::from_raw_parts(
+                        input.channel_buffers as *const *const f32,
+                        input.num_channels as usize,
+                    );
+
+                    for &ptr in channels {
+                        bus.channels.push(Buffer { ptr, samples, phantom: PhantomData });
+                    }
+                }
+            }
+
+            if process_data.num_outputs > 0 {
+                if process_data.num_outputs as usize != P::OUTPUTS.len() {
+                    return result::INVALID_ARGUMENT;
+                }
+
+                let outputs =
+                    slice::from_raw_parts(process_data.outputs, process_data.num_outputs as usize);
+
+                for index in 0..P::OUTPUTS.len() {
+                    let output = outputs[index];
+                    let bus_layout = &bus_states.output_layouts[index];
+                    let bus_enabled = bus_states.outputs_enabled[index];
+                    let bus = &mut processor_state.output_buses[index];
+
+                    if !bus_enabled || output.num_channels == 0 {
+                        continue;
+                    }
+
+                    if output.num_channels as usize != bus_layout.channels() {
+                        return result::INVALID_ARGUMENT;
+                    }
+
+                    let channels = slice::from_raw_parts(
+                        output.channel_buffers as *const *mut f32,
+                        output.num_channels as usize,
+                    );
+
+                    for &ptr in channels {
+                        bus.channels.push(BufferMut { ptr, samples, phantom: PhantomData });
+                    }
+                }
+            }
+        }
+
+        let mut buffers = Buffers {
             samples,
-            inputs: AudioBuses { samples, buses: &mut processor_state.input_buses },
-            outputs: AudioBuses { samples, buses: &mut processor_state.output_buses },
+            inputs: &processor_state.input_buses,
+            outputs: &mut processor_state.output_buses,
         };
 
         if !process_data.process_context.is_null() {
@@ -1191,12 +984,10 @@ impl<P: Plugin> Wrapper<P> {
             sample_rate: processor_state.sample_rate,
             input_layouts: &bus_states.input_layouts[..],
             output_layouts: &bus_states.output_layouts[..],
-            param_list: &wrapper.param_list,
-            param_values: &processor_state.param_values,
         };
 
         if let Some(processor) = &mut processor_state.processor {
-            processor.process(&context, &mut audio_buses, &processor_state.param_changes[..]);
+            processor.process(&context, &mut buffers, &processor_state.param_changes[..]);
         }
 
         result::OK
@@ -1211,7 +1002,11 @@ impl<P: Plugin> Wrapper<P> {
         iid: *const TUID,
         obj: *mut *mut c_void,
     ) -> TResult {
-        Self::query_interface(this.offset(-offset_of!(Self, process_context_requirements)), iid, obj)
+        Self::query_interface(
+            this.offset(-offset_of!(Self, process_context_requirements)),
+            iid,
+            obj,
+        )
     }
 
     unsafe extern "system" fn process_context_requirements_add_ref(this: *mut c_void) -> u32 {
@@ -1249,41 +1044,14 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    unsafe extern "system" fn edit_controller_terminate(this: *mut c_void) -> TResult {
-        let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
-        let editor_state = &mut *wrapper.editor_state.get();
-
-        editor_state.context.alive.set(false);
-        let component_handler = editor_state.context.component_handler.get();
-        if !component_handler.is_null() {
-            ((*(*component_handler)).unknown.release)(component_handler as *mut c_void);
-            editor_state.context.component_handler.set(ptr::null_mut());
-        }
-
-        if !editor_state.plug_frame.is_null() {
-            ((*(*editor_state.plug_frame)).unknown.release)(editor_state.plug_frame as *mut c_void);
-            editor_state.plug_frame = ptr::null_mut();
-        }
-
+    unsafe extern "system" fn edit_controller_terminate(_this: *mut c_void) -> TResult {
         result::OK
     }
 
     unsafe extern "system" fn set_component_state(
-        this: *mut c_void,
+        _this: *mut c_void,
         _state: *mut *const IBStream,
     ) -> TResult {
-        // Since we implement a single-component effect, we don't need to call
-        // Plugin::deserialize again; we just use this method as a notification
-        // that deserialization has happened and we need to read back parameter
-        // values from the shared copy.
-
-        let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
-        let editor_state = &mut *wrapper.editor_state.get();
-
-        for (index, value) in wrapper.param_values.iter().enumerate() {
-            editor_state.context.param_values[index].set(value.load());
-        }
-
         result::OK
     }
 
@@ -1301,10 +1069,8 @@ impl<P: Plugin> Wrapper<P> {
         result::OK
     }
 
-    unsafe extern "system" fn get_parameter_count(this: *mut c_void) -> i32 {
-        let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
-
-        wrapper.param_list.params.len() as i32
+    unsafe extern "system" fn get_parameter_count(_this: *mut c_void) -> i32 {
+        P::PARAMS.len() as i32
     }
 
     unsafe extern "system" fn get_parameter_info(
@@ -1314,16 +1080,22 @@ impl<P: Plugin> Wrapper<P> {
     ) -> TResult {
         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
-        if let Some(param_info) = wrapper.param_list.params.get(param_index as usize) {
+        if let Some(param_key) = P::PARAMS.get(param_index as usize) {
+            let id = param_key.apply(&wrapper.plugin).id();
+            let param_def = wrapper.params.get(&id).unwrap();
+
             let info = &mut *info;
 
-            info.id = param_info.id;
-            copy_wstring(&param_info.name, &mut info.title);
-            copy_wstring(&param_info.name, &mut info.short_title);
-            copy_wstring(&param_info.units, &mut info.units);
-            info.step_count =
-                if let Some(steps) = param_info.steps { steps.saturating_sub(1) as i32 } else { 0 };
-            info.default_normalized_value = param_info.map.unmap(param_info.default);
+            info.id = id;
+            copy_wstring(&param_def.info.name, &mut info.title);
+            copy_wstring(&param_def.info.name, &mut info.short_title);
+            copy_wstring(&param_def.info.units, &mut info.units);
+            info.step_count = if let Some(steps) = param_def.info.steps {
+                steps.saturating_sub(1) as i32
+            } else {
+                0
+            };
+            info.default_normalized_value = param_def.default;
             info.unit_id = 0;
             info.flags = ParameterInfo::CAN_AUTOMATE;
 
@@ -1341,12 +1113,9 @@ impl<P: Plugin> Wrapper<P> {
     ) -> TResult {
         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
-        if let Some(&index) = wrapper.param_list.indices.get(&id) {
-            let param_info = &wrapper.param_list.params[index];
-
+        if let Some(param_def) = wrapper.params.get(&id) {
             let mut display = String::new();
-            let mapped = param_info.map.map(value_normalized);
-            param_info.format.display(mapped, &mut display);
+            param_def.key.apply(&wrapper.plugin).to_string(value_normalized, &mut display);
             copy_wstring(&display, &mut *string);
 
             return result::OK;
@@ -1363,15 +1132,12 @@ impl<P: Plugin> Wrapper<P> {
     ) -> TResult {
         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
-        if let Some(&index) = wrapper.param_list.indices.get(&id) {
-            let param_info = &wrapper.param_list.params[index];
-
+        if let Some(param_def) = wrapper.params.get(&id) {
             let len = len_wstring(string);
             if let Ok(string) = String::from_utf16(slice::from_raw_parts(string as *const u16, len))
             {
-                if let Ok(value) = param_info.format.parse(&string) {
-                    let unmapped = param_info.map.unmap(value);
-                    *value_normalized = unmapped;
+                if let Ok(value) = param_def.key.apply(&wrapper.plugin).from_string(&string) {
+                    *value_normalized = value;
                     return result::OK;
                 }
             }
@@ -1387,8 +1153,8 @@ impl<P: Plugin> Wrapper<P> {
     ) -> f64 {
         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
-        if let Some(&index) = wrapper.param_list.indices.get(&id) {
-            return wrapper.param_list.params[index].map.map(value_normalized);
+        if let Some(param_def) = wrapper.params.get(&id) {
+            return param_def.key.apply(&wrapper.plugin).normalized_to_plain(value_normalized);
         }
 
         0.0
@@ -1401,8 +1167,8 @@ impl<P: Plugin> Wrapper<P> {
     ) -> f64 {
         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
-        if let Some(&index) = wrapper.param_list.indices.get(&id) {
-            return wrapper.param_list.params[index].map.unmap(plain_value);
+        if let Some(param_def) = wrapper.params.get(&id) {
+            return param_def.key.apply(&wrapper.plugin).plain_to_normalized(plain_value);
         }
 
         0.0
@@ -1410,11 +1176,9 @@ impl<P: Plugin> Wrapper<P> {
 
     unsafe extern "system" fn get_param_normalized(this: *mut c_void, id: u32) -> f64 {
         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
-        let editor_state = &*wrapper.editor_state.get();
 
-        if let Some(&index) = wrapper.param_list.indices.get(&id) {
-            let value = editor_state.context.param_values[index].get();
-            return wrapper.param_list.params[index].map.unmap(value);
+        if let Some(param_def) = wrapper.params.get(&id) {
+            return param_def.key.apply(&wrapper.plugin).get_normalized();
         }
 
         0.0
@@ -1426,12 +1190,15 @@ impl<P: Plugin> Wrapper<P> {
         value: f64,
     ) -> TResult {
         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
-        let editor_state = &*wrapper.editor_state.get();
 
-        if let Some(&index) = wrapper.param_list.indices.get(&id) {
-            let mapped = wrapper.param_list.params[index].map.map(value);
-            editor_state.context.param_values[index].set(mapped);
+        // If currently active, param changes will also be delivered via
+        // process(), so don't apply them here.
+        if wrapper.active.load(Ordering::Relaxed) {
+            return result::OK;
+        }
 
+        if let Some(param_def) = wrapper.params.get(&id) {
+            param_def.key.apply(&wrapper.plugin).set_normalized(value);
             return result::OK;
         }
 
@@ -1445,10 +1212,14 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
         let editor_state = &*wrapper.editor_state.get();
 
+        if let Some(prev_handler) = editor_state.context.component_handler.take() {
+            ((*(*prev_handler)).unknown.release)(prev_handler as *mut c_void);
+        }
+
         if !handler.is_null() {
             ((*(*handler)).unknown.add_ref)(handler as *mut c_void);
+            editor_state.context.component_handler.set(Some(handler));
         }
-        editor_state.context.component_handler.set(handler);
 
         result::OK
     }
@@ -1457,13 +1228,11 @@ impl<P: Plugin> Wrapper<P> {
         this: *mut c_void,
         name: *const c_char,
     ) -> *mut *const IPlugView {
-        let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
-
-        if !wrapper.has_editor {
+        if !P::INFO.has_editor {
             return ptr::null_mut();
         }
 
-        if ffi::CStr::from_ptr(name) == ffi::CStr::from_ptr(view_types::EDITOR) {
+        if CStr::from_ptr(name) == CStr::from_ptr(view_types::EDITOR) {
             Self::add_ref(this.offset(-offset_of!(Self, edit_controller)));
             return this.offset(-offset_of!(Self, edit_controller) + offset_of!(Self, plug_view))
                 as *mut *const IPlugView;
@@ -1493,19 +1262,17 @@ impl<P: Plugin> Wrapper<P> {
         platform_type: *const c_char,
     ) -> TResult {
         #[cfg(target_os = "windows")]
-        if ffi::CStr::from_ptr(platform_type) == ffi::CStr::from_ptr(platform_types::HWND) {
+        if CStr::from_ptr(platform_type) == CStr::from_ptr(platform_types::HWND) {
             return result::TRUE;
         }
 
         #[cfg(target_os = "macos")]
-        if ffi::CStr::from_ptr(platform_type) == ffi::CStr::from_ptr(platform_types::NS_VIEW) {
+        if CStr::from_ptr(platform_type) == CStr::from_ptr(platform_types::NS_VIEW) {
             return result::TRUE;
         }
 
         #[cfg(target_os = "linux")]
-        if ffi::CStr::from_ptr(platform_type)
-            == ffi::CStr::from_ptr(platform_types::X11_EMBED_WINDOW_ID)
-        {
+        if CStr::from_ptr(platform_type) == CStr::from_ptr(platform_types::X11_EMBED_WINDOW_ID) {
             return result::TRUE;
         }
 
@@ -1542,18 +1309,20 @@ impl<P: Plugin> Wrapper<P> {
             RawWindowHandle::Xcb(XcbHandle { window: parent as u32, ..XcbHandle::empty() })
         };
 
-        let editor_context = EditorContext { inner: editor_state.context.clone() };
-        let editor = wrapper.plugin.editor(editor_context, Some(&ParentWindow(parent)));
+        let context: Rc<dyn EditorContext> = editor_state.context.clone();
+
+        let editor = P::Editor::open(&wrapper.plugin, &context, Some(&ParentWindow(parent)));
 
         #[cfg(target_os = "linux")]
         if let Some(file_descriptor) = editor.file_descriptor() {
-            if !editor_state.plug_frame.is_null() {
+            if let Some(frame) = editor_state.context.plug_frame.get() {
                 let mut obj = ptr::null_mut();
-                let result = ((*(*editor_state.plug_frame)).unknown.query_interface)(
-                    editor_state.plug_frame as *mut c_void,
+                let result = ((*(*frame)).unknown.query_interface)(
+                    frame as *mut c_void,
                     &IRunLoop::IID,
                     &mut obj,
                 );
+
                 if result == result::OK {
                     let run_loop = obj as *mut *const IRunLoop;
 
@@ -1591,13 +1360,14 @@ impl<P: Plugin> Wrapper<P> {
 
         #[cfg(target_os = "linux")]
         {
-            if !editor_state.plug_frame.is_null() {
+            if let Some(frame) = editor_state.context.plug_frame.get() {
                 let mut obj = ptr::null_mut();
-                let result = ((*(*editor_state.plug_frame)).unknown.query_interface)(
-                    editor_state.plug_frame as *mut c_void,
+                let result = ((*(*frame)).unknown.query_interface)(
+                    frame as *mut c_void,
                     &IRunLoop::IID,
                     &mut obj,
                 );
+
                 if result == result::OK {
                     let run_loop = obj as *mut *const IRunLoop;
 
@@ -1645,21 +1415,18 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     unsafe extern "system" fn get_size(_this: *mut c_void, size: *mut ViewRect) -> TResult {
-        let (width, height) = P::Editor::initial_size();
+        let (width, height) = P::Editor::size();
 
         let size = &mut *size;
-        size.left = 0;
         size.top = 0;
+        size.left = 0;
         size.right = width.round() as i32;
         size.bottom = height.round() as i32;
 
         result::OK
     }
 
-    unsafe extern "system" fn on_size(
-        _this: *mut c_void,
-        _new_size: *const ViewRect,
-    ) -> TResult {
+    unsafe extern "system" fn on_size(_this: *mut c_void, _new_size: *const ViewRect) -> TResult {
         result::NOT_IMPLEMENTED
     }
 
@@ -1672,15 +1439,16 @@ impl<P: Plugin> Wrapper<P> {
         frame: *mut *const IPlugFrame,
     ) -> TResult {
         let wrapper = &*(this.offset(-offset_of!(Self, plug_view)) as *const Wrapper<P>);
-        let editor_state = &mut *wrapper.editor_state.get();
+        let editor_state = &*wrapper.editor_state.get();
 
-        if !editor_state.plug_frame.is_null() {
-            ((*(*editor_state.plug_frame)).unknown.release)(editor_state.plug_frame as *mut c_void);
+        if let Some(prev_frame) = editor_state.context.plug_frame.take() {
+            ((*(*prev_frame)).unknown.release)(prev_frame as *mut c_void);
         }
+
         if !frame.is_null() {
             ((*(*frame)).unknown.add_ref)(frame as *mut c_void);
+            editor_state.context.plug_frame.set(Some(frame));
         }
-        editor_state.plug_frame = frame;
 
         result::OK
     }
@@ -1755,12 +1523,187 @@ impl<P: Plugin> Wrapper<P> {
     unsafe extern "system" fn on_timer(_this: *mut c_void) {}
 }
 
+pub trait Vst3Info {
+    const UID: [u32; 4];
+}
+
+#[repr(C)]
+pub struct Factory<P, I> {
+    plugin_factory_3: *const IPluginFactory3,
+    phantom: PhantomData<(P, I)>,
+}
+
+unsafe impl<P, I> Sync for Factory<P, I> {}
+
+impl<P: Plugin, I: Vst3Info> Factory<P, I> {
+    const PLUGIN_FACTORY_3_VTABLE: IPluginFactory3 = IPluginFactory3 {
+        plugin_factory_2: IPluginFactory2 {
+            plugin_factory: IPluginFactory {
+                unknown: FUnknown {
+                    query_interface: Self::query_interface,
+                    add_ref: Self::add_ref,
+                    release: Self::release,
+                },
+                get_factory_info: Self::get_factory_info,
+                count_classes: Self::count_classes,
+                get_class_info: Self::get_class_info,
+                create_instance: Self::create_instance,
+            },
+            get_class_info_2: Self::get_class_info_2,
+        },
+        get_class_info_unicode: Self::get_class_info_unicode,
+        set_host_context: Self::set_host_context,
+    };
+
+    pub const SINGLETON: Factory<P, I> = Factory {
+        plugin_factory_3: &Self::PLUGIN_FACTORY_3_VTABLE as *const _,
+        phantom: PhantomData,
+    };
+
+    const UID: TUID = uid(I::UID[0], I::UID[1], I::UID[2], I::UID[3]);
+
+    unsafe extern "system" fn query_interface(
+        this: *mut c_void,
+        iid: *const TUID,
+        obj: *mut *mut c_void,
+    ) -> TResult {
+        let iid = *iid;
+
+        if iid == FUnknown::IID
+            || iid == IPluginFactory::IID
+            || iid == IPluginFactory2::IID
+            || iid == IPluginFactory3::IID
+        {
+            *obj = this;
+            return result::OK;
+        }
+
+        result::NO_INTERFACE
+    }
+
+    unsafe extern "system" fn add_ref(_this: *mut c_void) -> u32 {
+        1
+    }
+
+    unsafe extern "system" fn release(_this: *mut c_void) -> u32 {
+        1
+    }
+
+    unsafe extern "system" fn get_factory_info(
+        _this: *mut c_void,
+        info: *mut PFactoryInfo,
+    ) -> TResult {
+        let info = &mut *info;
+
+        copy_cstring(P::INFO.vendor, &mut info.vendor);
+        copy_cstring(P::INFO.url, &mut info.url);
+        copy_cstring(P::INFO.email, &mut info.email);
+        info.flags = PFactoryInfo::UNICODE;
+
+        result::OK
+    }
+
+    unsafe extern "system" fn count_classes(__this: *mut c_void) -> i32 {
+        1
+    }
+
+    unsafe extern "system" fn get_class_info(
+        _this: *mut c_void,
+        index: i32,
+        info: *mut PClassInfo,
+    ) -> TResult {
+        if index != 0 {
+            return result::INVALID_ARGUMENT;
+        }
+
+        let info = &mut *info;
+
+        info.cid = Self::UID;
+        info.cardinality = PClassInfo::MANY_INSTANCES;
+        copy_cstring("Audio Module Class", &mut info.category);
+        copy_cstring(P::INFO.name, &mut info.name);
+
+        result::OK
+    }
+
+    unsafe extern "system" fn create_instance(
+        _this: *mut c_void,
+        cid: *const c_char,
+        iid: *const c_char,
+        obj: *mut *mut c_void,
+    ) -> TResult {
+        let cid = *(cid as *const TUID);
+        let iid = *(iid as *const TUID);
+        if cid != Self::UID || iid != IComponent::IID {
+            return result::INVALID_ARGUMENT;
+        }
+
+        *obj = Wrapper::<P>::create() as *mut c_void;
+
+        result::OK
+    }
+
+    unsafe extern "system" fn get_class_info_2(
+        _this: *mut c_void,
+        index: i32,
+        info: *mut PClassInfo2,
+    ) -> TResult {
+        if index != 0 {
+            return result::INVALID_ARGUMENT;
+        }
+
+        let info = &mut *info;
+
+        info.cid = Self::UID;
+        info.cardinality = PClassInfo::MANY_INSTANCES;
+        copy_cstring("Audio Module Class", &mut info.category);
+        copy_cstring(P::INFO.name, &mut info.name);
+        info.class_flags = 0;
+        copy_cstring("Fx", &mut info.sub_categories);
+        copy_cstring(P::INFO.vendor, &mut info.vendor);
+        copy_cstring("", &mut info.version);
+        copy_cstring("VST 3.7", &mut info.sdk_version);
+
+        result::OK
+    }
+
+    unsafe extern "system" fn get_class_info_unicode(
+        _this: *mut c_void,
+        index: i32,
+        info: *mut PClassInfoW,
+    ) -> TResult {
+        if index != 0 {
+            return result::INVALID_ARGUMENT;
+        }
+
+        let info = &mut *info;
+
+        info.cid = Self::UID;
+        info.cardinality = PClassInfo::MANY_INSTANCES;
+        copy_cstring("Audio Module Class", &mut info.category);
+        copy_wstring(P::INFO.name, &mut info.name);
+        info.class_flags = 0;
+        copy_cstring("Fx", &mut info.sub_categories);
+        copy_wstring(P::INFO.vendor, &mut info.vendor);
+        copy_wstring("", &mut info.version);
+        copy_wstring("VST 3.7", &mut info.sdk_version);
+
+        result::OK
+    }
+
+    unsafe extern "system" fn set_host_context(
+        _this: *mut c_void,
+        _context: *mut *const FUnknown,
+    ) -> TResult {
+        result::NOT_IMPLEMENTED
+    }
+}
+
 #[macro_export]
 macro_rules! vst3 {
     ($plugin:ty, $uid:expr) => {
         mod vst3_impl {
             use std::ffi::c_void;
-            use std::sync::Arc;
 
             use $crate::plugin::*;
             use $crate::vst3::*;
@@ -1803,7 +1746,12 @@ macro_rules! vst3 {
 
             #[no_mangle]
             extern "system" fn GetPluginFactory() -> *mut c_void {
-                Factory::<$plugin>::create($uid) as *mut c_void
+                struct Info;
+                impl Vst3Info for Info {
+                    const UID: [u32; 4] = $uid;
+                }
+
+                &Factory::<$plugin, Info>::SINGLETON as *const _ as *mut c_void
             }
         }
     };
