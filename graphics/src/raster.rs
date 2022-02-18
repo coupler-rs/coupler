@@ -57,82 +57,125 @@ impl Rasterizer {
     }
 
     pub fn add_line(&mut self, p1: Vec2, p2: Vec2) {
-        if p1.y != p2.y {
-            let x_dir = (p2.x - p1.x).signum() as isize;
-            let y_dir = (p2.y - p1.y).signum() as isize;
-            let dtdx = 1.0 / (p2.x - p1.x);
-            let dtdy = 1.0 / (p2.y - p1.y);
-            let mut x = p1.x.floor() as isize;
-            let mut y = p1.y.floor() as isize;
-            let mut row_t0: f32 = 0.0;
-            let mut col_t0: f32 = 0.0;
-            let mut row_t1 = if p1.y == p2.y {
-                std::f32::INFINITY
+        let mut x = p1.x as isize;
+        let mut y = p1.y as isize;
+
+        let x_end = p2.x as isize;
+        let y_end = p2.y as isize;
+
+        self.min_x = self.min_x.min(x as usize).min(x_end as usize);
+        self.min_y = self.min_y.min(y as usize).min(y_end as usize);
+        self.max_x = self.max_x.max(x as usize + 1).max(x_end as usize + 1);
+        self.max_y = self.max_y.max(y as usize).max(y_end as usize);
+
+        let x_inc;
+        let mut x_offset;
+        let x_offset_end;
+        let dx;
+        let area_offset;
+        let area_sign;
+        if p2.x > p1.x {
+            x_inc = 1;
+            x_offset = p1.x - x as f32;
+            x_offset_end = p2.x - x_end as f32;
+            dx = p2.x - p1.x;
+            area_offset = 2.0;
+            area_sign = -1.0;
+        } else {
+            x_inc = -1;
+            x_offset = 1.0 - (p1.x - x as f32);
+            x_offset_end = 1.0 - (p2.x - x_end as f32);
+            dx = p1.x - p2.x;
+            area_offset = 0.0;
+            area_sign = 1.0;
+        }
+
+        let y_inc;
+        let mut y_offset;
+        let y_offset_end;
+        let dy;
+        let sign;
+        if p2.y > p1.y {
+            y_inc = 1;
+            y_offset = p1.y - y as f32;
+            y_offset_end = p2.y - y_end as f32;
+            dy = p2.y - p1.y;
+            sign = 1.0;
+        } else {
+            y_inc = -1;
+            y_offset = 1.0 - (p1.y - y as f32);
+            y_offset_end = 1.0 - (p2.y - y_end as f32);
+            dy = p1.y - p2.y;
+            sign = -1.0;
+        }
+
+        let dxdy = dx / dy;
+        let dydx = dy / dx;
+
+        let mut y_offset_for_prev_x = y_offset - dydx * x_offset;
+        let mut x_offset_for_prev_y = x_offset - dxdy * y_offset;
+
+        while x != x_end || y != y_end {
+            let col = x;
+            let row = y;
+
+            let x1 = x_offset;
+            let y1 = y_offset;
+
+            let x2;
+            let y2;
+            if y != y_end && (x == x_end || x_offset_for_prev_y + dxdy < 1.0) {
+                y_offset = 0.0;
+                x_offset = x_offset_for_prev_y + dxdy;
+                x_offset_for_prev_y = x_offset;
+                y_offset_for_prev_x -= 1.0;
+                y += y_inc;
+
+                x2 = x_offset;
+                y2 = 1.0;
             } else {
-                let next_y = if p2.y > p1.y { (y + 1) as f32 } else { y as f32 };
-                (dtdy * (next_y - p1.y)).min(1.0)
-            };
-            let mut col_t1 = if p1.x == p2.x {
-                std::f32::INFINITY
-            } else {
-                let next_x = if p2.x > p1.x { (x + 1) as f32 } else { x as f32 };
-                (dtdx * (next_x - p1.x)).min(1.0)
-            };
-            let x_step = dtdx.abs();
-            let y_step = dtdy.abs();
+                x_offset = 0.0;
+                y_offset = y_offset_for_prev_x + dydx;
+                x_offset_for_prev_y -= 1.0;
+                y_offset_for_prev_x = y_offset;
+                x += x_inc;
 
-            let mut prev = p1;
-
-            loop {
-                let t1 = row_t1.min(col_t1);
-                let next = (1.0 - t1) * p1 + t1 * p2;
-                let height = (next.y - prev.y) as f32;
-                let right_edge = (x + 1) as f32;
-                let area = 0.5 * height * ((right_edge - prev.x) + (right_edge - next.x)) as f32;
-
-                if x >= 0 as isize
-                    && x < self.width as isize - 1
-                    && y >= 0 as isize
-                    && y < self.height as isize
-                {
-                    let cell_x = x as usize >> CELL_SIZE_BITS;
-                    let cell_bit = 1 << (BITMASK_SIZE - 1 - (cell_x & (BITMASK_SIZE - 1)));
-                    self.bitmasks
-                        [y as usize * self.bitmasks_width + (cell_x >> BITMASK_SIZE_BITS)] |=
-                        cell_bit;
-                    self.coverage[(y as usize * self.width) + x as usize] += area;
-
-                    self.min_x = self.min_x.min(x as usize);
-                    self.min_y = self.min_y.min(y as usize);
-
-                    let cell_x = (x + 1) as usize >> CELL_SIZE_BITS;
-                    let y = y;
-                    let cell_bit = 1 << (BITMASK_SIZE - 1 - (cell_x & (BITMASK_SIZE - 1)));
-                    self.bitmasks
-                        [y as usize * self.bitmasks_width + (cell_x >> BITMASK_SIZE_BITS)] |=
-                        cell_bit;
-                    self.coverage[(y as usize * self.width) + (x + 1) as usize] += height - area;
-
-                    self.max_x = self.max_x.max((x + 1) as usize);
-                    self.max_y = self.max_y.max(y as usize);
-                }
-
-                if row_t1 < col_t1 {
-                    row_t0 = row_t1;
-                    row_t1 = (row_t1 + y_step).min(1.0);
-                    y += y_dir;
-                } else {
-                    col_t0 = col_t1;
-                    col_t1 = (col_t1 + x_step).min(1.0);
-                    x += x_dir;
-                }
-
-                if row_t0 == 1.0 || col_t0 == 1.0 {
-                    break;
-                }
-
-                prev = next;
+                x2 = 1.0;
+                y2 = y_offset;
             }
+
+            let height = sign * (y2 - y1);
+            let area = 0.5 * height * (area_offset + area_sign * (x1 + x2));
+
+            self.add_delta(col, row, height, area);
+        }
+
+        let height = sign * (y_offset_end - y_offset);
+        let area = 0.5 * height * (area_offset + area_sign * (x_offset + x_offset_end));
+
+        self.add_delta(x, y, height, area);
+    }
+
+    #[inline(always)]
+    fn add_delta(&mut self, x: isize, y: isize, height: f32, area: f32) {
+        if x >= 0 as isize
+            && x < self.width as isize - 1
+            && y >= 0 as isize
+            && y < self.height as isize
+        {
+            let coverage_index = y as usize * self.width + x as usize;
+            self.coverage[coverage_index] += area;
+            self.coverage[coverage_index + 1] += height - area;
+
+            let bitmask_row = y as usize * self.bitmasks_width;
+
+            let cell_x = x as usize >> CELL_SIZE_BITS;
+            let cell_bit = 1 << (BITMASK_SIZE - 1 - (cell_x & (BITMASK_SIZE - 1)));
+            self.bitmasks[bitmask_row + (cell_x >> BITMASK_SIZE_BITS)] |= cell_bit;
+
+            let cell_x = (x + 1) as usize >> CELL_SIZE_BITS;
+            let cell_bit = 1 << (BITMASK_SIZE - 1 - (cell_x & (BITMASK_SIZE - 1)));
+            self.bitmasks[bitmask_row + (cell_x >> BITMASK_SIZE_BITS)] |= cell_bit;
         }
     }
 
