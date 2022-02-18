@@ -66,6 +66,9 @@ impl Canvas {
                 unreachable!();
             }
         });
+        if last != first {
+            self.rasterizer.add_line(last, first);
+        }
 
         let r = f32x4::splat(color.r() as f32);
         let g = f32x4::splat(color.g() as f32);
