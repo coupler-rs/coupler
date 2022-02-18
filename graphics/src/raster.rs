@@ -113,7 +113,7 @@ impl Rasterizer {
                         cell_bit;
                     self.coverage[(y as usize * self.width) + (x + 1) as usize] += height - area;
 
-                    self.max_x = self.max_x.max(x as usize);
+                    self.max_x = self.max_x.max((x + 1) as usize);
                     self.max_y = self.max_y.max(y as usize);
                 }
 
