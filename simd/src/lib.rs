@@ -103,6 +103,16 @@ impl f32x4 {
     pub fn max(&self, other: f32x4) -> f32x4 {
         unsafe { f32x4(_mm_max_ps(self.0, other.0)) }
     }
+
+    #[inline]
+    pub fn scan(&self) -> f32x4 {
+        unsafe {
+            let shifted = _mm_castsi128_ps(_mm_slli_si128(_mm_castps_si128(self.0), 4));
+            let sum1 = _mm_add_ps(self.0, shifted);
+            let shifted = _mm_castsi128_ps(_mm_slli_si128(_mm_castps_si128(sum1), 8));
+            f32x4(_mm_add_ps(sum1, shifted))
+        }
+    }
 }
 
 impl From<u32x4> for f32x4 {
