@@ -1,24 +1,12 @@
-use crate::geom::Vec2;
+use crate::{geom::Vec2, Color};
+
+use simd::*;
 
 const CELL_SIZE: usize = 4;
 const CELL_SIZE_BITS: usize = 2;
 
 const BITMASK_SIZE: usize = u64::BITS as usize;
 const BITMASK_SIZE_BITS: usize = 6;
-
-#[derive(Debug)]
-pub struct Span<'a> {
-    pub x: usize,
-    pub y: usize,
-    pub width: usize,
-    pub contents: Contents<'a>,
-}
-
-#[derive(Debug)]
-pub enum Contents<'a> {
-    Solid,
-    Mask(&'a [f32]),
-}
 
 pub struct Rasterizer {
     width: usize,
@@ -179,11 +167,17 @@ impl Rasterizer {
         }
     }
 
-    pub fn finish(&mut self, mut sink: impl FnMut(Span)) {
+    pub fn finish(&mut self, color: Color, data: &mut [u32], width: usize) {
         self.min_x = self.min_x.max(0);
         self.min_y = self.min_y.max(0);
         self.max_x = self.max_x.min(self.width - 1);
         self.max_y = self.max_y.min(self.height - 1);
+
+        let a = f32x4::splat(color.a() as f32);
+        let a_unit = a * f32x4::splat(1.0 / 255.0);
+        let r = a_unit * f32x4::splat(color.r() as f32);
+        let g = a_unit * f32x4::splat(color.g() as f32);
+        let b = a_unit * f32x4::splat(color.b() as f32);
 
         for y in self.min_y..=self.max_y {
             let mut accum = 0.0;
@@ -204,17 +198,31 @@ impl Rasterizer {
                         .min((self.max_x >> CELL_SIZE_BITS) << CELL_SIZE_BITS);
 
                     if next_x > x {
-                        if coverage >= 254.5 / 255.0 {
-                            sink(Span { x, y, width: next_x - x, contents: Contents::Solid });
-                        } else {
-                            if coverage > 0.5 / 255.0 {
-                                let mask = [coverage; CELL_SIZE];
-                                sink(Span {
-                                    x,
-                                    y,
-                                    width: next_x - x,
-                                    contents: Contents::Mask(&mask),
-                                });
+                        if coverage > 254.5 / 255.0 && color.a() == 255 {
+                            let start = y * width + x;
+                            let end = y * width + next_x;
+                            data[start..end].fill(color.into());
+                        } else if coverage > 0.5 / 255.0 {
+                            let start = y * width + x;
+                            let end = y * width + next_x;
+                            for pixels_slice in data[start..end].chunks_mut(4) {
+                                let mask = f32x4::splat(coverage);
+                                let pixels = u32x4::from_slice(pixels_slice);
+
+                                let dst_a = f32x4::from((pixels >> 24) & u32x4::splat(0xFF));
+                                let dst_r = f32x4::from((pixels >> 16) & u32x4::splat(0xFF));
+                                let dst_g = f32x4::from((pixels >> 8) & u32x4::splat(0xFF));
+                                let dst_b = f32x4::from((pixels >> 0) & u32x4::splat(0xFF));
+
+                                let inv_a = f32x4::splat(1.0) - mask * a_unit;
+                                let out_a = u32x4::from(mask * a + inv_a * dst_a);
+                                let out_r = u32x4::from(mask * r + inv_a * dst_r);
+                                let out_g = u32x4::from(mask * g + inv_a * dst_g);
+                                let out_b = u32x4::from(mask * b + inv_a * dst_b);
+
+                                let out =
+                                    (out_a << 24) | (out_r << 16) | (out_g << 8) | (out_b << 0);
+                                out.write_to_slice(pixels_slice);
                             }
                         }
                     }
@@ -225,18 +233,36 @@ impl Rasterizer {
 
                     x = next_x;
 
-                    let mask_start = y * self.width + x;
-                    let mask_end = mask_start + CELL_SIZE;
-                    let mask = &mut self.coverage[mask_start..mask_end];
-                    for delta in mask.iter_mut() {
-                        accum += *delta;
-                        coverage = accum.abs().min(1.0);
-                        *delta = coverage;
-                    }
+                    let coverage_start = y * self.width + x;
+                    let coverage_end = coverage_start + CELL_SIZE;
+                    let coverage_slice = &mut self.coverage[coverage_start..coverage_end];
 
-                    sink(Span { x, y, width: CELL_SIZE, contents: Contents::Mask(mask) });
+                    let deltas = f32x4::from_slice(coverage_slice);
+                    let accums = f32x4::splat(accum) + deltas.scan();
+                    accum = accums.get::<3>();
+                    let mask = accums.abs().min(f32x4::splat(1.0));
+                    coverage = mask.get::<3>();
 
-                    mask.fill(0.0);
+                    coverage_slice.fill(0.0);
+
+                    let pixels_start = y * width + x;
+                    let pixels_end = pixels_start + CELL_SIZE;
+                    let pixels_slice = &mut data[pixels_start..pixels_end];
+                    let pixels = u32x4::from_slice(pixels_slice);
+
+                    let dst_a = f32x4::from((pixels >> 24) & u32x4::splat(0xFF));
+                    let dst_r = f32x4::from((pixels >> 16) & u32x4::splat(0xFF));
+                    let dst_g = f32x4::from((pixels >> 8) & u32x4::splat(0xFF));
+                    let dst_b = f32x4::from((pixels >> 0) & u32x4::splat(0xFF));
+
+                    let inv_a = f32x4::splat(1.0) - mask * a_unit;
+                    let out_a = u32x4::from(mask * a + inv_a * dst_a);
+                    let out_r = u32x4::from(mask * r + inv_a * dst_r);
+                    let out_g = u32x4::from(mask * g + inv_a * dst_g);
+                    let out_b = u32x4::from(mask * b + inv_a * dst_b);
+
+                    let out = (out_a << 24) | (out_r << 16) | (out_g << 8) | (out_b << 0);
+                    out.write_to_slice(pixels_slice);
 
                     tile &= !(1 << (BITMASK_SIZE - 1 - index));
                     x += CELL_SIZE;
