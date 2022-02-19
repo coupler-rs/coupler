@@ -70,12 +70,11 @@ impl Canvas {
             self.rasterizer.add_line(last, first);
         }
 
-        let r = f32x4::splat(color.r() as f32);
-        let g = f32x4::splat(color.g() as f32);
-        let b = f32x4::splat(color.b() as f32);
         let a = f32x4::splat(color.a() as f32);
-
         let a_unit = a * f32x4::splat(1.0 / 255.0);
+        let r = a_unit * f32x4::splat(color.r() as f32);
+        let g = a_unit * f32x4::splat(color.g() as f32);
+        let b = a_unit * f32x4::splat(color.b() as f32);
 
         let width = self.width;
         let data = &mut self.data;
