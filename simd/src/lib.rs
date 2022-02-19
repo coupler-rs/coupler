@@ -105,6 +105,14 @@ impl f32x4 {
     }
 
     #[inline]
+    pub fn abs(&self) -> f32x4 {
+        unsafe {
+            let mask = _mm_castsi128_ps(_mm_set1_epi32(!(1 << 31)));
+            f32x4(_mm_and_ps(mask, self.0))
+        }
+    }
+
+    #[inline]
     pub fn scan(&self) -> f32x4 {
         unsafe {
             let shifted = _mm_castsi128_ps(_mm_slli_si128(_mm_castps_si128(self.0), 4));
