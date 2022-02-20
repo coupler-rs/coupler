@@ -4,20 +4,36 @@ use crate::path::{Command, Path};
 use crate::raster::Rasterizer;
 use crate::text::Font;
 
+const BAND_HEIGHT: usize = 64;
+const BAND_HEIGHT_BITS: usize = 6;
+
 pub struct Canvas {
     width: usize,
     height: usize,
     data: Vec<u32>,
     rasterizer: Rasterizer,
+    bands: Vec<Vec<Segment>>,
+}
+
+struct Segment {
+    p1: Vec2,
+    p2: Vec2,
 }
 
 impl Canvas {
     pub fn with_size(width: usize, height: usize) -> Canvas {
+        let band_count = (height + BAND_HEIGHT - 1) >> BAND_HEIGHT_BITS;
+        let mut bands = Vec::new();
+        for _ in 0..band_count {
+            bands.push(Vec::new());
+        }
+
         Canvas {
             width,
             height,
-            data: vec![0xFF000000; width * height + 1],
-            rasterizer: Rasterizer::with_size(width, height),
+            data: vec![0xFF000000; width * height],
+            rasterizer: Rasterizer::with_size(width, BAND_HEIGHT),
+            bands,
         }
     }
 
@@ -39,6 +55,17 @@ impl Canvas {
         }
     }
 
+    fn add_line(&mut self, p1: Vec2, p2: Vec2) {
+        let band_y1 = p1.y as usize >> BAND_HEIGHT_BITS;
+        let band_y2 = p2.y as usize >> BAND_HEIGHT_BITS;
+
+        let band_y_start = band_y1.min(band_y2).max(0);
+        let band_y_end = (band_y1.max(band_y2) + 1).min(self.bands.len());
+        for band_y in band_y_start..band_y_end {
+            self.bands[band_y].push(Segment { p1, p2 });
+        }
+    }
+
     pub fn fill_path(&mut self, path: &Path, color: Color) {
         if path.points.is_empty() {
             return;
@@ -53,11 +80,11 @@ impl Canvas {
                 last = point;
             }
             Command::Line(point) => {
-                self.rasterizer.add_line(last, point);
+                self.add_line(last, point);
                 last = point;
             }
             Command::Close => {
-                self.rasterizer.add_line(last, first);
+                self.add_line(last, first);
                 last = first;
             }
             _ => {
@@ -65,10 +92,27 @@ impl Canvas {
             }
         });
         if last != first {
-            self.rasterizer.add_line(last, first);
+            self.add_line(last, first);
         }
 
-        self.rasterizer.finish(color, &mut self.data, self.width);
+        for (index, band) in self.bands.iter().enumerate() {
+            if band.is_empty() {
+                continue;
+            }
+
+            let offset = Vec2::new(0.0, (index << BAND_HEIGHT_BITS) as f32);
+            for segment in band.iter() {
+                self.rasterizer.add_line(segment.p1 - offset, segment.p2 - offset);
+            }
+
+            let data_start = (index << BAND_HEIGHT_BITS) * self.width;
+            let data_end = data_start + BAND_HEIGHT * self.width;
+            self.rasterizer.finish(color, &mut self.data[data_start..data_end], self.width);
+        }
+
+        for band in self.bands.iter_mut() {
+            band.clear();
+        }
     }
 
     pub fn stroke_path(&mut self, path: &Path, width: f32, color: Color) {
