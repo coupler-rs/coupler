@@ -56,6 +56,13 @@ impl Canvas {
     }
 
     fn add_line(&mut self, p1: Vec2, p2: Vec2) {
+        if (p1.x > self.width as f32 && p2.x > self.width as f32)
+            || (p1.y > self.height as f32 && p2.y > self.height as f32)
+            || (p1.y < 0.0 && p2.y < 0.0)
+        {
+            return;
+        }
+
         let band_y1 = p1.y as usize >> BAND_HEIGHT_BITS;
         let band_y2 = p2.y as usize >> BAND_HEIGHT_BITS;
 
