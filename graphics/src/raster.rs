@@ -195,7 +195,7 @@ impl Rasterizer {
                 while x <= self.max_x {
                     let index = tile.leading_zeros() as usize;
                     let next_x = ((bitmask_cell_x + index) << CELL_SIZE_BITS)
-                        .min((self.max_x >> CELL_SIZE_BITS) << CELL_SIZE_BITS);
+                        .min(((self.max_x + 1) >> CELL_SIZE_BITS) << CELL_SIZE_BITS);
 
                     if next_x > x {
                         if coverage > 254.5 / 255.0 && color.a() == 255 {
