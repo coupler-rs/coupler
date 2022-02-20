@@ -146,25 +146,33 @@ impl Rasterizer {
 
     #[inline(always)]
     fn add_delta(&mut self, x: isize, y: isize, height: f32, area: f32) {
-        if x >= 0 as isize
-            && x < self.width as isize - 1
-            && y >= 0 as isize
-            && y < self.height as isize
-        {
-            let coverage_index = y as usize * self.width + x as usize;
-            self.coverage[coverage_index] += area;
-            self.coverage[coverage_index + 1] += height - area;
+        if y < 0 || y >= self.height as isize || x >= self.width as isize - 1 {
+            return;
+        }
+
+        if x < 0 {
+            let coverage_index = y as usize * self.width;
+            self.coverage[coverage_index] += height;
 
             let bitmask_row = y as usize * self.bitmasks_width;
+            self.bitmasks[bitmask_row] |= 1 << (BITMASK_SIZE - 1);
 
-            let cell_x = x as usize >> CELL_SIZE_BITS;
-            let cell_bit = 1 << (BITMASK_SIZE - 1 - (cell_x & (BITMASK_SIZE - 1)));
-            self.bitmasks[bitmask_row + (cell_x >> BITMASK_SIZE_BITS)] |= cell_bit;
-
-            let cell_x = (x + 1) as usize >> CELL_SIZE_BITS;
-            let cell_bit = 1 << (BITMASK_SIZE - 1 - (cell_x & (BITMASK_SIZE - 1)));
-            self.bitmasks[bitmask_row + (cell_x >> BITMASK_SIZE_BITS)] |= cell_bit;
+            return;
         }
+
+        let coverage_index = y as usize * self.width + x as usize;
+        self.coverage[coverage_index] += area;
+        self.coverage[coverage_index + 1] += height - area;
+
+        let bitmask_row = y as usize * self.bitmasks_width;
+
+        let cell_x = x as usize >> CELL_SIZE_BITS;
+        let cell_bit = 1 << (BITMASK_SIZE - 1 - (cell_x & (BITMASK_SIZE - 1)));
+        self.bitmasks[bitmask_row + (cell_x >> BITMASK_SIZE_BITS)] |= cell_bit;
+
+        let cell_x = (x + 1) as usize >> CELL_SIZE_BITS;
+        let cell_bit = 1 << (BITMASK_SIZE - 1 - (cell_x & (BITMASK_SIZE - 1)));
+        self.bitmasks[bitmask_row + (cell_x >> BITMASK_SIZE_BITS)] |= cell_bit;
     }
 
     pub fn finish(&mut self, color: Color, data: &mut [u32], width: usize) {
