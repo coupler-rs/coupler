@@ -14,10 +14,10 @@ pub struct Rasterizer {
     coverage: Vec<f32>,
     bitmasks_width: usize,
     bitmasks: Vec<u64>,
-    min_x: usize,
-    min_y: usize,
-    max_x: usize,
-    max_y: usize,
+    min_x: isize,
+    min_y: isize,
+    max_x: isize,
+    max_y: isize,
 }
 
 impl Rasterizer {
@@ -37,24 +37,24 @@ impl Rasterizer {
             coverage: vec![0.0; width_rounded * height],
             bitmasks_width,
             bitmasks,
-            min_x: width_rounded >> CELL_SIZE_BITS,
-            min_y: height,
+            min_x: width_rounded as isize >> CELL_SIZE_BITS,
+            min_y: height as isize,
             max_x: 0,
             max_y: 0,
         }
     }
 
     pub fn add_line(&mut self, p1: Vec2, p2: Vec2) {
-        let mut x = p1.x as isize;
-        let mut y = p1.y as isize;
+        let mut x = (p1.x + 1.0) as isize - 1;
+        let mut y = (p1.y + 1.0) as isize - 1;
 
-        let x_end = p2.x as isize;
-        let y_end = p2.y as isize;
+        let x_end = (p2.x + 1.0) as isize - 1;
+        let y_end = (p2.y + 1.0) as isize - 1;
 
-        self.min_x = self.min_x.min(x as usize).min(x_end as usize);
-        self.min_y = self.min_y.min(y as usize).min(y_end as usize);
-        self.max_x = self.max_x.max(x as usize + 1).max(x_end as usize + 1);
-        self.max_y = self.max_y.max(y as usize).max(y_end as usize);
+        self.min_x = self.min_x.min(x).min(x_end);
+        self.min_y = self.min_y.min(y).min(y_end);
+        self.max_x = self.max_x.max(x + 1).max(x_end + 1);
+        self.max_y = self.max_y.max(y).max(y_end);
 
         let x_inc;
         let mut x_offset;
@@ -168,10 +168,10 @@ impl Rasterizer {
     }
 
     pub fn finish(&mut self, color: Color, data: &mut [u32], width: usize) {
-        self.min_x = self.min_x.max(0);
-        self.min_y = self.min_y.max(0);
-        self.max_x = self.max_x.min(self.width - 1);
-        self.max_y = self.max_y.min(self.height - 1);
+        let min_x = self.min_x.max(0) as usize;
+        let min_y = self.min_y.max(0) as usize;
+        let max_x = self.max_x.min(self.width as isize - 1) as usize;
+        let max_y = self.max_y.min(self.height as isize - 1) as usize;
 
         let a = f32x4::splat(color.a() as f32);
         let a_unit = a * f32x4::splat(1.0 / 255.0);
@@ -179,23 +179,23 @@ impl Rasterizer {
         let g = a_unit * f32x4::splat(color.g() as f32);
         let b = a_unit * f32x4::splat(color.b() as f32);
 
-        for y in self.min_y..=self.max_y {
+        for y in min_y..=max_y {
             let mut accum = 0.0;
             let mut coverage = 0.0;
 
-            let mut x = self.min_x;
+            let mut x = min_x;
 
-            let bitmask_start = self.min_x >> (BITMASK_SIZE_BITS + CELL_SIZE_BITS);
-            let bitmask_end = self.max_x >> (BITMASK_SIZE_BITS + CELL_SIZE_BITS);
+            let bitmask_start = min_x >> (BITMASK_SIZE_BITS + CELL_SIZE_BITS);
+            let bitmask_end = max_x >> (BITMASK_SIZE_BITS + CELL_SIZE_BITS);
             for bitmask_x in bitmask_start..=bitmask_end {
                 let bitmask_cell_x = bitmask_x << BITMASK_SIZE_BITS;
                 let mut tile = self.bitmasks[y * self.bitmasks_width + bitmask_x];
                 self.bitmasks[y * self.bitmasks_width + bitmask_x] = 0;
 
-                while x <= self.max_x {
+                while x <= max_x {
                     let index = tile.leading_zeros() as usize;
                     let next_x = ((bitmask_cell_x + index) << CELL_SIZE_BITS)
-                        .min(((self.max_x + 1) >> CELL_SIZE_BITS) << CELL_SIZE_BITS);
+                        .min(((max_x + 1) >> CELL_SIZE_BITS) << CELL_SIZE_BITS);
 
                     if next_x > x {
                         if coverage > 254.5 / 255.0 && color.a() == 255 {
@@ -270,8 +270,8 @@ impl Rasterizer {
             }
         }
 
-        self.min_x = self.width >> CELL_SIZE_BITS;
-        self.min_y = self.height;
+        self.min_x = self.width as isize >> CELL_SIZE_BITS;
+        self.min_y = self.height as isize;
         self.max_x = 0;
         self.max_y = 0;
     }
