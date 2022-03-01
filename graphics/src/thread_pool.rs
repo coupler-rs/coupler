@@ -1,17 +1,16 @@
+use std::any::Any;
 use std::marker::PhantomData;
 use std::mem;
 use std::panic::{self, AssertUnwindSafe};
 use std::ptr;
-use std::sync::{Arc, Mutex, Condvar};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle, Thread};
-use std::any::Any;
 
 use crossbeam_channel::Sender;
 
 type Task = Box<dyn FnOnce() + Send>;
 
 struct Context {
-    thread: Thread,
     task_count: Mutex<usize>,
     zero_tasks: Condvar,
     panic: Mutex<Option<Box<dyn Any + Send>>>,
@@ -30,7 +29,6 @@ impl ThreadPool {
         let (sender, receiver) = crossbeam_channel::unbounded::<Task>();
 
         let context = Arc::new(Context {
-            thread: thread::current(),
             task_count: Mutex::new(0),
             zero_tasks: Condvar::new(),
             panic: Mutex::new(None),
