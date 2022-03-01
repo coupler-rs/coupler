@@ -10,16 +10,9 @@ use crossbeam_channel::Sender;
 
 type Task = Box<dyn FnOnce() + Send>;
 
-struct Context {
-    task_count: Mutex<usize>,
-    zero_tasks: Condvar,
-    panic: Mutex<Option<Box<dyn Any + Send>>>,
-}
-
 pub struct ThreadPool {
     handles: Vec<JoinHandle<()>>,
     sender: Option<Sender<Task>>,
-    context: Arc<Context>,
 }
 
 impl ThreadPool {
@@ -28,55 +21,42 @@ impl ThreadPool {
 
         let (sender, receiver) = crossbeam_channel::unbounded::<Task>();
 
-        let context = Arc::new(Context {
-            task_count: Mutex::new(0),
-            zero_tasks: Condvar::new(),
-            panic: Mutex::new(None),
-        });
-
         let mut handles = Vec::with_capacity(num_threads);
         for _ in 0..num_threads {
             let receiver = receiver.clone();
-            let context = context.clone();
 
             let handle = thread::spawn(move || {
                 while let Ok(task) = receiver.recv() {
-                    let result = panic::catch_unwind(AssertUnwindSafe(|| {
-                        task();
-                    }));
-
-                    {
-                        let mut task_count = context.task_count.lock().unwrap();
-                        *task_count -= 1;
-                        if *task_count == 0 {
-                            context.zero_tasks.notify_one();
-                        }
-                    }
-
-                    if let Err(err) = result {
-                        *context.panic.lock().unwrap() = Some(err);
-                    }
+                    task();
                 }
             });
 
             handles.push(handle);
         }
 
-        ThreadPool { handles, sender: Some(sender), context }
+        ThreadPool { handles, sender: Some(sender) }
     }
 
-    pub fn scope<'s, F>(&mut self, f: F)
+    pub fn scope<'s, F>(&self, f: F)
     where
-        F: FnOnce(&Scope<'_, 's>),
+        F: FnOnce(&Scope<'s>),
     {
+        let scope = Scope {
+            sender: self.sender.as_ref().unwrap().clone(),
+            task_count: Mutex::new(0),
+            zero_tasks: Condvar::new(),
+            panic: Mutex::new(None),
+            phantom: PhantomData,
+        };
+
         let result = panic::catch_unwind(AssertUnwindSafe(|| {
-            f(&Scope { pool: self, phantom: PhantomData });
+            f(&scope);
         }));
 
         {
-            let mut task_count = self.context.task_count.lock().unwrap();
+            let mut task_count = scope.task_count.lock().unwrap();
             while *task_count != 0 {
-                task_count = self.context.zero_tasks.wait(task_count).unwrap();
+                task_count = scope.zero_tasks.wait(task_count).unwrap();
             }
         }
 
@@ -84,7 +64,8 @@ impl ThreadPool {
             panic::resume_unwind(err);
         }
 
-        if let Some(err) = self.context.panic.lock().unwrap().take() {
+        let panic = scope.panic.lock().unwrap().take();
+        if let Some(err) = panic {
             panic::resume_unwind(err);
         }
     }
@@ -100,20 +81,39 @@ impl Drop for ThreadPool {
     }
 }
 
-pub struct Scope<'p, 's> {
-    pool: &'p ThreadPool,
+pub struct Scope<'s> {
+    sender: Sender<Task>,
+    task_count: Mutex<usize>,
+    zero_tasks: Condvar,
+    panic: Mutex<Option<Box<dyn Any + Send>>>,
     phantom: PhantomData<fn(&'s ())>,
 }
 
-impl<'p, 's> Scope<'p, 's> {
+impl<'s> Scope<'s> {
     pub fn spawn<F>(&self, task: F)
     where
-        F: FnOnce() + Send + 's,
+        F: FnOnce(&Scope<'s>) + Send + 's,
     {
-        let task: Box<dyn FnOnce() + Send> = Box::new(task);
+        let task: Box<dyn FnOnce() + Send> = Box::new(move || {
+            let result = panic::catch_unwind(AssertUnwindSafe(move || {
+                task(self);
+            }));
+
+            {
+                let mut task_count = self.task_count.lock().unwrap();
+                *task_count -= 1;
+                if *task_count == 0 {
+                    self.zero_tasks.notify_one();
+                }
+            }
+
+            if let Err(err) = result {
+                *self.panic.lock().unwrap() = Some(err);
+            }
+        });
         let task: Box<dyn FnOnce() + Send + 'static> = unsafe { mem::transmute(task) };
 
-        *self.pool.context.task_count.lock().unwrap() += 1;
-        self.pool.sender.as_ref().unwrap().send(task).unwrap();
+        *self.task_count.lock().unwrap() += 1;
+        self.sender.send(task).unwrap();
     }
 }
