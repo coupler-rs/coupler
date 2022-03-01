@@ -2,8 +2,8 @@ use std::marker::PhantomData;
 use std::mem;
 use std::panic::{self, AssertUnwindSafe};
 use std::ptr;
-use std::sync::atomic::{AtomicUsize, Ordering, AtomicPtr};
-use std::sync::Arc;
+use std::sync::atomic::{Ordering, AtomicPtr};
+use std::sync::{Arc, Mutex, Condvar};
 use std::thread::{self, JoinHandle, Thread};
 use std::any::Any;
 
@@ -13,7 +13,8 @@ type Task = Box<dyn FnOnce() + Send>;
 
 struct Context {
     thread: Thread,
-    task_count: AtomicUsize,
+    task_count: Mutex<usize>,
+    zero_tasks: Condvar,
     panic: AtomicPtr<Box<dyn Any + Send>>,
 }
 
@@ -31,7 +32,8 @@ impl ThreadPool {
 
         let context = Arc::new(Context {
             thread: thread::current(),
-            task_count: AtomicUsize::new(0),
+            task_count: Mutex::new(0),
+            zero_tasks: Condvar::new(),
             panic: AtomicPtr::new(ptr::null_mut()),
         });
 
@@ -46,8 +48,12 @@ impl ThreadPool {
                         task();
                     }));
 
-                    if context.task_count.fetch_sub(1, Ordering::Release) == 1 {
-                        context.thread.unpark();
+                    {
+                        let mut task_count = context.task_count.lock().unwrap();
+                        *task_count -= 1;
+                        if *task_count == 0 {
+                            context.zero_tasks.notify_one();
+                        }
                     }
 
                     if let Err(err) = result {
@@ -83,8 +89,11 @@ impl ThreadPool {
             f(&Scope { pool: self, phantom: PhantomData });
         }));
 
-        while self.context.task_count.load(Ordering::Acquire) != 0 {
-            thread::park();
+        {
+            let mut task_count = self.context.task_count.lock().unwrap();
+            while *task_count != 0 {
+                task_count = self.context.zero_tasks.wait(task_count).unwrap();
+            }
         }
 
         unsafe {
@@ -123,8 +132,7 @@ impl<'p, 's> Scope<'p, 's> {
         let task: Box<dyn FnOnce() + Send> = Box::new(task);
         let task: Box<dyn FnOnce() + Send + 'static> = unsafe { mem::transmute(task) };
 
-        self.pool.context.task_count.fetch_add(1, Ordering::Relaxed);
-
+        *self.pool.context.task_count.lock().unwrap() += 1;
         self.pool.sender.as_ref().unwrap().send(task).unwrap();
     }
 }
