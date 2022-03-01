@@ -2,7 +2,6 @@ use std::marker::PhantomData;
 use std::mem;
 use std::panic::{self, AssertUnwindSafe};
 use std::ptr;
-use std::sync::atomic::{Ordering, AtomicPtr};
 use std::sync::{Arc, Mutex, Condvar};
 use std::thread::{self, JoinHandle, Thread};
 use std::any::Any;
@@ -15,7 +14,7 @@ struct Context {
     thread: Thread,
     task_count: Mutex<usize>,
     zero_tasks: Condvar,
-    panic: AtomicPtr<Box<dyn Any + Send>>,
+    panic: Mutex<Option<Box<dyn Any + Send>>>,
 }
 
 pub struct ThreadPool {
@@ -34,7 +33,7 @@ impl ThreadPool {
             thread: thread::current(),
             task_count: Mutex::new(0),
             zero_tasks: Condvar::new(),
-            panic: AtomicPtr::new(ptr::null_mut()),
+            panic: Mutex::new(None),
         });
 
         let mut handles = Vec::with_capacity(num_threads);
@@ -57,20 +56,7 @@ impl ThreadPool {
                     }
 
                     if let Err(err) = result {
-                        unsafe {
-                            let ptr = Box::into_raw(Box::new(err));
-
-                            let result = context.panic.compare_exchange(
-                                ptr::null_mut(),
-                                ptr,
-                                Ordering::Release,
-                                Ordering::Relaxed,
-                            );
-
-                            if result.is_err() {
-                                drop(Box::from_raw(ptr));
-                            }
-                        }
+                        *context.panic.lock().unwrap() = Some(err);
                     }
                 }
             });
@@ -96,14 +82,11 @@ impl ThreadPool {
             }
         }
 
-        unsafe {
-            let panic = self.context.panic.swap(ptr::null_mut(), Ordering::Relaxed);
-            if !panic.is_null() {
-                panic::resume_unwind(*Box::from_raw(panic));
-            }
+        if let Err(err) = result {
+            panic::resume_unwind(err);
         }
 
-        if let Err(err) = result {
+        if let Some(err) = self.context.panic.lock().unwrap().take() {
             panic::resume_unwind(err);
         }
     }
