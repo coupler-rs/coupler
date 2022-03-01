@@ -67,9 +67,9 @@ impl ThreadPool {
         ThreadPool { handles, sender: Some(sender), context }
     }
 
-    pub fn scope<F>(&mut self, f: F)
+    pub fn scope<'s, F>(&mut self, f: F)
     where
-        F: FnOnce(&Scope),
+        F: FnOnce(&Scope<'_, 's>),
     {
         let result = panic::catch_unwind(AssertUnwindSafe(|| {
             f(&Scope { pool: self, phantom: PhantomData });
