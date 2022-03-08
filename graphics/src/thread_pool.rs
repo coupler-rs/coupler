@@ -60,12 +60,11 @@ impl ThreadPool {
             }
         }
 
-        if let Err(err) = result {
+        if let Some(err) = scope.panic.lock().unwrap().take() {
             panic::resume_unwind(err);
         }
 
-        let panic = scope.panic.lock().unwrap().take();
-        if let Some(err) = panic {
+        if let Err(err) = result {
             panic::resume_unwind(err);
         }
     }
@@ -108,7 +107,10 @@ impl<'s> Scope<'s> {
             }
 
             if let Err(err) = result {
-                *self.panic.lock().unwrap() = Some(err);
+                let mut panic = self.panic.lock().unwrap();
+                if panic.is_none() {
+                    *panic = Some(err);
+                }
             }
         });
         let task: Box<dyn FnOnce() + Send + 'static> = unsafe { mem::transmute(task) };
