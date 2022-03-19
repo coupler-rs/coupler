@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::{atomic::AtomicF32, editor::EditorContext};
+use crate::{atomic::AtomicF32, editor::EditorContext, process::ParamChange};
 
 pub type ParamId = u32;
 
@@ -59,6 +59,15 @@ pub trait TypedParam {
 
     fn end_edit(&self, context: &Rc<dyn EditorContext>) {
         context.end_edit(self.id());
+    }
+
+    #[inline]
+    fn read_change(&self, change: &ParamChange) -> Option<Self::Value> {
+        if change.id == self.id() {
+            Some(self.from_normalized(change.value))
+        } else {
+            None
+        }
     }
 }
 
