@@ -1,10 +1,11 @@
+#![allow(dead_code)]
+
 use std::any::Any;
 use std::marker::PhantomData;
 use std::mem;
 use std::panic::{self, AssertUnwindSafe};
-use std::ptr;
-use std::sync::{Arc, Condvar, Mutex};
-use std::thread::{self, JoinHandle, Thread};
+use std::sync::{Condvar, Mutex};
+use std::thread::{self, JoinHandle};
 
 use crossbeam_channel::Sender;
 
