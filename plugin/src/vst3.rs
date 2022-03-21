@@ -163,6 +163,7 @@ struct Wrapper<P: Plugin> {
     event_handler: *const IEventHandler,
     timer_handler: *const ITimerHandler,
     count: AtomicU32,
+    bus_list: BusList,
     // We only form an &mut to bus_states in set_bus_arrangements and
     // activate_bus, which aren't called concurrently with any other methods on
     // IComponent or IAudioProcessor per the spec.
@@ -288,17 +289,19 @@ impl<P: Plugin> Wrapper<P> {
     };
 
     pub fn create() -> *mut Wrapper<P> {
-        let mut input_layouts = Vec::with_capacity(P::INPUTS.len());
-        let mut inputs_enabled = Vec::with_capacity(P::INPUTS.len());
-        for bus_info in P::INPUTS {
-            input_layouts.push(bus_info.default.clone());
+        let bus_list = P::buses();
+
+        let mut input_layouts = Vec::with_capacity(bus_list.inputs().len());
+        let mut inputs_enabled = Vec::with_capacity(bus_list.inputs().len());
+        for bus_info in bus_list.inputs() {
+            input_layouts.push(bus_info.default_layout().clone());
             inputs_enabled.push(true);
         }
 
-        let mut output_layouts = Vec::with_capacity(P::OUTPUTS.len());
-        let mut outputs_enabled = Vec::with_capacity(P::OUTPUTS.len());
-        for bus_info in P::OUTPUTS {
-            output_layouts.push(bus_info.default.clone());
+        let mut output_layouts = Vec::with_capacity(bus_list.outputs().len());
+        let mut outputs_enabled = Vec::with_capacity(bus_list.outputs().len());
+        for bus_info in bus_list.outputs() {
+            output_layouts.push(bus_info.default_layout().clone());
             outputs_enabled.push(true);
         }
 
@@ -320,13 +323,13 @@ impl<P: Plugin> Wrapper<P> {
             );
         }
 
-        let mut input_buses = Vec::with_capacity(P::INPUTS.len());
-        for _ in 0..P::INPUTS.len() {
+        let mut input_buses = Vec::with_capacity(bus_list.inputs().len());
+        for _ in 0..bus_list.inputs().len() {
             input_buses.push(Bus { channels: Vec::new() });
         }
 
-        let mut output_buses = Vec::with_capacity(P::OUTPUTS.len());
-        for _ in 0..P::OUTPUTS.len() {
+        let mut output_buses = Vec::with_capacity(bus_list.outputs().len());
+        for _ in 0..bus_list.outputs().len() {
             output_buses.push(BusMut { channels: Vec::new() });
         }
 
@@ -359,6 +362,7 @@ impl<P: Plugin> Wrapper<P> {
             event_handler: &Wrapper::<P>::EVENT_HANDLER_VTABLE as *const _,
             timer_handler: &Wrapper::<P>::TIMER_HANDLER_VTABLE as *const _,
             count: AtomicU32::new(1),
+            bus_list,
             bus_states,
             params,
             active: AtomicBool::new(false),
@@ -473,14 +477,16 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     unsafe extern "system" fn get_bus_count(
-        _this: *mut c_void,
+        this: *mut c_void,
         media_type: MediaType,
         dir: BusDirection,
     ) -> i32 {
+        let wrapper = &*(this.offset(-offset_of!(Self, component)) as *const Wrapper<P>);
+
         match media_type {
             media_types::AUDIO => match dir {
-                bus_directions::INPUT => P::INPUTS.len() as i32,
-                bus_directions::OUTPUT => P::OUTPUTS.len() as i32,
+                bus_directions::INPUT => wrapper.bus_list.inputs().len() as i32,
+                bus_directions::OUTPUT => wrapper.bus_list.outputs().len() as i32,
                 _ => 0,
             },
             media_types::EVENT => 0,
@@ -501,8 +507,8 @@ impl<P: Plugin> Wrapper<P> {
         match media_type {
             media_types::AUDIO => {
                 let bus_info = match dir {
-                    bus_directions::INPUT => P::INPUTS.get(index as usize),
-                    bus_directions::OUTPUT => P::OUTPUTS.get(index as usize),
+                    bus_directions::INPUT => wrapper.bus_list.inputs().get(index as usize),
+                    bus_directions::OUTPUT => wrapper.bus_list.outputs().get(index as usize),
                     _ => None,
                 };
 
@@ -518,7 +524,7 @@ impl<P: Plugin> Wrapper<P> {
                     bus.media_type = media_types::AUDIO;
                     bus.direction = dir;
                     bus.channel_count = bus_layout.channels() as i32;
-                    copy_wstring(bus_info.name, &mut bus.name);
+                    copy_wstring(bus_info.name(), &mut bus.name);
                     bus.bus_type = if index == 0 { bus_types::MAIN } else { bus_types::AUX };
                     bus.flags = BusInfo::DEFAULT_ACTIVE;
 
@@ -711,7 +717,9 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-offset_of!(Self, audio_processor)) as *const Wrapper<P>);
         let bus_states = &mut *wrapper.bus_states.get();
 
-        if num_ins as usize != P::INPUTS.len() || num_outs as usize != P::OUTPUTS.len() {
+        if num_ins as usize != wrapper.bus_list.inputs().len()
+            || num_outs as usize != wrapper.bus_list.outputs().len()
+        {
             return result::FALSE;
         }
 
@@ -904,14 +912,14 @@ impl<P: Plugin> Wrapper<P> {
 
         if samples > 0 {
             if process_data.num_inputs > 0 {
-                if process_data.num_inputs as usize != P::INPUTS.len() {
+                if process_data.num_inputs as usize != wrapper.bus_list.inputs().len() {
                     return result::INVALID_ARGUMENT;
                 }
 
                 let inputs =
                     slice::from_raw_parts(process_data.inputs, process_data.num_inputs as usize);
 
-                for index in 0..P::INPUTS.len() {
+                for index in 0..wrapper.bus_list.inputs().len() {
                     let input = inputs[index];
                     let bus_layout = &bus_states.input_layouts[index];
                     let bus_enabled = bus_states.inputs_enabled[index];
@@ -937,14 +945,14 @@ impl<P: Plugin> Wrapper<P> {
             }
 
             if process_data.num_outputs > 0 {
-                if process_data.num_outputs as usize != P::OUTPUTS.len() {
+                if process_data.num_outputs as usize != wrapper.bus_list.outputs().len() {
                     return result::INVALID_ARGUMENT;
                 }
 
                 let outputs =
                     slice::from_raw_parts(process_data.outputs, process_data.num_outputs as usize);
 
-                for index in 0..P::OUTPUTS.len() {
+                for index in 0..wrapper.bus_list.outputs().len() {
                     let output = outputs[index];
                     let bus_layout = &bus_states.output_layouts[index];
                     let bus_enabled = bus_states.outputs_enabled[index];

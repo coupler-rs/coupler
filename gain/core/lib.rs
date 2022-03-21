@@ -26,17 +26,18 @@ impl Plugin for Gain {
         has_editor: true,
     };
 
-    const INPUTS: &'static [BusInfo] = &[BusInfo { name: "Input", default: BusLayout::Stereo }];
-    const OUTPUTS: &'static [BusInfo] = &[BusInfo { name: "Output", default: BusLayout::Stereo }];
-
     const PARAMS: &'static [ParamKey<Self>] = &[param!(gain)];
 
-    fn create() -> Gain {
-        Gain { gain: FloatParam::new(0, "gain", 1.0) }
+    fn buses() -> BusList {
+        BusList::new().input("Input", BusLayout::Stereo).output("Output", BusLayout::Stereo)
     }
 
     fn supports_layout(inputs: &[BusLayout], outputs: &[BusLayout]) -> bool {
         inputs[0] == BusLayout::Stereo && outputs[0] == BusLayout::Stereo
+    }
+
+    fn create() -> Gain {
+        Gain { gain: FloatParam::new(0, "gain", 1.0) }
     }
 
     fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()> {
