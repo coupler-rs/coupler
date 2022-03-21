@@ -1,10 +1,11 @@
 use crate::{bus::*, editor::*, param::*, process::*};
 
+#[derive(Clone)]
 pub struct PluginInfo {
-    pub name: &'static str,
-    pub vendor: &'static str,
-    pub url: &'static str,
-    pub email: &'static str,
+    pub name: String,
+    pub vendor: String,
+    pub url: String,
+    pub email: String,
     pub has_editor: bool,
 }
 
@@ -12,9 +13,9 @@ pub trait Plugin: Send + Sync + Sized + 'static {
     type Processor: Processor<Plugin = Self>;
     type Editor: Editor<Plugin = Self>;
 
-    const INFO: PluginInfo;
     const PARAMS: &'static [ParamKey<Self>];
 
+    fn info() -> PluginInfo;
     fn buses() -> BusList;
     fn supports_layout(inputs: &[BusLayout], outputs: &[BusLayout]) -> bool;
     fn create() -> Self;

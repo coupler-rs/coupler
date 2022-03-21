@@ -18,15 +18,17 @@ impl Plugin for Gain {
     type Processor = GainProcessor;
     type Editor = GainEditor;
 
-    const INFO: PluginInfo = PluginInfo {
-        name: "Gain",
-        vendor: "Photophore Systems",
-        url: "https://photophore.systems",
-        email: "support@photophore.systems",
-        has_editor: true,
-    };
-
     const PARAMS: &'static [ParamKey<Self>] = &[param!(gain)];
+
+    fn info() -> PluginInfo {
+        PluginInfo {
+            name: "Gain".to_string(),
+            vendor: "Photophore Systems".to_string(),
+            url: "https://photophore.systems".to_string(),
+            email: "support@photophore.systems".to_string(),
+            has_editor: true,
+        }
+    }
 
     fn buses() -> BusList {
         BusList::new().input("Input", BusLayout::Stereo).output("Output", BusLayout::Stereo)

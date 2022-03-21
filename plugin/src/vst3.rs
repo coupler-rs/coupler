@@ -163,6 +163,7 @@ struct Wrapper<P: Plugin> {
     event_handler: *const IEventHandler,
     timer_handler: *const ITimerHandler,
     count: AtomicU32,
+    info: PluginInfo,
     bus_list: BusList,
     // We only form an &mut to bus_states in set_bus_arrangements and
     // activate_bus, which aren't called concurrently with any other methods on
@@ -288,7 +289,7 @@ impl<P: Plugin> Wrapper<P> {
         on_timer: Self::on_timer,
     };
 
-    pub fn create() -> *mut Wrapper<P> {
+    pub fn create(info: PluginInfo) -> *mut Wrapper<P> {
         let bus_list = P::buses();
 
         let mut input_layouts = Vec::with_capacity(bus_list.inputs().len());
@@ -362,6 +363,7 @@ impl<P: Plugin> Wrapper<P> {
             event_handler: &Wrapper::<P>::EVENT_HANDLER_VTABLE as *const _,
             timer_handler: &Wrapper::<P>::TIMER_HANDLER_VTABLE as *const _,
             count: AtomicU32::new(1),
+            info,
             bus_list,
             bus_states,
             params,
@@ -377,6 +379,8 @@ impl<P: Plugin> Wrapper<P> {
         iid: *const TUID,
         obj: *mut *mut c_void,
     ) -> TResult {
+        let wrapper = &*(this as *const Wrapper<P>);
+
         let iid = *iid;
 
         if iid == FUnknown::IID || iid == IComponent::IID {
@@ -403,7 +407,7 @@ impl<P: Plugin> Wrapper<P> {
             return result::OK;
         }
 
-        if iid == IPlugView::IID && P::INFO.has_editor {
+        if iid == IPlugView::IID && wrapper.info.has_editor {
             Self::add_ref(this);
             *obj = this.offset(offset_of!(Self, plug_view));
             return result::OK;
@@ -1236,7 +1240,9 @@ impl<P: Plugin> Wrapper<P> {
         this: *mut c_void,
         name: *const c_char,
     ) -> *mut *const IPlugView {
-        if !P::INFO.has_editor {
+        let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
+
+        if !wrapper.info.has_editor {
             return ptr::null_mut();
         }
 
@@ -1531,19 +1537,16 @@ impl<P: Plugin> Wrapper<P> {
     unsafe extern "system" fn on_timer(_this: *mut c_void) {}
 }
 
-pub trait Vst3Info {
-    const UID: [u32; 4];
-}
-
 #[repr(C)]
-pub struct Factory<P, I> {
+pub struct Factory<P> {
     plugin_factory_3: *const IPluginFactory3,
-    phantom: PhantomData<(P, I)>,
+    count: AtomicU32,
+    uid: TUID,
+    info: PluginInfo,
+    phantom: PhantomData<P>,
 }
 
-unsafe impl<P, I> Sync for Factory<P, I> {}
-
-impl<P: Plugin, I: Vst3Info> Factory<P, I> {
+impl<P: Plugin> Factory<P> {
     const PLUGIN_FACTORY_3_VTABLE: IPluginFactory3 = IPluginFactory3 {
         plugin_factory_2: IPluginFactory2 {
             plugin_factory: IPluginFactory {
@@ -1563,12 +1566,15 @@ impl<P: Plugin, I: Vst3Info> Factory<P, I> {
         set_host_context: Self::set_host_context,
     };
 
-    pub const SINGLETON: Factory<P, I> = Factory {
-        plugin_factory_3: &Self::PLUGIN_FACTORY_3_VTABLE as *const _,
-        phantom: PhantomData,
-    };
-
-    const UID: TUID = uid(I::UID[0], I::UID[1], I::UID[2], I::UID[3]);
+    pub fn create(plugin_uid: [u32; 4]) -> *mut Factory<P> {
+        Box::into_raw(Box::new(Factory {
+            plugin_factory_3: &Self::PLUGIN_FACTORY_3_VTABLE as *const _,
+            count: AtomicU32::new(1),
+            uid: uid(plugin_uid[0], plugin_uid[1], plugin_uid[2], plugin_uid[3]),
+            info: P::info(),
+            phantom: PhantomData,
+        })) as *mut Factory<P>
+    }
 
     unsafe extern "system" fn query_interface(
         this: *mut c_void,
@@ -1582,6 +1588,7 @@ impl<P: Plugin, I: Vst3Info> Factory<P, I> {
             || iid == IPluginFactory2::IID
             || iid == IPluginFactory3::IID
         {
+            Self::add_ref(this);
             *obj = this;
             return result::OK;
         }
@@ -1589,86 +1596,100 @@ impl<P: Plugin, I: Vst3Info> Factory<P, I> {
         result::NO_INTERFACE
     }
 
-    unsafe extern "system" fn add_ref(_this: *mut c_void) -> u32 {
-        1
+    unsafe extern "system" fn add_ref(this: *mut c_void) -> u32 {
+        (*(this as *const Factory<P>)).count.fetch_add(1, Ordering::Relaxed) + 1
     }
 
-    unsafe extern "system" fn release(_this: *mut c_void) -> u32 {
-        1
+    unsafe extern "system" fn release(this: *mut c_void) -> u32 {
+        let count = (*(this as *const Factory<P>)).count.fetch_sub(1, Ordering::Release) - 1;
+        if count == 0 {
+            atomic::fence(Ordering::Acquire);
+            drop(Box::from_raw(this as *mut Factory<P>));
+        }
+
+        count
     }
 
     unsafe extern "system" fn get_factory_info(
-        _this: *mut c_void,
+        this: *mut c_void,
         info: *mut PFactoryInfo,
     ) -> TResult {
+        let factory = &*(this.offset(-offset_of!(Self, plugin_factory_3)) as *const Factory<P>);
+
         let info = &mut *info;
 
-        copy_cstring(P::INFO.vendor, &mut info.vendor);
-        copy_cstring(P::INFO.url, &mut info.url);
-        copy_cstring(P::INFO.email, &mut info.email);
+        copy_cstring(&factory.info.vendor, &mut info.vendor);
+        copy_cstring(&factory.info.url, &mut info.url);
+        copy_cstring(&factory.info.email, &mut info.email);
         info.flags = PFactoryInfo::UNICODE;
 
         result::OK
     }
 
-    unsafe extern "system" fn count_classes(__this: *mut c_void) -> i32 {
+    unsafe extern "system" fn count_classes(_this: *mut c_void) -> i32 {
         1
     }
 
     unsafe extern "system" fn get_class_info(
-        _this: *mut c_void,
+        this: *mut c_void,
         index: i32,
         info: *mut PClassInfo,
     ) -> TResult {
+        let factory = &*(this.offset(-offset_of!(Self, plugin_factory_3)) as *const Factory<P>);
+
         if index != 0 {
             return result::INVALID_ARGUMENT;
         }
 
         let info = &mut *info;
 
-        info.cid = Self::UID;
+        info.cid = factory.uid;
         info.cardinality = PClassInfo::MANY_INSTANCES;
         copy_cstring("Audio Module Class", &mut info.category);
-        copy_cstring(P::INFO.name, &mut info.name);
+        copy_cstring(&factory.info.name, &mut info.name);
 
         result::OK
     }
 
     unsafe extern "system" fn create_instance(
-        _this: *mut c_void,
+        this: *mut c_void,
         cid: *const c_char,
         iid: *const c_char,
         obj: *mut *mut c_void,
     ) -> TResult {
+        let factory = &*(this.offset(-offset_of!(Self, plugin_factory_3)) as *const Factory<P>);
+
         let cid = *(cid as *const TUID);
         let iid = *(iid as *const TUID);
-        if cid != Self::UID || iid != IComponent::IID {
+        if cid != factory.uid || iid != IComponent::IID {
             return result::INVALID_ARGUMENT;
         }
 
-        *obj = Wrapper::<P>::create() as *mut c_void;
+        *obj = Wrapper::<P>::create(factory.info.clone()) as *mut c_void;
 
         result::OK
     }
 
     unsafe extern "system" fn get_class_info_2(
-        _this: *mut c_void,
+        this: *mut c_void,
         index: i32,
         info: *mut PClassInfo2,
     ) -> TResult {
+        let factory = &*(this.offset(-offset_of!(Self, plugin_factory_3)) as *const Factory<P>);
+
         if index != 0 {
             return result::INVALID_ARGUMENT;
         }
 
         let info = &mut *info;
 
-        info.cid = Self::UID;
+        info.cid = factory.uid;
         info.cardinality = PClassInfo::MANY_INSTANCES;
         copy_cstring("Audio Module Class", &mut info.category);
-        copy_cstring(P::INFO.name, &mut info.name);
+        copy_cstring(&factory.info.name, &mut info.name);
         info.class_flags = 0;
         copy_cstring("Fx", &mut info.sub_categories);
-        copy_cstring(P::INFO.vendor, &mut info.vendor);
+        copy_cstring(&factory.info.vendor, &mut info.vendor);
         copy_cstring("", &mut info.version);
         copy_cstring("VST 3.7", &mut info.sdk_version);
 
@@ -1676,23 +1697,25 @@ impl<P: Plugin, I: Vst3Info> Factory<P, I> {
     }
 
     unsafe extern "system" fn get_class_info_unicode(
-        _this: *mut c_void,
+        this: *mut c_void,
         index: i32,
         info: *mut PClassInfoW,
     ) -> TResult {
+        let factory = &*(this.offset(-offset_of!(Self, plugin_factory_3)) as *const Factory<P>);
+
         if index != 0 {
             return result::INVALID_ARGUMENT;
         }
 
         let info = &mut *info;
 
-        info.cid = Self::UID;
+        info.cid = factory.uid;
         info.cardinality = PClassInfo::MANY_INSTANCES;
         copy_cstring("Audio Module Class", &mut info.category);
-        copy_wstring(P::INFO.name, &mut info.name);
+        copy_wstring(&factory.info.name, &mut info.name);
         info.class_flags = 0;
         copy_cstring("Fx", &mut info.sub_categories);
-        copy_wstring(P::INFO.vendor, &mut info.vendor);
+        copy_wstring(&factory.info.vendor, &mut info.vendor);
         copy_wstring("", &mut info.version);
         copy_wstring("VST 3.7", &mut info.sdk_version);
 
@@ -1754,12 +1777,7 @@ macro_rules! vst3 {
 
             #[no_mangle]
             extern "system" fn GetPluginFactory() -> *mut c_void {
-                struct Info;
-                impl Vst3Info for Info {
-                    const UID: [u32; 4] = $uid;
-                }
-
-                &Factory::<$plugin, Info>::SINGLETON as *const _ as *mut c_void
+                Factory::<$plugin>::create($uid) as *const Factory<$plugin> as *mut c_void
             }
         }
     };
