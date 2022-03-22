@@ -18,8 +18,6 @@ impl Plugin for Gain {
     type Processor = GainProcessor;
     type Editor = GainEditor;
 
-    const PARAMS: &'static [ParamKey<Self>] = &[param!(gain)];
-
     fn info() -> PluginInfo {
         PluginInfo {
             name: "Gain".to_string(),
@@ -36,6 +34,10 @@ impl Plugin for Gain {
 
     fn supports_layout(inputs: &[BusLayout], outputs: &[BusLayout]) -> bool {
         inputs[0] == BusLayout::Stereo && outputs[0] == BusLayout::Stereo
+    }
+
+    fn params() -> ParamList<Self> {
+        ParamList::new().param(param!(gain))
     }
 
     fn create() -> Gain {

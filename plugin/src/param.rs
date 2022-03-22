@@ -4,6 +4,25 @@ use crate::{atomic::AtomicF32, editor::EditorContext, process::ParamChange};
 
 pub type ParamId = u32;
 
+pub struct ParamList<P> {
+    params: Vec<ParamKey<P>>,
+}
+
+impl<P> ParamList<P> {
+    pub fn new() -> ParamList<P> {
+        ParamList { params: Vec::new() }
+    }
+
+    pub fn param(mut self, key: ParamKey<P>) -> ParamList<P> {
+        self.params.push(key);
+        self
+    }
+
+    pub fn params(&self) -> &[ParamKey<P>] {
+        &self.params
+    }
+}
+
 pub struct ParamKey<P>(pub fn(&P) -> &dyn Param);
 
 impl<P> Clone for ParamKey<P> {
