@@ -1,7 +1,5 @@
 use crate::{buffer::*, bus::*, param::*, plugin::*};
 
-use std::sync::Arc;
-
 pub struct ProcessContext<'a> {
     pub sample_rate: f64,
     pub input_layouts: &'a [BusLayout],
@@ -17,7 +15,7 @@ pub struct ParamChange {
 pub trait Processor: Send + Sized {
     type Plugin: Plugin;
 
-    fn create(plugin: &Arc<Self::Plugin>, context: &ProcessContext) -> Self;
+    fn create(plugin: &Self::Plugin, context: &ProcessContext) -> Self;
     fn reset(&mut self, context: &ProcessContext);
     fn process(
         &mut self,

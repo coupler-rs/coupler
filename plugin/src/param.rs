@@ -39,15 +39,6 @@ impl<P> ParamKey<P> {
     }
 }
 
-#[macro_export]
-macro_rules! param {
-    ($field:ident) => {
-        ParamKey(|plugin| &plugin.$field)
-    };
-}
-
-pub use param;
-
 pub struct ParamInfo {
     pub name: &'static str,
     pub units: &'static str,

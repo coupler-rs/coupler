@@ -4,7 +4,6 @@ use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
 use std::marker::PhantomData;
 use std::rc::Rc;
-use std::sync::Arc;
 
 pub trait EditorContext {
     fn begin_edit(&self, param_id: ParamId);
@@ -24,7 +23,7 @@ pub trait Editor: Sized {
     type Plugin: Plugin;
 
     fn open(
-        plugin: &Arc<Self::Plugin>,
+        plugin: &Self::Plugin,
         context: &Rc<dyn EditorContext>,
         parent: Option<&ParentWindow>,
     ) -> Self;
@@ -46,7 +45,7 @@ impl<P: Plugin> Editor for NoEditor<P> {
     type Plugin = P;
 
     fn open(
-        _plugin: &Arc<Self::Plugin>,
+        _plugin: &Self::Plugin,
         _context: &Rc<dyn EditorContext>,
         _parent: Option<&ParentWindow>,
     ) -> Self {

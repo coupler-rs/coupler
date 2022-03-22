@@ -10,7 +10,6 @@ use std::os::raw::{c_char, c_int};
 use std::rc::Rc;
 use std::sync::atomic;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::Arc;
 use std::{io, ptr, slice};
 
 use raw_window_handle::RawWindowHandle;
@@ -172,7 +171,7 @@ struct Wrapper<P: Plugin> {
     params: ParamList<P>,
     param_indices: HashMap<ParamId, ParamDef<P>>,
     active: AtomicBool,
-    plugin: Arc<P>,
+    plugin: P,
     processor_state: UnsafeCell<ProcessorState<P>>,
     editor_state: UnsafeCell<EditorState<P>>,
 }
@@ -314,7 +313,7 @@ impl<P: Plugin> Wrapper<P> {
             outputs_enabled,
         });
 
-        let plugin = Arc::new(P::create());
+        let plugin = P::create();
 
         let params = P::params();
 
