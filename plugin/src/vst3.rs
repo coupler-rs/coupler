@@ -8,8 +8,8 @@ use std::ffi::{c_void, CStr, CString};
 use std::marker::PhantomData;
 use std::os::raw::{c_char, c_int};
 use std::rc::Rc;
-use std::sync::atomic;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::Arc;
 use std::{io, ptr, slice};
 
 use raw_window_handle::RawWindowHandle;
@@ -355,7 +355,7 @@ impl<P: Plugin> Wrapper<P> {
 
         let editor_state = UnsafeCell::new(EditorState { context: editor_context, editor: None });
 
-        Box::into_raw(Box::new(Wrapper {
+        Arc::into_raw(Arc::new(Wrapper {
             component: &Wrapper::<P>::COMPONENT_VTABLE as *const _,
             audio_processor: &Wrapper::<P>::AUDIO_PROCESSOR_VTABLE as *const _,
             process_context_requirements: &Wrapper::<P>::PROCESS_CONTEXT_REQUIREMENTS_VTABLE
@@ -432,17 +432,20 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     unsafe fn add_ref(this: *mut c_void) -> u32 {
-        (*(this as *const Wrapper<P>)).count.fetch_add(1, Ordering::Relaxed) + 1
+        let wrapper = Arc::from_raw(this as *const Wrapper<P>);
+        let _ = Arc::into_raw(wrapper.clone());
+        let count = Arc::strong_count(&wrapper);
+        let _ = Arc::into_raw(wrapper);
+
+        count as u32
     }
 
     unsafe fn release(this: *mut c_void) -> u32 {
-        let count = (*(this as *const Wrapper<P>)).count.fetch_sub(1, Ordering::Release) - 1;
-        if count == 0 {
-            atomic::fence(Ordering::Acquire);
-            drop(Box::from_raw(this as *mut Wrapper<P>));
-        }
+        let wrapper = Arc::from_raw(this as *const Wrapper<P>);
+        let count = Arc::strong_count(&wrapper) - 1;
+        drop(wrapper);
 
-        count
+        count as u32
     }
 
     unsafe extern "system" fn component_query_interface(
@@ -1572,7 +1575,7 @@ impl<P: Plugin> Factory<P> {
     };
 
     pub fn create(plugin_uid: [u32; 4]) -> *mut Factory<P> {
-        Box::into_raw(Box::new(Factory {
+        Arc::into_raw(Arc::new(Factory::<P> {
             plugin_factory_3: &Self::PLUGIN_FACTORY_3_VTABLE as *const _,
             count: AtomicU32::new(1),
             uid: uid(plugin_uid[0], plugin_uid[1], plugin_uid[2], plugin_uid[3]),
@@ -1602,17 +1605,20 @@ impl<P: Plugin> Factory<P> {
     }
 
     unsafe extern "system" fn add_ref(this: *mut c_void) -> u32 {
-        (*(this as *const Factory<P>)).count.fetch_add(1, Ordering::Relaxed) + 1
+        let factory = Arc::from_raw(this as *const Factory<P>);
+        let _ = Arc::into_raw(factory.clone());
+        let count = Arc::strong_count(&factory);
+        let _ = Arc::into_raw(factory);
+
+        count as u32
     }
 
     unsafe extern "system" fn release(this: *mut c_void) -> u32 {
-        let count = (*(this as *const Factory<P>)).count.fetch_sub(1, Ordering::Release) - 1;
-        if count == 0 {
-            atomic::fence(Ordering::Acquire);
-            drop(Box::from_raw(this as *mut Factory<P>));
-        }
+        let factory = Arc::from_raw(this as *const Factory<P>);
+        let count = Arc::strong_count(&factory) - 1;
+        drop(factory);
 
-        count
+        count as u32
     }
 
     unsafe extern "system" fn get_factory_info(
