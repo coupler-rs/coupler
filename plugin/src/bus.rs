@@ -12,18 +12,8 @@ impl BusLayout {
 }
 
 pub struct BusInfo {
-    name: String,
-    default_layout: BusLayout,
-}
-
-impl BusInfo {
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn default_layout(&self) -> &BusLayout {
-        &self.default_layout
-    }
+    pub name: String,
+    pub default_layout: BusLayout,
 }
 
 pub struct BusList {

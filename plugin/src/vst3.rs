@@ -295,14 +295,14 @@ impl<P: Plugin> Wrapper<P> {
         let mut input_layouts = Vec::with_capacity(bus_list.inputs().len());
         let mut inputs_enabled = Vec::with_capacity(bus_list.inputs().len());
         for bus_info in bus_list.inputs() {
-            input_layouts.push(bus_info.default_layout().clone());
+            input_layouts.push(bus_info.default_layout.clone());
             inputs_enabled.push(true);
         }
 
         let mut output_layouts = Vec::with_capacity(bus_list.outputs().len());
         let mut outputs_enabled = Vec::with_capacity(bus_list.outputs().len());
         for bus_info in bus_list.outputs() {
-            output_layouts.push(bus_info.default_layout().clone());
+            output_layouts.push(bus_info.default_layout.clone());
             outputs_enabled.push(true);
         }
 
@@ -534,7 +534,7 @@ impl<P: Plugin> Wrapper<P> {
                     bus.media_type = media_types::AUDIO;
                     bus.direction = dir;
                     bus.channel_count = bus_layout.channels() as i32;
-                    copy_wstring(bus_info.name(), &mut bus.name);
+                    copy_wstring(&bus_info.name, &mut bus.name);
                     bus.bus_type = if index == 0 { bus_types::MAIN } else { bus_types::AUX };
                     bus.flags = BusInfo::DEFAULT_ACTIVE;
 
