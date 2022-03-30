@@ -1,4 +1,4 @@
-use crate::{buffer::*, bus::*, param::*, plugin::*, atomic::AtomicF64};
+use crate::{atomic::AtomicF64, buffer::*, bus::*, param::*, plugin::*};
 
 pub struct ProcessContext<'a> {
     sample_rate: f64,
@@ -16,13 +16,7 @@ impl<'a> ProcessContext<'a> {
         param_list: &'a ParamList,
         param_values: &'a [AtomicF64],
     ) -> ProcessContext<'a> {
-        ProcessContext {
-            sample_rate,
-            input_layouts,
-            output_layouts,
-            param_list,
-            param_values,
-        }
+        ProcessContext { sample_rate, input_layouts, output_layouts, param_list, param_values }
     }
 
     pub fn sample_rate(&self) -> f64 {

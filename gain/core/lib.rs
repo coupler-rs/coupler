@@ -45,21 +45,27 @@ impl Plugin for Gain {
         Gain {}
     }
 
-    fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()> {
-        // let gain = self.params.gain.get();
-        // write.write(&gain.to_le_bytes()).map(|_| ()).map_err(|_| ())
-        Ok(())
+    fn serialize(
+        &self,
+        context: &SerializeContext,
+        write: &mut impl std::io::Write,
+    ) -> Result<(), ()> {
+        let gain = context.get_param(Gain::GAIN);
+        write.write(&gain.to_le_bytes()).map(|_| ()).map_err(|_| ())
     }
 
-    fn deserialize(&self, read: &mut impl std::io::Read) -> Result<(), ()> {
-        // let mut buf = [0; std::mem::size_of::<u32>()];
-        // if read.read(&mut buf).is_ok() {
-        //     self.params.gain.set(f32::from_le_bytes(buf));
-        //     Ok(())
-        // } else {
-        //     Err(())
-        // }
-        Ok(())
+    fn deserialize(
+        &self,
+        context: &DeserializeContext,
+        read: &mut impl std::io::Read,
+    ) -> Result<(), ()> {
+        let mut buf = [0; std::mem::size_of::<u32>()];
+        if read.read(&mut buf).is_ok() {
+            context.set_param(Gain::GAIN, f32::from_le_bytes(buf));
+            Ok(())
+        } else {
+            Err(())
+        }
     }
 }
 

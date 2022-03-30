@@ -649,7 +649,8 @@ impl<P: Plugin> Wrapper<P> {
 
         let wrapper = &*(this.offset(-offset_of!(Self, component)) as *const Wrapper<P>);
 
-        match wrapper.plugin.deserialize(&mut StreamReader(state)) {
+        let context = DeserializeContext::new(&wrapper.param_list, &wrapper.param_values);
+        match wrapper.plugin.deserialize(&context, &mut StreamReader(state)) {
             Ok(_) => result::OK,
             Err(_) => result::FALSE,
         }
@@ -687,7 +688,8 @@ impl<P: Plugin> Wrapper<P> {
 
         let wrapper = &*(this.offset(-offset_of!(Self, component)) as *const Wrapper<P>);
 
-        match wrapper.plugin.serialize(&mut StreamWriter(state)) {
+        let context = SerializeContext::new(&wrapper.param_list, &wrapper.param_values);
+        match wrapper.plugin.serialize(&context, &mut StreamWriter(state)) {
             Ok(_) => result::OK,
             Err(_) => result::FALSE,
         }
