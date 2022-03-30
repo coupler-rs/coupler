@@ -16,7 +16,7 @@ pub trait Plugin: Send + Sync + Sized + 'static {
     fn info() -> PluginInfo;
     fn buses() -> BusList;
     fn supports_layout(inputs: &[BusLayout], outputs: &[BusLayout]) -> bool;
-    fn params() -> ParamList<Self>;
+    fn params() -> ParamList;
     fn create() -> Self;
     fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()>;
     fn deserialize(&self, read: &mut impl std::io::Read) -> Result<(), ()>;

@@ -1,6 +1,5 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::sync::Arc;
 
 use graphics::{Canvas, Color, Path, Vec2};
 use plugin::{buffer::*, bus::*, editor::*, param::*, plugin::*, process::*};
@@ -10,18 +9,10 @@ use window::{
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
-pub struct GainParams {
-    gain: FloatParam,
-}
+pub struct Gain {}
 
-impl Default for GainParams {
-    fn default() -> GainParams {
-        GainParams { gain: FloatParam::new(0, "gain", 1.0) }
-    }
-}
-
-pub struct Gain {
-    params: Arc<GainParams>,
+impl Gain {
+    const GAIN: ParamKey<FloatParam> = ParamKey::new(0);
 }
 
 impl Plugin for Gain {
@@ -46,32 +37,33 @@ impl Plugin for Gain {
         inputs[0] == BusLayout::Stereo && outputs[0] == BusLayout::Stereo
     }
 
-    fn params() -> ParamList<Self> {
-        ParamList::new().param(ParamKey(|p| &p.params.gain))
+    fn params() -> ParamList {
+        ParamList::new().param(Gain::GAIN, "Gain", FloatParam::new(0.0, 1.0, 1.0))
     }
 
     fn create() -> Gain {
-        Gain { params: Arc::new(GainParams::default()) }
+        Gain {}
     }
 
     fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()> {
-        let gain = self.params.gain.get();
-        write.write(&gain.to_le_bytes()).map(|_| ()).map_err(|_| ())
+        // let gain = self.params.gain.get();
+        // write.write(&gain.to_le_bytes()).map(|_| ()).map_err(|_| ())
+        Ok(())
     }
 
     fn deserialize(&self, read: &mut impl std::io::Read) -> Result<(), ()> {
-        let mut buf = [0; std::mem::size_of::<u32>()];
-        if read.read(&mut buf).is_ok() {
-            self.params.gain.set(f32::from_le_bytes(buf));
-            Ok(())
-        } else {
-            Err(())
-        }
+        // let mut buf = [0; std::mem::size_of::<u32>()];
+        // if read.read(&mut buf).is_ok() {
+        //     self.params.gain.set(f32::from_le_bytes(buf));
+        //     Ok(())
+        // } else {
+        //     Err(())
+        // }
+        Ok(())
     }
 }
 
 pub struct GainProcessor {
-    params: Arc<GainParams>,
     gain: f32,
 }
 
@@ -79,22 +71,22 @@ impl Processor for GainProcessor {
     type Plugin = Gain;
 
     fn create(plugin: &Gain, _context: &ProcessContext) -> Self {
-        GainProcessor { params: plugin.params.clone(), gain: plugin.params.gain.get() }
+        GainProcessor { gain: 1.0 }
     }
 
-    fn reset(&mut self, _context: &ProcessContext) {
-        self.gain = self.params.gain.get();
+    fn reset(&mut self, context: &ProcessContext) {
+        self.gain = context.get_param(Gain::GAIN);
     }
 
     fn process(
         &mut self,
-        _context: &ProcessContext,
+        context: &ProcessContext,
         buffers: &mut Buffers,
         _param_changes: &[ParamChange],
     ) {
         for i in 0..buffers.samples() {
             for channel in 0..2 {
-                self.gain = 0.9995 * self.gain + 0.0005 * self.params.gain.get();
+                self.gain = 0.9995 * self.gain + 0.0005 * context.get_param(Gain::GAIN);
 
                 buffers.outputs()[0][channel][i] = self.gain * buffers.inputs()[0][channel][i];
             }
@@ -153,7 +145,6 @@ impl Editor for GainEditor {
 }
 
 struct GainWindowHandler {
-    params: Arc<GainParams>,
     context: Rc<dyn EditorContext>,
     canvas: RefCell<Canvas>,
     mouse: Cell<Point>,
@@ -163,7 +154,6 @@ struct GainWindowHandler {
 impl GainWindowHandler {
     fn new(plugin: &Gain, context: &Rc<dyn EditorContext>) -> GainWindowHandler {
         GainWindowHandler {
-            params: plugin.params.clone(),
             context: context.clone(),
             canvas: RefCell::new(Canvas::with_size(256, 256)),
             mouse: Cell::new(Point { x: -1.0, y: -1.0 }),
@@ -191,31 +181,31 @@ impl WindowHandler for GainWindowHandler {
 
         canvas.clear(Color::rgba(21, 26, 31, 255));
 
-        let value = self.params.gain.get();
+        // let value = self.params.gain.get();
 
-        let center = Vec2::new(128.0, 128.0);
-        let radius = 32.0;
-        let angle1 = 0.75 * std::f32::consts::PI;
-        let angle2 = angle1 + value * 1.5 * std::f32::consts::PI;
-        let mut path = Path::new();
-        path.move_to(center + radius * Vec2::new(angle1.cos(), angle1.sin()));
-        path.arc(radius, angle1, angle2);
-        path.line_to(center + (radius - 4.0) * Vec2::new(angle2.cos(), angle2.sin()));
-        path.arc(radius - 4.0, angle2, angle1);
-        path.close();
-        canvas.fill_path(&path, Color::rgba(240, 240, 245, 255));
+        // let center = Vec2::new(128.0, 128.0);
+        // let radius = 32.0;
+        // let angle1 = 0.75 * std::f32::consts::PI;
+        // let angle2 = angle1 + value * 1.5 * std::f32::consts::PI;
+        // let mut path = Path::new();
+        // path.move_to(center + radius * Vec2::new(angle1.cos(), angle1.sin()));
+        // path.arc(radius, angle1, angle2);
+        // path.line_to(center + (radius - 4.0) * Vec2::new(angle2.cos(), angle2.sin()));
+        // path.arc(radius - 4.0, angle2, angle1);
+        // path.close();
+        // canvas.fill_path(&path, Color::rgba(240, 240, 245, 255));
 
-        let center = Vec2::new(128.0, 128.0);
-        let radius = 32.0;
-        let angle = 0.75 * std::f32::consts::PI;
-        let span = 1.5 * std::f32::consts::PI;
-        let mut path = Path::new();
-        path.move_to(center + radius * Vec2::new(angle.cos(), angle.sin()));
-        path.arc(radius, angle, angle + span);
-        path.line_to(center + (radius - 4.0) * Vec2::new(-angle.cos(), angle.sin()));
-        path.arc(radius - 4.0, angle + span, angle);
-        path.close();
-        canvas.stroke_path(&path, 1.0, Color::rgba(240, 240, 245, 255));
+        // let center = Vec2::new(128.0, 128.0);
+        // let radius = 32.0;
+        // let angle = 0.75 * std::f32::consts::PI;
+        // let span = 1.5 * std::f32::consts::PI;
+        // let mut path = Path::new();
+        // path.move_to(center + radius * Vec2::new(angle.cos(), angle.sin()));
+        // path.arc(radius, angle, angle + span);
+        // path.line_to(center + (radius - 4.0) * Vec2::new(-angle.cos(), angle.sin()));
+        // path.arc(radius - 4.0, angle + span, angle);
+        // path.close();
+        // canvas.stroke_path(&path, 1.0, Color::rgba(240, 240, 245, 255));
 
         window.update_contents(canvas.data(), 256, 256);
     }
@@ -225,7 +215,7 @@ impl WindowHandler for GainWindowHandler {
         if let Some((start_position, start_value)) = self.down.get() {
             let new_value =
                 (start_value - 0.005 * (position.y - start_position.y) as f32).max(0.0).min(1.0);
-            self.params.gain.perform_edit(&self.context, new_value);
+            // self.params.gain.perform_edit(&self.context, new_value);
         } else {
             self.update_cursor(window);
         }
@@ -237,11 +227,11 @@ impl WindowHandler for GainWindowHandler {
             if position.x >= 96.0 && position.x < 160.0 && position.y >= 96.0 && position.y < 160.0
             {
                 window.set_cursor(Cursor::SizeNs);
-                self.params.gain.begin_edit(&self.context);
-                let value = self.params.gain.get();
-                self.params.gain.perform_edit(&self.context, self.params.gain.get());
-                self.down.set(Some((position, value)));
-                return true;
+                // self.params.gain.begin_edit(&self.context);
+                // let value = self.params.gain.get();
+                // self.params.gain.perform_edit(&self.context, self.params.gain.get());
+                // self.down.set(Some((position, value)));
+                // return true;
             }
         }
 
@@ -251,7 +241,7 @@ impl WindowHandler for GainWindowHandler {
     fn mouse_up(&self, window: &Window, button: MouseButton) -> bool {
         if button == MouseButton::Left {
             if self.down.get().is_some() {
-                self.params.gain.end_edit(&self.context);
+                // self.params.gain.end_edit(&self.context);
                 self.down.set(None);
                 self.update_cursor(window);
                 return true;
