@@ -1,4 +1,4 @@
-use crate::{atomic::AtomicF64, bus::*, editor::*, param::*, process::*};
+use crate::{bus::*, editor::*, param::*, process::*};
 
 #[derive(Clone)]
 pub struct PluginInfo {

@@ -1,4 +1,4 @@
-use crate::{atomic::AtomicF64, buffer::*, bus::*, param::*, plugin::*};
+use crate::{buffer::*, bus::*, param::*, plugin::*};
 
 pub struct ProcessContext<'a> {
     sample_rate: f64,

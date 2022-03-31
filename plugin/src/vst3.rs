@@ -1,6 +1,5 @@
 use crate::{
-    atomic::AtomicF64, buffer::*, bus::*, editor::*, param::*, plugin::*, process::ProcessContext,
-    process::*,
+    buffer::*, bus::*, editor::*, param::*, plugin::*, process::ProcessContext, process::*,
 };
 
 use std::cell::{Cell, UnsafeCell};
@@ -99,7 +98,7 @@ impl Drop for Vst3EditorContext {
     }
 }
 
-impl EditorContext for Vst3EditorContext {
+impl EditorContextHandler for Vst3EditorContext {
     fn begin_edit(&self, id: ParamId) {
         if let Some(component_handler) = self.component_handler.get() {
             unsafe {
@@ -162,7 +161,7 @@ struct Wrapper<P: Plugin> {
     // activate_bus, which aren't called concurrently with any other methods on
     // IComponent or IAudioProcessor per the spec.
     bus_states: UnsafeCell<BusStates>,
-    param_states: ParamStates,
+    param_states: Arc<ParamStates>,
     active: AtomicBool,
     plugin: P,
     processor_state: UnsafeCell<ProcessorState<P>>,
@@ -308,7 +307,7 @@ impl<P: Plugin> Wrapper<P> {
 
         let plugin = P::create();
 
-        let param_states = ParamStates::new(P::params());
+        let param_states = Arc::new(ParamStates::new(P::params()));
 
         let mut input_buses = Vec::with_capacity(bus_list.inputs().len());
         for _ in 0..bus_list.inputs().len() {
@@ -1316,9 +1315,10 @@ impl<P: Plugin> Wrapper<P> {
             RawWindowHandle::Xcb(XcbHandle { window: parent as u32, ..XcbHandle::empty() })
         };
 
-        let context: Rc<dyn EditorContext> = editor_state.context.clone();
+        let context =
+            EditorContext::new(wrapper.param_states.clone(), editor_state.context.clone());
 
-        let editor = P::Editor::open(&wrapper.plugin, &context, Some(&ParentWindow(parent)));
+        let editor = P::Editor::open(&wrapper.plugin, context, Some(&ParentWindow(parent)));
 
         #[cfg(target_os = "linux")]
         if let Some(file_descriptor) = editor.file_descriptor() {

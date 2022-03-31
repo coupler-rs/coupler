@@ -1,5 +1,4 @@
 use std::cell::{Cell, RefCell};
-use std::rc::Rc;
 
 use graphics::{Canvas, Color, Path, Vec2};
 use plugin::{buffer::*, bus::*, editor::*, param::*, plugin::*, process::*};
@@ -76,7 +75,7 @@ pub struct GainProcessor {
 impl Processor for GainProcessor {
     type Plugin = Gain;
 
-    fn create(plugin: &Gain, _context: &ProcessContext) -> Self {
+    fn create(_plugin: &Gain, _context: &ProcessContext) -> Self {
         GainProcessor { gain: 1.0 }
     }
 
@@ -109,7 +108,7 @@ pub struct GainEditor {
 impl Editor for GainEditor {
     type Plugin = Gain;
 
-    fn open(plugin: &Gain, context: &Rc<dyn EditorContext>, parent: Option<&ParentWindow>) -> Self {
+    fn open(plugin: &Gain, context: EditorContext, parent: Option<&ParentWindow>) -> Self {
         let parent =
             if let Some(parent) = parent { Parent::Parent(parent) } else { Parent::Detached };
 
@@ -151,16 +150,16 @@ impl Editor for GainEditor {
 }
 
 struct GainWindowHandler {
-    context: Rc<dyn EditorContext>,
+    context: EditorContext,
     canvas: RefCell<Canvas>,
     mouse: Cell<Point>,
     down: Cell<Option<(Point, f32)>>,
 }
 
 impl GainWindowHandler {
-    fn new(plugin: &Gain, context: &Rc<dyn EditorContext>) -> GainWindowHandler {
+    fn new(_plugin: &Gain, context: EditorContext) -> GainWindowHandler {
         GainWindowHandler {
-            context: context.clone(),
+            context,
             canvas: RefCell::new(Canvas::with_size(256, 256)),
             mouse: Cell::new(Point { x: -1.0, y: -1.0 }),
             down: Cell::new(None),
@@ -187,31 +186,31 @@ impl WindowHandler for GainWindowHandler {
 
         canvas.clear(Color::rgba(21, 26, 31, 255));
 
-        // let value = self.params.gain.get();
+        let value = self.context.get_param(Gain::GAIN);
 
-        // let center = Vec2::new(128.0, 128.0);
-        // let radius = 32.0;
-        // let angle1 = 0.75 * std::f32::consts::PI;
-        // let angle2 = angle1 + value * 1.5 * std::f32::consts::PI;
-        // let mut path = Path::new();
-        // path.move_to(center + radius * Vec2::new(angle1.cos(), angle1.sin()));
-        // path.arc(radius, angle1, angle2);
-        // path.line_to(center + (radius - 4.0) * Vec2::new(angle2.cos(), angle2.sin()));
-        // path.arc(radius - 4.0, angle2, angle1);
-        // path.close();
-        // canvas.fill_path(&path, Color::rgba(240, 240, 245, 255));
+        let center = Vec2::new(128.0, 128.0);
+        let radius = 32.0;
+        let angle1 = 0.75 * std::f32::consts::PI;
+        let angle2 = angle1 + value * 1.5 * std::f32::consts::PI;
+        let mut path = Path::new();
+        path.move_to(center + radius * Vec2::new(angle1.cos(), angle1.sin()));
+        path.arc(radius, angle1, angle2);
+        path.line_to(center + (radius - 4.0) * Vec2::new(angle2.cos(), angle2.sin()));
+        path.arc(radius - 4.0, angle2, angle1);
+        path.close();
+        canvas.fill_path(&path, Color::rgba(240, 240, 245, 255));
 
-        // let center = Vec2::new(128.0, 128.0);
-        // let radius = 32.0;
-        // let angle = 0.75 * std::f32::consts::PI;
-        // let span = 1.5 * std::f32::consts::PI;
-        // let mut path = Path::new();
-        // path.move_to(center + radius * Vec2::new(angle.cos(), angle.sin()));
-        // path.arc(radius, angle, angle + span);
-        // path.line_to(center + (radius - 4.0) * Vec2::new(-angle.cos(), angle.sin()));
-        // path.arc(radius - 4.0, angle + span, angle);
-        // path.close();
-        // canvas.stroke_path(&path, 1.0, Color::rgba(240, 240, 245, 255));
+        let center = Vec2::new(128.0, 128.0);
+        let radius = 32.0;
+        let angle = 0.75 * std::f32::consts::PI;
+        let span = 1.5 * std::f32::consts::PI;
+        let mut path = Path::new();
+        path.move_to(center + radius * Vec2::new(angle.cos(), angle.sin()));
+        path.arc(radius, angle, angle + span);
+        path.line_to(center + (radius - 4.0) * Vec2::new(-angle.cos(), angle.sin()));
+        path.arc(radius - 4.0, angle + span, angle);
+        path.close();
+        canvas.stroke_path(&path, 1.0, Color::rgba(240, 240, 245, 255));
 
         window.update_contents(canvas.data(), 256, 256);
     }
@@ -221,7 +220,7 @@ impl WindowHandler for GainWindowHandler {
         if let Some((start_position, start_value)) = self.down.get() {
             let new_value =
                 (start_value - 0.005 * (position.y - start_position.y) as f32).max(0.0).min(1.0);
-            // self.params.gain.perform_edit(&self.context, new_value);
+            self.context.perform_edit(Gain::GAIN, new_value);
         } else {
             self.update_cursor(window);
         }
@@ -233,11 +232,11 @@ impl WindowHandler for GainWindowHandler {
             if position.x >= 96.0 && position.x < 160.0 && position.y >= 96.0 && position.y < 160.0
             {
                 window.set_cursor(Cursor::SizeNs);
-                // self.params.gain.begin_edit(&self.context);
-                // let value = self.params.gain.get();
-                // self.params.gain.perform_edit(&self.context, self.params.gain.get());
-                // self.down.set(Some((position, value)));
-                // return true;
+                self.context.begin_edit(Gain::GAIN);
+                let value = self.context.get_param(Gain::GAIN);
+                self.context.perform_edit(Gain::GAIN, value);
+                self.down.set(Some((position, value)));
+                return true;
             }
         }
 
@@ -247,7 +246,7 @@ impl WindowHandler for GainWindowHandler {
     fn mouse_up(&self, window: &Window, button: MouseButton) -> bool {
         if button == MouseButton::Left {
             if self.down.get().is_some() {
-                // self.params.gain.end_edit(&self.context);
+                self.context.end_edit(Gain::GAIN);
                 self.down.set(None);
                 self.update_cursor(window);
                 return true;
