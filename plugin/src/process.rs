@@ -33,6 +33,23 @@ impl<'a> ProcessContext<'a> {
     pub fn get_param<P: Param + 'static>(&self, key: ParamKey<P>) -> P::Value {
         self.param_states.get_param(key)
     }
+
+    #[inline]
+    pub fn read_change<P: Param + 'static>(
+        &self,
+        key: ParamKey<P>,
+        change: &ParamChange,
+    ) -> Option<P::Value> {
+        if key.id == change.id {
+            if let Some(param_info) = self.param_states.list.get_param(key.id) {
+                if let Some(param) = param_info.param.downcast_ref::<P>() {
+                    return Some(param.from_normalized(change.value));
+                }
+            }
+        }
+
+        None
+    }
 }
 
 pub struct ParamChange {
