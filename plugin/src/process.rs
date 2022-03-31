@@ -4,8 +4,7 @@ pub struct ProcessContext<'a> {
     sample_rate: f64,
     input_layouts: &'a [BusLayout],
     output_layouts: &'a [BusLayout],
-    param_list: &'a ParamList,
-    param_values: &'a [AtomicF64],
+    param_states: &'a ParamStates,
 }
 
 impl<'a> ProcessContext<'a> {
@@ -13,10 +12,9 @@ impl<'a> ProcessContext<'a> {
         sample_rate: f64,
         input_layouts: &'a [BusLayout],
         output_layouts: &'a [BusLayout],
-        param_list: &'a ParamList,
-        param_values: &'a [AtomicF64],
+        param_states: &'a ParamStates,
     ) -> ProcessContext<'a> {
-        ProcessContext { sample_rate, input_layouts, output_layouts, param_list, param_values }
+        ProcessContext { sample_rate, input_layouts, output_layouts, param_states }
     }
 
     pub fn sample_rate(&self) -> f64 {
@@ -33,10 +31,7 @@ impl<'a> ProcessContext<'a> {
 
     #[inline]
     pub fn get_param<P: Param + 'static>(&self, key: ParamKey<P>) -> P::Value {
-        let index = self.param_list.get_param_index(key.id).expect("Invalid parameter key");
-        let param_info = self.param_list.get_param(key.id).unwrap();
-        let param = param_info.param.downcast_ref::<P>().expect("Incorrect parameter type");
-        param.from_normalized(self.param_values[index].load())
+        self.param_states.get_param(key)
     }
 }
 
