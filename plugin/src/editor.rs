@@ -42,6 +42,15 @@ impl EditorContext {
         let _ = param_info.param.downcast_ref::<P>().expect("Incorrect parameter type");
         self.handler.end_edit(key.id);
     }
+
+    #[inline]
+    pub fn read_change<P: Param + 'static>(
+        &self,
+        key: ParamKey<P>,
+        change: ParamChange,
+    ) -> Option<P::Value> {
+        self.param_states.list.read_change(key, change)
+    }
 }
 
 pub trait EditorContextHandler {

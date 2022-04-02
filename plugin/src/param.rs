@@ -75,6 +75,23 @@ impl ParamList {
     pub fn get_param_index(&self, id: ParamId) -> Option<usize> {
         self.index.get(&id).cloned()
     }
+
+    #[inline]
+    pub fn read_change<P: Param + 'static>(
+        &self,
+        key: ParamKey<P>,
+        change: ParamChange,
+    ) -> Option<P::Value> {
+        if key.id == change.id {
+            if let Some(param_info) = self.get_param(key.id) {
+                if let Some(param) = param_info.param.downcast_ref::<P>() {
+                    return Some(param.from_normalized(change.value));
+                }
+            }
+        }
+
+        None
+    }
 }
 
 pub struct ParamStates {
