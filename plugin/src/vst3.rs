@@ -1,5 +1,10 @@
 use crate::{
-    buffer::*, bus::*, editor::*, param::*, plugin::*, process::ProcessContext, process::*,
+    buffer::*,
+    bus::*,
+    editor::*,
+    param::*,
+    plugin::*,
+    process::{Event, ProcessContext, *},
 };
 
 use std::cell::{Cell, UnsafeCell};
@@ -136,7 +141,7 @@ struct ProcessorState<P: Plugin> {
     needs_reset: bool,
     input_buses: Vec<Bus<'static>>,
     output_buses: Vec<BusMut<'static>>,
-    param_changes: Vec<ParamChange>,
+    events: Vec<Event>,
     processor: Option<P::Processor>,
 }
 
@@ -327,7 +332,7 @@ impl<P: Plugin> Wrapper<P> {
             // We can't know the maximum number of param changes in a
             // block, so make a reasonable guess and hope we don't have to
             // allocate more
-            param_changes: Vec::with_capacity(4 * param_states.list.params().len()),
+            events: Vec::with_capacity(1024 + 4 * param_states.list.params().len()),
             processor: None,
         });
 
@@ -846,8 +851,6 @@ impl<P: Plugin> Wrapper<P> {
             return result::NOT_INITIALIZED;
         }
 
-        processor_state.param_changes.clear();
-
         let process_data = &*data;
 
         let param_changes = process_data.input_parameter_changes;
@@ -884,17 +887,16 @@ impl<P: Plugin> Wrapper<P> {
 
                         wrapper.param_states.values[param_index].store(value);
 
-                        processor_state.param_changes.push(ParamChange {
-                            id,
+                        processor_state.events.push(Event {
                             offset: offset as usize,
-                            value,
+                            event: EventType::ParamChange(ParamChange { id, value }),
                         });
                     }
                 }
             }
         }
 
-        processor_state.param_changes.sort_by_key(|param_change| param_change.offset);
+        processor_state.events.sort_by_key(|param_change| param_change.offset);
 
         for input_bus in processor_state.input_buses.iter_mut() {
             input_bus.channels.clear();
@@ -992,8 +994,10 @@ impl<P: Plugin> Wrapper<P> {
         );
 
         if let Some(processor) = &mut processor_state.processor {
-            processor.process(&context, &mut buffers, &processor_state.param_changes[..]);
+            processor.process(&context, &mut buffers, &processor_state.events[..]);
         }
+
+        processor_state.events.clear();
 
         result::OK
     }

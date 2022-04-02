@@ -83,12 +83,7 @@ impl Processor for GainProcessor {
         self.gain = context.get_param(Gain::GAIN);
     }
 
-    fn process(
-        &mut self,
-        context: &ProcessContext,
-        buffers: &mut Buffers,
-        _param_changes: &[ParamChange],
-    ) {
+    fn process(&mut self, context: &ProcessContext, buffers: &mut Buffers, _events: &[Event]) {
         for i in 0..buffers.samples() {
             for channel in 0..2 {
                 self.gain = 0.9995 * self.gain + 0.0005 * context.get_param(Gain::GAIN);

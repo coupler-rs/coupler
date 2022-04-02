@@ -52,10 +52,13 @@ impl<'a> ProcessContext<'a> {
     }
 }
 
-pub struct ParamChange {
+pub struct Event {
     pub offset: usize,
-    pub id: ParamId,
-    pub value: f64,
+    pub event: EventType,
+}
+
+pub enum EventType {
+    ParamChange(ParamChange),
 }
 
 pub trait Processor: Send + Sized {
@@ -63,10 +66,5 @@ pub trait Processor: Send + Sized {
 
     fn create(plugin: &Self::Plugin, context: &ProcessContext) -> Self;
     fn reset(&mut self, context: &ProcessContext);
-    fn process(
-        &mut self,
-        context: &ProcessContext,
-        buffers: &mut Buffers,
-        param_changes: &[ParamChange],
-    );
+    fn process(&mut self, context: &ProcessContext, buffers: &mut Buffers, events: &[Event]);
 }

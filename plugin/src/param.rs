@@ -25,6 +25,11 @@ impl<P> ParamKey<P> {
     }
 }
 
+pub struct ParamChange {
+    pub id: ParamId,
+    pub value: f64,
+}
+
 pub struct ParamInfo {
     pub id: ParamId,
     pub name: String,
