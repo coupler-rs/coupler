@@ -33,18 +33,25 @@ impl AtomicBitset {
         self.bits[index >> CELL_SIZE_BITS].fetch_or(mask_for_index(index), ordering);
     }
 
+    pub fn set_all(&self, ordering: Ordering) {
+        for cell in self.bits.iter() {
+            cell.store(!0, ordering);
+        }
+    }
+
     #[inline]
     pub fn drain_indices(&self, ordering: Ordering) -> DrainIndices {
         let mut iter = self.bits.iter();
         let first_cell = iter.next().map_or(0, |cell| cell.swap(0, ordering));
 
-        DrainIndices { iter, ordering, index: 0, current_cell: first_cell }
+        DrainIndices { iter, ordering, len: self.len, index: 0, current_cell: first_cell }
     }
 }
 
 pub struct DrainIndices<'a> {
     iter: slice::Iter<'a, AtomicU64>,
     ordering: Ordering,
+    len: usize,
     index: usize,
     current_cell: u64,
 }
@@ -56,7 +63,7 @@ impl<'a> Iterator for DrainIndices<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let bit_index = self.current_cell.trailing_zeros() as usize;
-            if bit_index < CELL_SIZE {
+            if bit_index < CELL_SIZE && self.index + bit_index < self.len {
                 // Zero out the bit we found
                 self.current_cell &= !mask_for_index(bit_index);
                 return Some(self.index + bit_index);
@@ -99,11 +106,23 @@ mod tests {
         }
 
         let mut count = 0;
-        for i in bitset.drain_indices(Ordering::Relaxed) {
-            println!("{}", i);
+        for _ in bitset.drain_indices(Ordering::Relaxed) {
             count += 1;
         }
 
         assert_eq!(count, 128);
+    }
+
+    #[test]
+    fn set_all() {
+        let bitset = AtomicBitset::with_len(49);
+        bitset.set_all(Ordering::Relaxed);
+
+        let mut count = 0;
+        for _ in bitset.drain_indices(Ordering::Relaxed) {
+            count += 1;
+        }
+
+        assert_eq!(count, 49);
     }
 }
