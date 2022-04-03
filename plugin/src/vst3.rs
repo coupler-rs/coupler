@@ -846,6 +846,16 @@ impl<P: Plugin> Wrapper<P> {
             return result::NOT_INITIALIZED;
         }
 
+        for index in wrapper.param_states.dirty_processor.drain_indices(Ordering::Acquire) {
+            processor_state.events.push(Event {
+                offset: 0,
+                event: EventType::ParamChange(ParamChange {
+                    id: wrapper.param_states.list.params()[index].id,
+                    value: wrapper.param_states.values[index].load(),
+                }),
+            });
+        }
+
         let process_data = &*data;
 
         let param_changes = process_data.input_parameter_changes;
