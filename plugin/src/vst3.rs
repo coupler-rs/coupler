@@ -1,11 +1,6 @@
-use crate::{
-    buffer::*,
-    bus::*,
-    editor::*,
-    param::*,
-    plugin::*,
-    process::{Event, ProcessContext, *},
-};
+use crate::internal::param_states::*;
+use crate::process::{Event, ProcessContext, *};
+use crate::{buffer::*, bus::*, editor::*, param::*, plugin::*};
 
 use std::cell::{Cell, UnsafeCell};
 use std::ffi::{c_void, CStr, CString};

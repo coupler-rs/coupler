@@ -2,6 +2,7 @@ pub mod atomic;
 pub mod buffer;
 pub mod bus;
 pub mod editor;
+pub mod internal;
 pub mod param;
 pub mod plugin;
 pub mod process;
