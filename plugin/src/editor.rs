@@ -1,3 +1,4 @@
+use crate::atomic::DrainIndices;
 use crate::internal::param_states::*;
 use crate::{param::*, plugin::*};
 
@@ -65,12 +66,39 @@ impl EditorContext {
     ) -> Option<P::Value> {
         self.param_states.list.read_change(key, change)
     }
+
+    pub fn poll_params(&self) -> PollParams {
+        PollParams {
+            iter: self.param_states.dirty_editor.drain_indices(Ordering::Acquire),
+            param_states: &self.param_states,
+        }
+    }
 }
 
 pub trait EditorContextHandler {
     fn begin_edit(&self, param_id: ParamId);
     fn perform_edit(&self, param_id: ParamId, value: f64);
     fn end_edit(&self, param_id: ParamId);
+}
+
+pub struct PollParams<'a> {
+    iter: DrainIndices<'a>,
+    param_states: &'a ParamStates,
+}
+
+impl<'a> Iterator for PollParams<'a> {
+    type Item = ParamChange;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(index) = self.iter.next() {
+            let id = self.param_states.list.params()[index].id;
+            let value = self.param_states.values[index].load();
+
+            Some(ParamChange { id, value })
+        } else {
+            None
+        }
+    }
 }
 
 pub struct ParentWindow(pub(crate) RawWindowHandle);
