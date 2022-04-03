@@ -20,6 +20,10 @@ impl EditorContext {
         EditorContext { param_states, handler }
     }
 
+    pub fn param_list(&self) -> &ParamList {
+        &self.param_states.list
+    }
+
     #[inline]
     pub fn get_param<P: Param + 'static>(&self, key: ParamKey<P>) -> P::Value {
         self.param_states.get_param(key)

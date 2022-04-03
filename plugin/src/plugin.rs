@@ -39,6 +39,10 @@ impl<'a> SerializeContext<'a> {
         SerializeContext { param_states }
     }
 
+    pub fn param_list(&self) -> &ParamList {
+        &self.param_states.list
+    }
+
     #[inline]
     pub fn get_param<P: Param + 'static>(&self, key: ParamKey<P>) -> P::Value {
         self.param_states.get_param(key)
@@ -52,6 +56,10 @@ pub struct DeserializeContext<'a> {
 impl<'a> DeserializeContext<'a> {
     pub fn new(param_states: &'a ParamStates) -> DeserializeContext<'a> {
         DeserializeContext { param_states }
+    }
+
+    pub fn param_list(&self) -> &ParamList {
+        &self.param_states.list
     }
 
     #[inline]
