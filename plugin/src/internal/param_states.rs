@@ -1,9 +1,13 @@
-use crate::atomic::AtomicF64;
+use crate::atomic::{AtomicBitset, AtomicF64};
 use crate::param::*;
+
+use std::sync::atomic::Ordering;
 
 pub struct ParamStates {
     pub list: ParamList,
     pub values: Vec<AtomicF64>,
+    pub dirty_processor: AtomicBitset,
+    pub dirty_editor: AtomicBitset,
 }
 
 impl ParamStates {
@@ -13,7 +17,10 @@ impl ParamStates {
             values.push(AtomicF64::new(param_info.param.default_normalized()));
         }
 
-        ParamStates { list, values }
+        let dirty_processor = AtomicBitset::with_len(list.params().len());
+        let dirty_editor = AtomicBitset::with_len(list.params().len());
+
+        ParamStates { list, values, dirty_processor, dirty_editor }
     }
 
     #[inline]
@@ -21,6 +28,7 @@ impl ParamStates {
         let index = self.list.get_param_index(key.id).expect("Invalid parameter key");
         let param_info = &self.list.params()[index];
         let param = param_info.param.downcast_ref::<P>().expect("Incorrect parameter type");
+
         param.from_normalized(self.values[index].load())
     }
 
@@ -29,6 +37,9 @@ impl ParamStates {
         let index = self.list.get_param_index(key.id).expect("Invalid parameter key");
         let param_info = &self.list.params()[index];
         let param = param_info.param.downcast_ref::<P>().expect("Incorrect parameter type");
-        self.values[index].store(param.to_normalized(value))
+
+        self.values[index].store(param.to_normalized(value));
+        self.dirty_processor.set(index, Ordering::Release);
+        self.dirty_editor.set(index, Ordering::Release);
     }
 }

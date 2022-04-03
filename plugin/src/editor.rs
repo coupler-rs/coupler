@@ -5,6 +5,7 @@ use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
 use std::marker::PhantomData;
 use std::rc::Rc;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -33,18 +34,26 @@ impl EditorContext {
     pub fn begin_edit<P: Param + 'static>(&self, key: ParamKey<P>) {
         let param_info = self.param_states.list.get_param(key.id).expect("Invalid parameter key");
         let _ = param_info.param.downcast_ref::<P>().expect("Incorrect parameter type");
+
         self.handler.begin_edit(key.id);
     }
 
     pub fn perform_edit<P: Param + 'static>(&self, key: ParamKey<P>, value: P::Value) {
-        let param_info = self.param_states.list.get_param(key.id).expect("Invalid parameter key");
+        let index = self.param_states.list.get_param_index(key.id).expect("Invalid parameter key");
+        let param_info = &self.param_states.list.params()[index];
         let param = param_info.param.downcast_ref::<P>().expect("Incorrect parameter type");
-        self.handler.perform_edit(key.id, param.to_normalized(value));
+
+        let value_normalized = param.to_normalized(value);
+        self.param_states.values[index].store(value_normalized);
+        self.param_states.dirty_processor.set(index, Ordering::Release);
+
+        self.handler.perform_edit(key.id, value_normalized);
     }
 
     pub fn end_edit<P: Param + 'static>(&self, key: ParamKey<P>) {
         let param_info = self.param_states.list.get_param(key.id).expect("Invalid parameter key");
         let _ = param_info.param.downcast_ref::<P>().expect("Incorrect parameter type");
+
         self.handler.end_edit(key.id);
     }
 

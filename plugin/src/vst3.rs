@@ -881,6 +881,7 @@ impl<P: Plugin> Wrapper<P> {
                         }
 
                         wrapper.param_states.values[param_index].store(value);
+                        wrapper.param_states.dirty_editor.set(param_index, Ordering::Release);
 
                         processor_state.events.push(Event {
                             offset: offset as usize,
@@ -1202,6 +1203,9 @@ impl<P: Plugin> Wrapper<P> {
 
         if let Some(index) = wrapper.param_states.list.get_param_index(id) {
             wrapper.param_states.values[index].store(value);
+            wrapper.param_states.dirty_processor.set(index, Ordering::Release);
+            wrapper.param_states.dirty_editor.set(index, Ordering::Release);
+
             return result::OK;
         }
 
