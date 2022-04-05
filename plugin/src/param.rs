@@ -1,192 +1,208 @@
-use std::any::{Any, TypeId};
+use crate::atomic::{AtomicBitset, AtomicF64};
+use crate::{editor::EditorContext, plugin::Plugin, process::ParamChange};
+
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
 pub type ParamId = u32;
 
-pub struct ParamKey<P> {
-    pub id: ParamId,
-    phantom: PhantomData<P>,
+pub struct ParamList<P> {
+    pub(crate) params: Vec<Box<dyn ParamDef<P>>>,
 }
 
-impl<P> Clone for ParamKey<P> {
-    fn clone(&self) -> ParamKey<P> {
-        ParamKey { id: self.id, phantom: PhantomData }
+impl<P> ParamList<P> {
+    pub fn new() -> ParamList<P> {
+        ParamList { params: Vec::new() }
+    }
+
+    pub fn param<Q: ParamDef<P> + 'static>(mut self, param: Q) -> ParamList<P> {
+        self.params.push(Box::new(param));
+        self
     }
 }
 
-impl<P> Copy for ParamKey<P> {}
-
-impl<P> ParamKey<P> {
-    pub const fn new(id: ParamId) -> ParamKey<P> {
-        ParamKey { id, phantom: PhantomData }
-    }
+pub(crate) struct ParamStates {
+    pub index: HashMap<ParamId, usize>,
+    pub info: Vec<ParamInfo>,
+    pub dirty_processor: AtomicBitset,
+    pub dirty_editor: AtomicBitset,
 }
 
-pub struct ParamChange {
-    pub id: ParamId,
-    pub value: f64,
+impl ParamStates {
+    pub fn new<P>(param_list: &ParamList<P>, plugin: &P) -> ParamStates {
+        let mut index = HashMap::with_capacity(param_list.params.len());
+        let mut info = Vec::with_capacity(param_list.params.len());
+
+        for (i, param) in param_list.params.iter().enumerate() {
+            let param_info = param.info(plugin);
+
+            index.insert(param_info.id, i);
+            info.push(param_info);
+        }
+
+        let dirty_processor = AtomicBitset::with_len(param_list.params.len());
+        let dirty_editor = AtomicBitset::with_len(param_list.params.len());
+
+        ParamStates { index, info, dirty_processor, dirty_editor }
+    }
 }
 
 pub struct ParamInfo {
     pub id: ParamId,
     pub name: String,
-    pub param: Box<dyn DynParam>,
+    pub label: String,
+    pub steps: Option<usize>,
+    pub default_normalized: f64,
 }
 
-pub struct ParamList {
-    params: Vec<ParamInfo>,
-    index: HashMap<ParamId, usize>,
-}
-
-impl ParamList {
-    pub fn new() -> ParamList {
-        ParamList { params: Vec::new(), index: HashMap::new() }
-    }
-
-    pub fn param<P: Param + 'static>(
-        mut self,
-        key: ParamKey<P>,
-        name: &str,
-        param: P,
-    ) -> ParamList {
-        if self.index.contains_key(&key.id) {
-            panic!("ParamList already contains parameter with id {}", key.id);
-        }
-
-        self.index.insert(key.id, self.params.len());
-        self.params.push(ParamInfo { id: key.id, name: name.to_string(), param: Box::new(param) });
-
-        self
-    }
-
-    pub fn params(&self) -> &[ParamInfo] {
-        &self.params
-    }
-
-    #[inline]
-    pub fn get_param(&self, id: ParamId) -> Option<&ParamInfo> {
-        self.get_param_index(id).map(|i| &self.params[i])
-    }
-
-    #[inline]
-    pub fn get_param_index(&self, id: ParamId) -> Option<usize> {
-        self.index.get(&id).cloned()
-    }
-
-    #[inline]
-    pub fn read_change<P: Param + 'static>(
-        &self,
-        key: ParamKey<P>,
-        change: ParamChange,
-    ) -> Option<P::Value> {
-        if key.id == change.id {
-            if let Some(param_info) = self.get_param(key.id) {
-                if let Some(param) = param_info.param.downcast_ref::<P>() {
-                    return Some(param.from_normalized(change.value));
-                }
-            }
-        }
-
-        None
-    }
+pub trait ParamDef<P> {
+    fn info(&self, plugin: &P) -> ParamInfo;
+    fn get_normalized(&self, plugin: &P) -> f64;
+    fn set_normalized(&self, plugin: &P, value: f64);
+    fn normalized_to_plain(&self, plugin: &P, value: f64) -> f64;
+    fn plain_to_normalized(&self, plugin: &P, value: f64) -> f64;
+    fn normalized_to_string(&self, plugin: &P, value: f64, write: &mut dyn std::fmt::Write);
+    fn string_to_normalized(&self, plugin: &P, string: &str) -> Result<f64, ()>;
 }
 
 pub trait Param {
     type Value;
 
-    fn steps(&self) -> Option<usize>;
+    fn id(&self) -> ParamId;
+    fn name(&self) -> String;
     fn label(&self) -> String;
+    fn steps(&self) -> Option<usize>;
     fn default(&self) -> Self::Value;
+    fn get(&self) -> Self::Value;
+    fn set(&self, value: Self::Value);
     fn to_normalized(&self, value: Self::Value) -> f64;
     fn from_normalized(&self, value: f64) -> Self::Value;
     fn to_plain(&self, value: Self::Value) -> f64;
     fn from_plain(&self, value: f64) -> Self::Value;
     fn to_string(&self, value: Self::Value, write: &mut dyn std::fmt::Write);
     fn from_string(&self, string: &str) -> Result<Self::Value, ()>;
-}
 
-pub trait DynParam {
-    fn steps(&self) -> Option<usize>;
-    fn label(&self) -> String;
-    fn default_normalized(&self) -> f64;
-    fn normalized_to_plain(&self, value: f64) -> f64;
-    fn plain_to_normalized(&self, value: f64) -> f64;
-    fn normalized_to_string(&self, value: f64, write: &mut dyn std::fmt::Write);
-    fn string_to_normalized(&self, string: &str) -> Result<f64, ()>;
-    fn type_id(&self) -> TypeId;
-}
-
-impl<P: Param + 'static> DynParam for P {
-    fn default_normalized(&self) -> f64 {
-        Param::to_normalized(self, Param::default(self))
-    }
-
-    fn steps(&self) -> Option<usize> {
-        Param::steps(self)
-    }
-
-    fn label(&self) -> String {
-        Param::label(self)
-    }
-
-    fn normalized_to_plain(&self, value: f64) -> f64 {
-        Param::to_plain(self, Param::from_normalized(self, value))
-    }
-
-    fn plain_to_normalized(&self, value: f64) -> f64 {
-        Param::to_normalized(self, Param::from_plain(self, value))
-    }
-
-    fn normalized_to_string(&self, value: f64, write: &mut dyn std::fmt::Write) {
-        Param::to_string(self, Param::from_normalized(self, value), write);
-    }
-
-    fn string_to_normalized(&self, string: &str) -> Result<f64, ()> {
-        Param::from_string(self, string).map(|value| Param::to_normalized(self, value))
-    }
-
-    fn type_id(&self) -> TypeId {
-        TypeId::of::<Self>()
-    }
-}
-
-impl dyn DynParam {
     #[inline]
-    pub fn downcast_ref<T: Any>(&self) -> Option<&T> {
-        if self.type_id() == TypeId::of::<T>() {
-            Some(unsafe { &*(self as *const dyn DynParam as *const T) })
+    fn read_change(&self, change: ParamChange) -> Option<Self::Value> {
+        if change.id == self.id() {
+            Some(self.from_normalized(change.value_normalized))
         } else {
             None
         }
     }
+
+    fn begin_edit(&self, context: &EditorContext) {
+        context.begin_edit(self.id());
+    }
+
+    fn perform_edit(&self, context: &EditorContext, value: Self::Value) {
+        context.perform_edit(self.id(), self.to_normalized(value));
+    }
+
+    fn end_edit(&self, context: &EditorContext) {
+        context.end_edit(self.id());
+    }
+}
+
+pub struct ParamAccessor<P: Plugin, Q: Param, F: Fn(&P) -> &Q> {
+    f: F,
+    phantom: PhantomData<fn(&P) -> &Q>,
+}
+
+impl<P: Plugin, Q: Param, F: Fn(&P) -> &Q> ParamAccessor<P, Q, F> {
+    pub fn new(f: F) -> ParamAccessor<P, Q, F> {
+        ParamAccessor { f, phantom: PhantomData }
+    }
+}
+
+impl<P: Plugin, Q: Param, F: Fn(&P) -> &Q> ParamDef<P> for ParamAccessor<P, Q, F> {
+    fn info(&self, plugin: &P) -> ParamInfo {
+        let param = (self.f)(plugin);
+
+        ParamInfo {
+            id: param.id(),
+            name: param.name(),
+            label: param.label(),
+            steps: param.steps(),
+            default_normalized: param.to_normalized(param.default()),
+        }
+    }
+
+    fn get_normalized(&self, plugin: &P) -> f64 {
+        let param = (self.f)(plugin);
+        param.to_normalized(param.get())
+    }
+
+    fn set_normalized(&self, plugin: &P, value: f64) {
+        let param = (self.f)(plugin);
+        param.set(param.from_normalized(value));
+    }
+
+    fn normalized_to_plain(&self, plugin: &P, value: f64) -> f64 {
+        let param = (self.f)(plugin);
+        param.to_plain(param.from_normalized(value))
+    }
+
+    fn plain_to_normalized(&self, plugin: &P, value: f64) -> f64 {
+        let param = (self.f)(plugin);
+        param.to_normalized(param.from_plain(value))
+    }
+
+    fn normalized_to_string(&self, plugin: &P, value: f64, write: &mut dyn std::fmt::Write) {
+        let param = (self.f)(plugin);
+        param.to_string(param.from_normalized(value), write);
+    }
+
+    fn string_to_normalized(&self, plugin: &P, string: &str) -> Result<f64, ()> {
+        let param = (self.f)(plugin);
+        param.from_string(string).map(|value| param.to_normalized(value))
+    }
 }
 
 pub struct FloatParam {
-    min: f32,
-    max: f32,
-    default: f32,
+    id: ParamId,
+    name: String,
+    min: f64,
+    max: f64,
+    default: f64,
+    value: AtomicF64,
 }
 
 impl FloatParam {
-    pub fn new(min: f32, max: f32, default: f32) -> FloatParam {
-        FloatParam { min, max, default }
+    pub fn new(id: ParamId, name: &str, min: f64, max: f64, default: f64) -> FloatParam {
+        FloatParam { id, name: name.to_string(), min, max, default, value: AtomicF64::new(default) }
     }
 }
 
 impl Param for FloatParam {
-    type Value = f32;
+    type Value = f64;
 
-    fn default(&self) -> f32 {
-        self.default
+    fn id(&self) -> ParamId {
+        self.id
+    }
+
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    fn label(&self) -> String {
+        String::new()
     }
 
     fn steps(&self) -> Option<usize> {
         None
     }
 
-    fn label(&self) -> String {
-        String::new()
+    fn default(&self) -> Self::Value {
+        self.default
+    }
+
+    fn get(&self) -> Self::Value {
+        self.value.load()
+    }
+
+    fn set(&self, value: Self::Value) {
+        self.value.store(value);
     }
 
     fn to_normalized(&self, value: Self::Value) -> f64 {
@@ -194,7 +210,7 @@ impl Param for FloatParam {
     }
 
     fn from_normalized(&self, value: f64) -> Self::Value {
-        (self.min + value as f32 * (self.max - self.min)).max(self.min).min(self.max)
+        (self.min + value * (self.max - self.min)).max(self.min).min(self.max)
     }
 
     fn to_plain(&self, value: Self::Value) -> f64 {
@@ -202,7 +218,7 @@ impl Param for FloatParam {
     }
 
     fn from_plain(&self, value: f64) -> Self::Value {
-        value as f32
+        value
     }
 
     fn to_string(&self, value: Self::Value, write: &mut dyn std::fmt::Write) {

@@ -1,4 +1,3 @@
-use crate::internal::param_states::*;
 use crate::process::{Event, ProcessContext, *};
 use crate::{buffer::*, bus::*, editor::*, param::*, plugin::*};
 
@@ -161,6 +160,7 @@ struct Wrapper<P: Plugin> {
     // activate_bus, which aren't called concurrently with any other methods on
     // IComponent or IAudioProcessor per the spec.
     bus_states: UnsafeCell<BusStates>,
+    param_list: ParamList<P>,
     param_states: Arc<ParamStates>,
     active: AtomicBool,
     plugin: Arc<P>,
@@ -307,7 +307,8 @@ impl<P: Plugin> Wrapper<P> {
 
         let plugin = Arc::new(P::create());
 
-        let param_states = Arc::new(ParamStates::new(P::params()));
+        let param_list = plugin.params();
+        let param_states = Arc::new(ParamStates::new(&param_list, &plugin));
 
         let mut input_buses = Vec::with_capacity(bus_list.inputs.len());
         for _ in 0..bus_list.inputs.len() {
@@ -327,7 +328,7 @@ impl<P: Plugin> Wrapper<P> {
             // We can't know the maximum number of param changes in a
             // block, so make a reasonable guess and hope we don't have to
             // allocate more
-            events: Vec::with_capacity(1024 + 4 * param_states.list.params().len()),
+            events: Vec::with_capacity(1024 + 4 * param_list.params.len()),
             processor: None,
         });
 
@@ -351,6 +352,7 @@ impl<P: Plugin> Wrapper<P> {
             info,
             bus_list,
             bus_states,
+            param_list,
             param_states,
             active: AtomicBool::new(false),
             plugin,
@@ -587,7 +589,6 @@ impl<P: Plugin> Wrapper<P> {
                     processor_state.sample_rate,
                     &bus_states.input_layouts[..],
                     &bus_states.output_layouts[..],
-                    &wrapper.param_states,
                 );
                 processor_state.processor = Some(P::Processor::create(plugin, &context));
 
@@ -642,8 +643,7 @@ impl<P: Plugin> Wrapper<P> {
 
         let wrapper = &*(this.offset(-offset_of!(Self, component)) as *const Wrapper<P>);
 
-        let context = DeserializeContext::new(&wrapper.param_states);
-        match wrapper.plugin.deserialize(&context, &mut StreamReader(state)) {
+        match wrapper.plugin.deserialize(&mut StreamReader(state)) {
             Ok(_) => result::OK,
             Err(_) => result::FALSE,
         }
@@ -681,8 +681,7 @@ impl<P: Plugin> Wrapper<P> {
 
         let wrapper = &*(this.offset(-offset_of!(Self, component)) as *const Wrapper<P>);
 
-        let context = SerializeContext::new(&wrapper.param_states);
-        match wrapper.plugin.serialize(&context, &mut StreamWriter(state)) {
+        match wrapper.plugin.serialize(&mut StreamWriter(state)) {
             Ok(_) => result::OK,
             Err(_) => result::FALSE,
         }
@@ -831,7 +830,6 @@ impl<P: Plugin> Wrapper<P> {
                 processor_state.sample_rate,
                 &bus_states.input_layouts[..],
                 &bus_states.output_layouts[..],
-                &wrapper.param_states,
             );
             processor_state.processor.as_mut().unwrap().reset(&context);
         }
@@ -849,12 +847,13 @@ impl<P: Plugin> Wrapper<P> {
         }
 
         for index in wrapper.param_states.dirty_processor.drain_indices(Ordering::Acquire) {
+            let param_def = &wrapper.param_list.params[index];
+            let id = wrapper.param_states.info[index].id;
+            let value_normalized = param_def.get_normalized(&wrapper.plugin);
+
             processor_state.events.push(Event {
                 offset: 0,
-                event: EventType::ParamChange(ParamChange {
-                    id: wrapper.param_states.list.params()[index].id,
-                    value: wrapper.param_states.values[index].load(),
-                }),
+                event: EventType::ParamChange(ParamChange { id, value_normalized }),
             });
         }
 
@@ -877,27 +876,28 @@ impl<P: Plugin> Wrapper<P> {
                 let id = ((*(*param_data)).get_parameter_id)(param_data as *mut c_void);
                 let point_count = ((*(*param_data)).get_point_count)(param_data as *mut c_void);
 
-                if let Some(param_index) = wrapper.param_states.list.get_param_index(id) {
+                if let Some(&param_index) = wrapper.param_states.index.get(&id) {
                     for index in 0..point_count {
                         let mut offset = 0;
-                        let mut value = 0.0;
+                        let mut value_normalized = 0.0;
                         let result = ((*(*param_data)).get_point)(
                             param_data as *mut c_void,
                             index,
                             &mut offset,
-                            &mut value,
+                            &mut value_normalized,
                         );
 
                         if result != result::OK {
                             continue;
                         }
 
-                        wrapper.param_states.values[param_index].store(value);
+                        let param_def = &wrapper.param_list.params[param_index];
+                        param_def.set_normalized(&wrapper.plugin, value_normalized);
                         wrapper.param_states.dirty_editor.set(param_index, Ordering::Release);
 
                         processor_state.events.push(Event {
                             offset: offset as usize,
-                            event: EventType::ParamChange(ParamChange { id, value }),
+                            event: EventType::ParamChange(ParamChange { id, value_normalized }),
                         });
                     }
                 }
@@ -998,7 +998,6 @@ impl<P: Plugin> Wrapper<P> {
             processor_state.sample_rate,
             &bus_states.input_layouts[..],
             &bus_states.output_layouts[..],
-            &wrapper.param_states,
         );
 
         if let Some(processor) = &mut processor_state.processor {
@@ -1089,7 +1088,7 @@ impl<P: Plugin> Wrapper<P> {
     unsafe extern "system" fn get_parameter_count(this: *mut c_void) -> i32 {
         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
-        wrapper.param_states.list.params().len() as i32
+        wrapper.param_list.params.len() as i32
     }
 
     unsafe extern "system" fn get_parameter_info(
@@ -1099,19 +1098,16 @@ impl<P: Plugin> Wrapper<P> {
     ) -> TResult {
         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
-        if let Some(param_info) = wrapper.param_states.list.params().get(param_index as usize) {
+        if let Some(param_info) = wrapper.param_states.info.get(param_index as usize) {
             let info = &mut *info;
 
             info.id = param_info.id;
             copy_wstring(&param_info.name, &mut info.title);
             copy_wstring(&param_info.name, &mut info.short_title);
-            copy_wstring(&param_info.param.label(), &mut info.units);
-            info.step_count = if let Some(steps) = param_info.param.steps() {
-                steps.saturating_sub(1) as i32
-            } else {
-                0
-            };
-            info.default_normalized_value = param_info.param.default_normalized();
+            copy_wstring(&param_info.label, &mut info.units);
+            info.step_count =
+                if let Some(steps) = param_info.steps { steps.saturating_sub(1) as i32 } else { 0 };
+            info.default_normalized_value = param_info.default_normalized;
             info.unit_id = 0;
             info.flags = ParameterInfo::CAN_AUTOMATE;
 
@@ -1129,9 +1125,11 @@ impl<P: Plugin> Wrapper<P> {
     ) -> TResult {
         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
-        if let Some(param_info) = wrapper.param_states.list.get_param(id) {
+        if let Some(&param_index) = wrapper.param_states.index.get(&id) {
+            let param_def = &wrapper.param_list.params[param_index];
+
             let mut display = String::new();
-            param_info.param.normalized_to_string(value_normalized, &mut display);
+            param_def.normalized_to_string(&wrapper.plugin, value_normalized, &mut display);
             copy_wstring(&display, &mut *string);
 
             return result::OK;
@@ -1148,11 +1146,13 @@ impl<P: Plugin> Wrapper<P> {
     ) -> TResult {
         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
-        if let Some(param_info) = wrapper.param_states.list.get_param(id) {
+        if let Some(&param_index) = wrapper.param_states.index.get(&id) {
+            let param_def = &wrapper.param_list.params[param_index];
+
             let len = len_wstring(string);
             if let Ok(string) = String::from_utf16(slice::from_raw_parts(string as *const u16, len))
             {
-                if let Ok(value) = param_info.param.string_to_normalized(&string) {
+                if let Ok(value) = param_def.string_to_normalized(&wrapper.plugin, &string) {
                     *value_normalized = value;
                     return result::OK;
                 }
@@ -1169,8 +1169,9 @@ impl<P: Plugin> Wrapper<P> {
     ) -> f64 {
         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
-        if let Some(param_info) = wrapper.param_states.list.get_param(id) {
-            return param_info.param.normalized_to_plain(value_normalized);
+        if let Some(&param_index) = wrapper.param_states.index.get(&id) {
+            let param_def = &wrapper.param_list.params[param_index];
+            return param_def.normalized_to_plain(&wrapper.plugin, value_normalized);
         }
 
         0.0
@@ -1183,8 +1184,9 @@ impl<P: Plugin> Wrapper<P> {
     ) -> f64 {
         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
-        if let Some(param_info) = wrapper.param_states.list.get_param(id) {
-            return param_info.param.plain_to_normalized(plain_value);
+        if let Some(&param_index) = wrapper.param_states.index.get(&id) {
+            let param_def = &wrapper.param_list.params[param_index];
+            return param_def.plain_to_normalized(&wrapper.plugin, plain_value);
         }
 
         0.0
@@ -1193,8 +1195,9 @@ impl<P: Plugin> Wrapper<P> {
     unsafe extern "system" fn get_param_normalized(this: *mut c_void, id: u32) -> f64 {
         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
-        if let Some(index) = wrapper.param_states.list.get_param_index(id) {
-            return wrapper.param_states.values[index].load();
+        if let Some(&param_index) = wrapper.param_states.index.get(&id) {
+            let param_def = &wrapper.param_list.params[param_index];
+            return param_def.get_normalized(&wrapper.plugin);
         }
 
         0.0
@@ -1213,10 +1216,12 @@ impl<P: Plugin> Wrapper<P> {
             return result::OK;
         }
 
-        if let Some(index) = wrapper.param_states.list.get_param_index(id) {
-            wrapper.param_states.values[index].store(value);
-            wrapper.param_states.dirty_processor.set(index, Ordering::Release);
-            wrapper.param_states.dirty_editor.set(index, Ordering::Release);
+        if let Some(&param_index) = wrapper.param_states.index.get(&id) {
+            let param_def = &wrapper.param_list.params[param_index];
+            param_def.set_normalized(&wrapper.plugin, value);
+
+            wrapper.param_states.dirty_processor.set(param_index, Ordering::Release);
+            wrapper.param_states.dirty_editor.set(param_index, Ordering::Release);
 
             return result::OK;
         }
