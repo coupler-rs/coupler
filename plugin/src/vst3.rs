@@ -284,16 +284,16 @@ impl<P: Plugin> Wrapper<P> {
     pub fn create(info: PluginInfo) -> *mut Wrapper<P> {
         let bus_list = P::buses();
 
-        let mut input_layouts = Vec::with_capacity(bus_list.inputs().len());
-        let mut inputs_enabled = Vec::with_capacity(bus_list.inputs().len());
-        for bus_info in bus_list.inputs() {
+        let mut input_layouts = Vec::with_capacity(bus_list.inputs.len());
+        let mut inputs_enabled = Vec::with_capacity(bus_list.inputs.len());
+        for bus_info in bus_list.inputs.iter() {
             input_layouts.push(bus_info.default_layout.clone());
             inputs_enabled.push(true);
         }
 
-        let mut output_layouts = Vec::with_capacity(bus_list.outputs().len());
-        let mut outputs_enabled = Vec::with_capacity(bus_list.outputs().len());
-        for bus_info in bus_list.outputs() {
+        let mut output_layouts = Vec::with_capacity(bus_list.outputs.len());
+        let mut outputs_enabled = Vec::with_capacity(bus_list.outputs.len());
+        for bus_info in bus_list.outputs.iter() {
             output_layouts.push(bus_info.default_layout.clone());
             outputs_enabled.push(true);
         }
@@ -309,13 +309,13 @@ impl<P: Plugin> Wrapper<P> {
 
         let param_states = Arc::new(ParamStates::new(P::params()));
 
-        let mut input_buses = Vec::with_capacity(bus_list.inputs().len());
-        for _ in 0..bus_list.inputs().len() {
+        let mut input_buses = Vec::with_capacity(bus_list.inputs.len());
+        for _ in 0..bus_list.inputs.len() {
             input_buses.push(Bus { channels: Vec::new() });
         }
 
-        let mut output_buses = Vec::with_capacity(bus_list.outputs().len());
-        for _ in 0..bus_list.outputs().len() {
+        let mut output_buses = Vec::with_capacity(bus_list.outputs.len());
+        for _ in 0..bus_list.outputs.len() {
             output_buses.push(BusMut { channels: Vec::new() });
         }
 
@@ -477,8 +477,8 @@ impl<P: Plugin> Wrapper<P> {
 
         match media_type {
             media_types::AUDIO => match dir {
-                bus_directions::INPUT => wrapper.bus_list.inputs().len() as i32,
-                bus_directions::OUTPUT => wrapper.bus_list.outputs().len() as i32,
+                bus_directions::INPUT => wrapper.bus_list.inputs.len() as i32,
+                bus_directions::OUTPUT => wrapper.bus_list.outputs.len() as i32,
                 _ => 0,
             },
             media_types::EVENT => 0,
@@ -499,8 +499,8 @@ impl<P: Plugin> Wrapper<P> {
         match media_type {
             media_types::AUDIO => {
                 let bus_info = match dir {
-                    bus_directions::INPUT => wrapper.bus_list.inputs().get(index as usize),
-                    bus_directions::OUTPUT => wrapper.bus_list.outputs().get(index as usize),
+                    bus_directions::INPUT => wrapper.bus_list.inputs.get(index as usize),
+                    bus_directions::OUTPUT => wrapper.bus_list.outputs.get(index as usize),
                     _ => None,
                 };
 
@@ -714,8 +714,8 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-offset_of!(Self, audio_processor)) as *const Wrapper<P>);
         let bus_states = &mut *wrapper.bus_states.get();
 
-        if num_ins as usize != wrapper.bus_list.inputs().len()
-            || num_outs as usize != wrapper.bus_list.outputs().len()
+        if num_ins as usize != wrapper.bus_list.inputs.len()
+            || num_outs as usize != wrapper.bus_list.outputs.len()
         {
             return result::FALSE;
         }
@@ -918,14 +918,14 @@ impl<P: Plugin> Wrapper<P> {
 
         if samples > 0 {
             if process_data.num_inputs > 0 {
-                if process_data.num_inputs as usize != wrapper.bus_list.inputs().len() {
+                if process_data.num_inputs as usize != wrapper.bus_list.inputs.len() {
                     return result::INVALID_ARGUMENT;
                 }
 
                 let inputs =
                     slice::from_raw_parts(process_data.inputs, process_data.num_inputs as usize);
 
-                for index in 0..wrapper.bus_list.inputs().len() {
+                for index in 0..wrapper.bus_list.inputs.len() {
                     let input = inputs[index];
                     let bus_layout = &bus_states.input_layouts[index];
                     let bus_enabled = bus_states.inputs_enabled[index];
@@ -951,14 +951,14 @@ impl<P: Plugin> Wrapper<P> {
             }
 
             if process_data.num_outputs > 0 {
-                if process_data.num_outputs as usize != wrapper.bus_list.outputs().len() {
+                if process_data.num_outputs as usize != wrapper.bus_list.outputs.len() {
                     return result::INVALID_ARGUMENT;
                 }
 
                 let outputs =
                     slice::from_raw_parts(process_data.outputs, process_data.num_outputs as usize);
 
-                for index in 0..wrapper.bus_list.outputs().len() {
+                for index in 0..wrapper.bus_list.outputs.len() {
                     let output = outputs[index];
                     let bus_layout = &bus_states.output_layouts[index];
                     let bus_enabled = bus_states.outputs_enabled[index];

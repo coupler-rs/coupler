@@ -17,8 +17,8 @@ pub struct BusInfo {
 }
 
 pub struct BusList {
-    inputs: Vec<BusInfo>,
-    outputs: Vec<BusInfo>,
+    pub(crate) inputs: Vec<BusInfo>,
+    pub(crate) outputs: Vec<BusInfo>,
 }
 
 impl BusList {
@@ -34,13 +34,5 @@ impl BusList {
     pub fn output(mut self, name: &str, default_layout: BusLayout) -> BusList {
         self.outputs.push(BusInfo { name: name.to_string(), default_layout });
         self
-    }
-
-    pub fn inputs(&self) -> &[BusInfo] {
-        &self.inputs
-    }
-
-    pub fn outputs(&self) -> &[BusInfo] {
-        &self.outputs
     }
 }
