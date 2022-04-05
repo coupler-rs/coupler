@@ -1,6 +1,9 @@
 use crate::internal::param_states::*;
 use crate::{bus::*, editor::*, param::*, process::*};
 
+use std::ops::Deref;
+use std::sync::Arc;
+
 #[derive(Clone)]
 pub struct PluginInfo {
     pub name: String,
@@ -29,6 +32,25 @@ pub trait Plugin: Send + Sync + Sized + 'static {
         context: &DeserializeContext,
         read: &mut impl std::io::Read,
     ) -> Result<(), ()>;
+}
+
+#[derive(Clone)]
+pub struct PluginHandle<P> {
+    plugin: Arc<P>,
+}
+
+impl<P> PluginHandle<P> {
+    pub fn new(plugin: Arc<P>) -> PluginHandle<P> {
+        PluginHandle { plugin }
+    }
+}
+
+impl<P> Deref for PluginHandle<P> {
+    type Target = P;
+
+    fn deref(&self) -> &Self::Target {
+        &self.plugin
+    }
 }
 
 pub struct SerializeContext<'a> {

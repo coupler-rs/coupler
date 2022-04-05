@@ -112,7 +112,11 @@ unsafe impl HasRawWindowHandle for ParentWindow {
 pub trait Editor: Sized {
     type Plugin: Plugin;
 
-    fn open(plugin: &Self::Plugin, context: EditorContext, parent: Option<&ParentWindow>) -> Self;
+    fn open(
+        plugin: PluginHandle<Self::Plugin>,
+        context: EditorContext,
+        parent: Option<&ParentWindow>,
+    ) -> Self;
     fn close(&mut self);
     fn size() -> (f64, f64);
     fn raw_window_handle(&self) -> Option<RawWindowHandle>;
@@ -131,7 +135,7 @@ impl<P: Plugin> Editor for NoEditor<P> {
     type Plugin = P;
 
     fn open(
-        _plugin: &Self::Plugin,
+        _plugin: PluginHandle<Self::Plugin>,
         _context: EditorContext,
         _parent: Option<&ParentWindow>,
     ) -> Self {

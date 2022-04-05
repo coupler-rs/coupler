@@ -75,7 +75,7 @@ pub struct GainProcessor {
 impl Processor for GainProcessor {
     type Plugin = Gain;
 
-    fn create(_plugin: &Gain, _context: &ProcessContext) -> Self {
+    fn create(_plugin: PluginHandle<Gain>, _context: &ProcessContext) -> Self {
         GainProcessor { gain: 1.0 }
     }
 
@@ -103,7 +103,11 @@ pub struct GainEditor {
 impl Editor for GainEditor {
     type Plugin = Gain;
 
-    fn open(plugin: &Gain, context: EditorContext, parent: Option<&ParentWindow>) -> Self {
+    fn open(
+        plugin: PluginHandle<Gain>,
+        context: EditorContext,
+        parent: Option<&ParentWindow>,
+    ) -> Self {
         let parent =
             if let Some(parent) = parent { Parent::Parent(parent) } else { Parent::Detached };
 
@@ -152,7 +156,7 @@ struct GainWindowHandler {
 }
 
 impl GainWindowHandler {
-    fn new(_plugin: &Gain, context: EditorContext) -> GainWindowHandler {
+    fn new(_plugin: PluginHandle<Gain>, context: EditorContext) -> GainWindowHandler {
         GainWindowHandler {
             context,
             canvas: RefCell::new(Canvas::with_size(256, 256)),

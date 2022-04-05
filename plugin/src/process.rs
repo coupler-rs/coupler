@@ -61,7 +61,7 @@ pub enum EventType {
 pub trait Processor: Send + Sized {
     type Plugin: Plugin;
 
-    fn create(plugin: &Self::Plugin, context: &ProcessContext) -> Self;
+    fn create(plugin: PluginHandle<Self::Plugin>, context: &ProcessContext) -> Self;
     fn reset(&mut self, context: &ProcessContext);
     fn process(&mut self, context: &ProcessContext, buffers: &mut Buffers, events: &[Event]);
 }

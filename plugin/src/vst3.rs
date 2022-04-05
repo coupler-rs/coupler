@@ -163,7 +163,7 @@ struct Wrapper<P: Plugin> {
     bus_states: UnsafeCell<BusStates>,
     param_states: Arc<ParamStates>,
     active: AtomicBool,
-    plugin: P,
+    plugin: Arc<P>,
     processor_state: UnsafeCell<ProcessorState<P>>,
     editor_state: UnsafeCell<EditorState<P>>,
 }
@@ -305,7 +305,7 @@ impl<P: Plugin> Wrapper<P> {
             outputs_enabled,
         });
 
-        let plugin = P::create();
+        let plugin = Arc::new(P::create());
 
         let param_states = Arc::new(ParamStates::new(P::params()));
 
@@ -581,13 +581,15 @@ impl<P: Plugin> Wrapper<P> {
             _ => {
                 wrapper.active.store(true, Ordering::Relaxed);
 
+                let plugin = PluginHandle::new(wrapper.plugin.clone());
+
                 let context = ProcessContext::new(
                     processor_state.sample_rate,
                     &bus_states.input_layouts[..],
                     &bus_states.output_layouts[..],
                     &wrapper.param_states,
                 );
-                processor_state.processor = Some(P::Processor::create(&wrapper.plugin, &context));
+                processor_state.processor = Some(P::Processor::create(plugin, &context));
 
                 // Ensure that buffer pointer Vecs are the correct size:
 
@@ -1328,10 +1330,12 @@ impl<P: Plugin> Wrapper<P> {
             RawWindowHandle::Xcb(XcbHandle { window: parent as u32, ..XcbHandle::empty() })
         };
 
+        let plugin = PluginHandle::new(wrapper.plugin.clone());
+
         let context =
             EditorContext::new(wrapper.param_states.clone(), editor_state.context.clone());
 
-        let editor = P::Editor::open(&wrapper.plugin, context, Some(&ParentWindow(parent)));
+        let editor = P::Editor::open(plugin, context, Some(&ParentWindow(parent)));
 
         #[cfg(target_os = "linux")]
         if let Some(file_descriptor) = editor.file_descriptor() {
