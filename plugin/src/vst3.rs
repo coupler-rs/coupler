@@ -644,7 +644,12 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(this.offset(-offset_of!(Self, component)) as *const Wrapper<P>);
 
         match wrapper.plugin.deserialize(&mut StreamReader(state)) {
-            Ok(_) => result::OK,
+            Ok(_) => {
+                wrapper.param_states.dirty_processor.set_all(Ordering::Release);
+                wrapper.param_states.dirty_editor.set_all(Ordering::Release);
+
+                result::OK
+            }
             Err(_) => result::FALSE,
         }
     }
