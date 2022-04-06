@@ -66,7 +66,7 @@ pub trait ParamDef<P> {
 }
 
 pub trait Param {
-    type Value;
+    type Value: Copy;
 
     fn id(&self) -> ParamId;
     fn name(&self) -> String;
@@ -96,6 +96,7 @@ pub trait Param {
     }
 
     fn perform_edit(&self, context: &EditorContext, value: Self::Value) {
+        self.set(value);
         context.perform_edit(self.id(), self.to_normalized(value));
     }
 
