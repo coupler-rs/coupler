@@ -6,7 +6,7 @@ use std::ffi::{c_void, CStr, CString};
 use std::marker::PhantomData;
 use std::os::raw::{c_char, c_int};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::{io, ptr, slice};
 
@@ -153,7 +153,6 @@ struct Wrapper<P: Plugin> {
     plug_view: *const IPlugView,
     event_handler: *const IEventHandler,
     timer_handler: *const ITimerHandler,
-    count: AtomicU32,
     info: PluginInfo,
     bus_list: BusList,
     // We only form an &mut to bus_states in set_bus_arrangements and
@@ -348,7 +347,6 @@ impl<P: Plugin> Wrapper<P> {
             plug_view: &Wrapper::<P>::PLUG_VIEW_VTABLE as *const _,
             event_handler: &Wrapper::<P>::EVENT_HANDLER_VTABLE as *const _,
             timer_handler: &Wrapper::<P>::TIMER_HANDLER_VTABLE as *const _,
-            count: AtomicU32::new(1),
             info,
             bus_list,
             bus_states,
@@ -1560,7 +1558,6 @@ impl<P: Plugin> Wrapper<P> {
 #[repr(C)]
 pub struct Factory<P> {
     plugin_factory_3: *const IPluginFactory3,
-    count: AtomicU32,
     uid: TUID,
     info: PluginInfo,
     phantom: PhantomData<P>,
@@ -1589,7 +1586,6 @@ impl<P: Plugin> Factory<P> {
     pub fn create(plugin_uid: [u32; 4]) -> *mut Factory<P> {
         Arc::into_raw(Arc::new(Factory::<P> {
             plugin_factory_3: &Self::PLUGIN_FACTORY_3_VTABLE as *const _,
-            count: AtomicU32::new(1),
             uid: uid(plugin_uid[0], plugin_uid[1], plugin_uid[2], plugin_uid[3]),
             info: P::info(),
             phantom: PhantomData,
