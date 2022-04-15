@@ -174,6 +174,13 @@ impl<P, Q: Param, F: Fn(&P) -> &Q> ParamDef for ParamAccessor<P, Q, F> {
     }
 }
 
+#[macro_export]
+macro_rules! param {
+    ($plugin:ident, $field:ident) => {
+        ParamAccessor::new(|plugin: &$plugin| &plugin.$field)
+    };
+}
+
 pub struct FloatParam {
     id: ParamId,
     name: String,

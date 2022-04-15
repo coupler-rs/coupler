@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 
 use graphics::{Canvas, Color, Path, Vec2};
-use plugin::{buffer::*, bus::*, editor::*, param::*, plugin::*, process::*};
+use plugin::{buffer::*, bus::*, editor::*, param, param::*, plugin::*, process::*};
 use window::{
     Application, Cursor, MouseButton, Parent, Point, Rect, Window, WindowHandler, WindowOptions,
 };
@@ -39,7 +39,7 @@ impl Plugin for Gain {
     }
 
     fn params(&self) -> ParamList<Self> {
-        ParamList::new().param(ParamAccessor::new(|plugin: &Gain| &plugin.gain))
+        ParamList::new().param(param!(Gain, gain))
     }
 
     fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()> {
