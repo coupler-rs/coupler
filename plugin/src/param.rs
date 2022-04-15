@@ -1,5 +1,5 @@
 use crate::atomic::{AtomicBitset, AtomicF64};
-use crate::{editor::EditorContext, plugin::Plugin, process::ParamChange};
+use crate::{editor::EditorContext, process::ParamChange};
 
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 pub type ParamId = u32;
 
 pub struct ParamList<P> {
-    pub(crate) params: Vec<Box<dyn ParamDef<P>>>,
+    pub(crate) params: Vec<Box<dyn ParamDef<Plugin = P>>>,
 }
 
 impl<P> ParamList<P> {
@@ -15,7 +15,7 @@ impl<P> ParamList<P> {
         ParamList { params: Vec::new() }
     }
 
-    pub fn param<Q: ParamDef<P> + 'static>(mut self, param: Q) -> ParamList<P> {
+    pub fn param<Q: ParamDef<Plugin = P> + 'static>(mut self, param: Q) -> ParamList<P> {
         self.params.push(Box::new(param));
         self
     }
@@ -55,14 +55,21 @@ pub struct ParamInfo {
     pub default_normalized: f64,
 }
 
-pub trait ParamDef<P> {
-    fn info(&self, plugin: &P) -> ParamInfo;
-    fn get_normalized(&self, plugin: &P) -> f64;
-    fn set_normalized(&self, plugin: &P, value: f64);
-    fn normalized_to_plain(&self, plugin: &P, value: f64) -> f64;
-    fn plain_to_normalized(&self, plugin: &P, value: f64) -> f64;
-    fn normalized_to_string(&self, plugin: &P, value: f64, write: &mut dyn std::fmt::Write);
-    fn string_to_normalized(&self, plugin: &P, string: &str) -> Result<f64, ()>;
+pub trait ParamDef {
+    type Plugin;
+
+    fn info(&self, plugin: &Self::Plugin) -> ParamInfo;
+    fn get_normalized(&self, plugin: &Self::Plugin) -> f64;
+    fn set_normalized(&self, plugin: &Self::Plugin, value: f64);
+    fn normalized_to_plain(&self, plugin: &Self::Plugin, value: f64) -> f64;
+    fn plain_to_normalized(&self, plugin: &Self::Plugin, value: f64) -> f64;
+    fn normalized_to_string(
+        &self,
+        plugin: &Self::Plugin,
+        value: f64,
+        write: &mut dyn std::fmt::Write,
+    );
+    fn string_to_normalized(&self, plugin: &Self::Plugin, string: &str) -> Result<f64, ()>;
 }
 
 pub trait Param {
@@ -105,19 +112,21 @@ pub trait Param {
     }
 }
 
-pub struct ParamAccessor<P: Plugin, Q: Param, F: Fn(&P) -> &Q> {
+pub struct ParamAccessor<P, Q, F: Fn(&P) -> &Q> {
     f: F,
     phantom: PhantomData<fn(&P) -> &Q>,
 }
 
-impl<P: Plugin, Q: Param, F: Fn(&P) -> &Q> ParamAccessor<P, Q, F> {
+impl<P, Q: Param, F: Fn(&P) -> &Q> ParamAccessor<P, Q, F> {
     pub fn new(f: F) -> ParamAccessor<P, Q, F> {
         ParamAccessor { f, phantom: PhantomData }
     }
 }
 
-impl<P: Plugin, Q: Param, F: Fn(&P) -> &Q> ParamDef<P> for ParamAccessor<P, Q, F> {
-    fn info(&self, plugin: &P) -> ParamInfo {
+impl<P, Q: Param, F: Fn(&P) -> &Q> ParamDef for ParamAccessor<P, Q, F> {
+    type Plugin = P;
+
+    fn info(&self, plugin: &Self::Plugin) -> ParamInfo {
         let param = (self.f)(plugin);
 
         ParamInfo {
@@ -129,32 +138,37 @@ impl<P: Plugin, Q: Param, F: Fn(&P) -> &Q> ParamDef<P> for ParamAccessor<P, Q, F
         }
     }
 
-    fn get_normalized(&self, plugin: &P) -> f64 {
+    fn get_normalized(&self, plugin: &Self::Plugin) -> f64 {
         let param = (self.f)(plugin);
         param.to_normalized(param.get())
     }
 
-    fn set_normalized(&self, plugin: &P, value: f64) {
+    fn set_normalized(&self, plugin: &Self::Plugin, value: f64) {
         let param = (self.f)(plugin);
         param.set(param.from_normalized(value));
     }
 
-    fn normalized_to_plain(&self, plugin: &P, value: f64) -> f64 {
+    fn normalized_to_plain(&self, plugin: &Self::Plugin, value: f64) -> f64 {
         let param = (self.f)(plugin);
         param.to_plain(param.from_normalized(value))
     }
 
-    fn plain_to_normalized(&self, plugin: &P, value: f64) -> f64 {
+    fn plain_to_normalized(&self, plugin: &Self::Plugin, value: f64) -> f64 {
         let param = (self.f)(plugin);
         param.to_normalized(param.from_plain(value))
     }
 
-    fn normalized_to_string(&self, plugin: &P, value: f64, write: &mut dyn std::fmt::Write) {
+    fn normalized_to_string(
+        &self,
+        plugin: &Self::Plugin,
+        value: f64,
+        write: &mut dyn std::fmt::Write,
+    ) {
         let param = (self.f)(plugin);
         param.to_string(param.from_normalized(value), write);
     }
 
-    fn string_to_normalized(&self, plugin: &P, string: &str) -> Result<f64, ()> {
+    fn string_to_normalized(&self, plugin: &Self::Plugin, string: &str) -> Result<f64, ()> {
         let param = (self.f)(plugin);
         param.from_string(string).map(|value| param.to_normalized(value))
     }
