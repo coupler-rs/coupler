@@ -73,12 +73,13 @@ impl Processor for GainProcessor {
         self.gain = self.plugin.gain.get() as f32;
     }
 
-    fn process(&mut self, _context: &ProcessContext, buffers: &mut Buffers, _events: &[Event]) {
+    fn process(&mut self, _context: &ProcessContext, mut buffers: Buffers, _events: &[Event]) {
         for i in 0..buffers.samples() {
             for channel in 0..2 {
                 self.gain = 0.9995 * self.gain + 0.0005 * self.plugin.gain.get() as f32;
 
-                buffers.outputs()[0][channel][i] = self.gain * buffers.inputs()[0][channel][i];
+                buffers.outputs().bus(0).unwrap().channel(channel).unwrap()[i] =
+                    self.gain * buffers.inputs().bus(0).unwrap().channel(channel).unwrap()[i];
             }
         }
     }

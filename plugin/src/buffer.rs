@@ -1,99 +1,201 @@
 use std::marker::PhantomData;
-use std::ops::{Deref, DerefMut};
 use std::slice;
 
-pub struct Buffers<'a, 'b> {
-    pub(crate) inputs: &'a [Bus<'a>],
-    pub(crate) outputs: &'a mut [BusMut<'b>],
-    pub(crate) samples: usize,
+pub struct Buffers<'a> {
+    offset: usize,
+    len: usize,
+    input_indices: &'a [(usize, usize)],
+    input_ptrs: &'a [*const f32],
+    output_indices: &'a [(usize, usize)],
+    output_ptrs: &'a [*mut f32],
+    phantom: PhantomData<(&'a f32, &'a mut f32)>,
 }
 
-impl<'a, 'b> Buffers<'a, 'b> {
+impl<'a> Buffers<'a> {
+    pub(crate) unsafe fn new(
+        len: usize,
+        input_indices: &'a [(usize, usize)],
+        input_ptrs: &'a [*const f32],
+        output_indices: &'a [(usize, usize)],
+        output_ptrs: &'a [*mut f32],
+    ) -> Buffers<'a> {
+        Buffers {
+            offset: 0,
+            len,
+            input_indices,
+            input_ptrs,
+            output_indices,
+            output_ptrs,
+            phantom: PhantomData,
+        }
+    }
+
+    #[inline]
     pub fn samples(&self) -> usize {
-        self.samples
+        self.len
     }
 
-    pub fn inputs(&self) -> &[Bus] {
-        self.inputs
+    #[inline]
+    pub fn inputs(&self) -> Buses<'a> {
+        Buses {
+            offset: self.offset,
+            len: self.len,
+            indices: self.input_indices,
+            ptrs: self.input_ptrs,
+            phantom: PhantomData,
+        }
     }
 
-    pub fn outputs(&mut self) -> &mut [BusMut<'b>] {
-        self.outputs
+    #[inline]
+    pub fn outputs(&mut self) -> BusesMut<'a> {
+        BusesMut {
+            offset: self.offset,
+            len: self.len,
+            indices: self.output_indices,
+            ptrs: self.output_ptrs,
+            phantom: PhantomData,
+        }
+    }
+}
+
+pub struct Buses<'a> {
+    offset: usize,
+    len: usize,
+    indices: &'a [(usize, usize)],
+    ptrs: &'a [*const f32],
+    phantom: PhantomData<&'a f32>,
+}
+
+impl<'a> Buses<'a> {
+    #[inline]
+    pub fn samples(&self) -> usize {
+        self.len
+    }
+
+    #[inline]
+    pub fn buses(&self) -> usize {
+        self.indices.len()
+    }
+
+    #[inline]
+    pub fn bus(&self, index: usize) -> Option<Bus<'a>> {
+        if let Some((start, end)) = self.indices.get(index) {
+            Some(Bus {
+                offset: self.offset,
+                len: self.len,
+                ptrs: &self.ptrs[*start..*end],
+                phantom: PhantomData,
+            })
+        } else {
+            None
+        }
     }
 }
 
 pub struct Bus<'a> {
-    pub(crate) channels: Vec<Buffer<'a>>,
+    offset: usize,
+    len: usize,
+    ptrs: &'a [*const f32],
+    phantom: PhantomData<&'a f32>,
 }
 
 impl<'a> Bus<'a> {
+    #[inline]
+    pub fn samples(&self) -> usize {
+        self.len
+    }
+
+    #[inline]
+    pub fn channels(&self) -> usize {
+        self.ptrs.len()
+    }
+
+    #[inline]
     pub fn enabled(&self) -> bool {
-        !self.channels.is_empty()
+        self.channels() != 0
+    }
+
+    #[inline]
+    pub fn channel(&self, index: usize) -> Option<&[f32]> {
+        if let Some(ptr) = self.ptrs.get(index) {
+            if self.len != 0 {
+                unsafe { Some(slice::from_raw_parts(ptr.add(self.offset), self.len)) }
+            } else {
+                Some(&[])
+            }
+        } else {
+            None
+        }
     }
 }
 
-impl<'a> Deref for Bus<'a> {
-    type Target = [Buffer<'a>];
+pub struct BusesMut<'a> {
+    offset: usize,
+    len: usize,
+    indices: &'a [(usize, usize)],
+    ptrs: &'a [*mut f32],
+    phantom: PhantomData<&'a mut f32>,
+}
 
-    fn deref(&self) -> &[Buffer<'a>] {
-        &self.channels
+impl<'a> BusesMut<'a> {
+    #[inline]
+    pub fn samples(&self) -> usize {
+        self.len
+    }
+
+    #[inline]
+    pub fn buses(&self) -> usize {
+        self.indices.len()
+    }
+
+    #[inline]
+    pub fn bus(&mut self, index: usize) -> Option<BusMut<'a>> {
+        if let Some((start, end)) = self.indices.get(index) {
+            Some(BusMut {
+                offset: self.offset,
+                len: self.len,
+                ptrs: &self.ptrs[*start..*end],
+                phantom: PhantomData,
+            })
+        } else {
+            None
+        }
     }
 }
 
 pub struct BusMut<'a> {
-    pub(crate) channels: Vec<BufferMut<'a>>,
+    offset: usize,
+    len: usize,
+    ptrs: &'a [*mut f32],
+    phantom: PhantomData<&'a mut f32>,
 }
 
 impl<'a> BusMut<'a> {
+    #[inline]
+    pub fn samples(&self) -> usize {
+        self.len
+    }
+
+    #[inline]
+    pub fn channels(&self) -> usize {
+        self.ptrs.len()
+    }
+
+    #[inline]
     pub fn enabled(&self) -> bool {
-        !self.channels.is_empty()
+        self.channels() != 0
     }
-}
 
-impl<'a> Deref for BusMut<'a> {
-    type Target = [BufferMut<'a>];
-
-    fn deref(&self) -> &[BufferMut<'a>] {
-        &self.channels
-    }
-}
-
-impl<'a> DerefMut for BusMut<'a> {
-    fn deref_mut(&mut self) -> &mut [BufferMut<'a>] {
-        &mut self.channels
-    }
-}
-
-pub struct Buffer<'a> {
-    pub(crate) ptr: *const f32,
-    pub(crate) samples: usize,
-    pub(crate) phantom: PhantomData<&'a [f32]>,
-}
-
-impl<'a> Deref for Buffer<'a> {
-    type Target = [f32];
-
-    fn deref(&self) -> &[f32] {
-        unsafe { slice::from_raw_parts(self.ptr, self.samples) }
-    }
-}
-
-pub struct BufferMut<'a> {
-    pub(crate) ptr: *mut f32,
-    pub(crate) samples: usize,
-    pub(crate) phantom: PhantomData<&'a mut [f32]>,
-}
-
-impl<'a> Deref for BufferMut<'a> {
-    type Target = [f32];
-
-    fn deref(&self) -> &[f32] {
-        unsafe { slice::from_raw_parts(self.ptr, self.samples) }
-    }
-}
-
-impl<'a> DerefMut for BufferMut<'a> {
-    fn deref_mut(&mut self) -> &mut [f32] {
-        unsafe { slice::from_raw_parts_mut(self.ptr, self.samples) }
+    #[inline]
+    pub fn channel(&mut self, index: usize) -> Option<&mut [f32]> {
+        if let Some(ptr) = self.ptrs.get(index) {
+            if self.len != 0 {
+                unsafe { Some(slice::from_raw_parts_mut(ptr.add(self.offset), self.len)) }
+            } else {
+                Some(&mut [])
+            }
+        } else {
+            None
+        }
     }
 }

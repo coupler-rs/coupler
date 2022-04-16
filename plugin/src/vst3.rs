@@ -133,8 +133,12 @@ struct BusStates {
 struct ProcessorState<P: Plugin> {
     sample_rate: f64,
     needs_reset: bool,
-    input_buses: Vec<Bus<'static>>,
-    output_buses: Vec<BusMut<'static>>,
+    input_channels: usize,
+    input_indices: Vec<(usize, usize)>,
+    input_ptrs: Vec<*const f32>,
+    output_channels: usize,
+    output_indices: Vec<(usize, usize)>,
+    output_ptrs: Vec<*mut f32>,
     events: Vec<Event>,
     processor: Option<P::Processor>,
 }
@@ -309,21 +313,21 @@ impl<P: Plugin> Wrapper<P> {
         let param_list = plugin.params();
         let param_states = Arc::new(ParamStates::new(&param_list, &plugin));
 
-        let mut input_buses = Vec::with_capacity(bus_list.inputs.len());
-        for _ in 0..bus_list.inputs.len() {
-            input_buses.push(Bus { channels: Vec::new() });
-        }
+        let input_indices = Vec::with_capacity(bus_list.inputs.len());
+        let input_ptrs = Vec::new();
 
-        let mut output_buses = Vec::with_capacity(bus_list.outputs.len());
-        for _ in 0..bus_list.outputs.len() {
-            output_buses.push(BusMut { channels: Vec::new() });
-        }
+        let output_indices = Vec::with_capacity(bus_list.outputs.len());
+        let output_ptrs = Vec::new();
 
         let processor_state = UnsafeCell::new(ProcessorState {
             sample_rate: 44_100.0,
             needs_reset: false,
-            input_buses,
-            output_buses,
+            input_channels: 0,
+            input_indices,
+            input_ptrs,
+            output_channels: 0,
+            output_indices,
+            output_ptrs,
             // We can't know the maximum number of param changes in a
             // block, so make a reasonable guess and hope we don't have to
             // allocate more
@@ -590,23 +594,37 @@ impl<P: Plugin> Wrapper<P> {
                 );
                 processor_state.processor = Some(P::Processor::create(plugin, &context));
 
-                // Ensure that buffer pointer Vecs are the correct size:
+                // Prepare buffer indices and ensure that buffer pointer Vecs are the correct size:
 
-                for (layout, bus) in
-                    bus_states.input_layouts.iter().zip(processor_state.input_buses.iter_mut())
+                processor_state.input_indices.clear();
+                let mut total_channels = 0;
+                for (layout, enabled) in
+                    bus_states.input_layouts.iter().zip(bus_states.inputs_enabled.iter())
                 {
-                    let channels = layout.channels();
-                    bus.channels.reserve(channels);
-                    bus.channels.shrink_to(channels);
+                    let channels = if *enabled { layout.channels() } else { 0 };
+                    processor_state.input_indices.push((total_channels, total_channels + channels));
+                    total_channels += channels;
                 }
+                processor_state.input_channels = total_channels;
 
-                for (layout, bus) in
-                    bus_states.output_layouts.iter().zip(processor_state.output_buses.iter_mut())
+                processor_state.input_ptrs.reserve(processor_state.input_channels);
+                processor_state.input_ptrs.shrink_to(processor_state.input_channels);
+
+                processor_state.output_indices.clear();
+                let mut total_channels = 0;
+                for (layout, enabled) in
+                    bus_states.output_layouts.iter().zip(bus_states.outputs_enabled.iter())
                 {
-                    let channels = layout.channels();
-                    bus.channels.reserve(channels);
-                    bus.channels.shrink_to(channels);
+                    let channels = if *enabled { layout.channels() } else { 0 };
+                    processor_state
+                        .output_indices
+                        .push((total_channels, total_channels + channels));
+                    total_channels += channels;
                 }
+                processor_state.output_channels = total_channels;
+
+                processor_state.output_ptrs.reserve(processor_state.output_channels);
+                processor_state.output_ptrs.shrink_to(processor_state.output_channels);
             }
         }
 
@@ -849,6 +867,8 @@ impl<P: Plugin> Wrapper<P> {
             return result::NOT_INITIALIZED;
         }
 
+        processor_state.events.clear();
+
         for index in wrapper.param_states.dirty_processor.drain_indices(Ordering::Acquire) {
             let param_def = &wrapper.param_list.params[index];
             let id = wrapper.param_states.info[index].id;
@@ -909,18 +929,13 @@ impl<P: Plugin> Wrapper<P> {
 
         processor_state.events.sort_by_key(|param_change| param_change.offset);
 
-        for input_bus in processor_state.input_buses.iter_mut() {
-            input_bus.channels.clear();
-        }
-
-        for output_bus in processor_state.output_buses.iter_mut() {
-            output_bus.channels.clear();
-        }
+        processor_state.input_ptrs.clear();
+        processor_state.output_ptrs.clear();
 
         let samples = process_data.num_samples as usize;
 
         if samples > 0 {
-            if process_data.num_inputs > 0 {
+            if wrapper.bus_list.inputs.len() > 0 {
                 if process_data.num_inputs as usize != wrapper.bus_list.inputs.len() {
                     return result::INVALID_ARGUMENT;
                 }
@@ -932,9 +947,8 @@ impl<P: Plugin> Wrapper<P> {
                     let input = inputs[index];
                     let bus_layout = &bus_states.input_layouts[index];
                     let bus_enabled = bus_states.inputs_enabled[index];
-                    let bus = &mut processor_state.input_buses[index];
 
-                    if !bus_enabled || input.num_channels == 0 {
+                    if !bus_enabled || bus_layout.channels() == 0 {
                         continue;
                     }
 
@@ -946,14 +960,11 @@ impl<P: Plugin> Wrapper<P> {
                         input.channel_buffers as *const *const f32,
                         input.num_channels as usize,
                     );
-
-                    for &ptr in channels {
-                        bus.channels.push(Buffer { ptr, samples, phantom: PhantomData });
-                    }
+                    processor_state.input_ptrs.extend_from_slice(channels);
                 }
             }
 
-            if process_data.num_outputs > 0 {
+            if wrapper.bus_list.outputs.len() > 0 {
                 if process_data.num_outputs as usize != wrapper.bus_list.outputs.len() {
                     return result::INVALID_ARGUMENT;
                 }
@@ -965,9 +976,8 @@ impl<P: Plugin> Wrapper<P> {
                     let output = outputs[index];
                     let bus_layout = &bus_states.output_layouts[index];
                     let bus_enabled = bus_states.outputs_enabled[index];
-                    let bus = &mut processor_state.output_buses[index];
 
-                    if !bus_enabled || output.num_channels == 0 {
+                    if !bus_enabled || bus_layout.channels() == 0 {
                         continue;
                     }
 
@@ -979,19 +989,21 @@ impl<P: Plugin> Wrapper<P> {
                         output.channel_buffers as *const *mut f32,
                         output.num_channels as usize,
                     );
-
-                    for &ptr in channels {
-                        bus.channels.push(BufferMut { ptr, samples, phantom: PhantomData });
-                    }
+                    processor_state.output_ptrs.extend_from_slice(channels);
                 }
             }
+        } else {
+            processor_state.input_ptrs.resize(processor_state.input_channels, ptr::null());
+            processor_state.output_ptrs.resize(processor_state.output_channels, ptr::null_mut());
         }
 
-        let mut buffers = Buffers {
+        let buffers = Buffers::new(
             samples,
-            inputs: &processor_state.input_buses,
-            outputs: &mut processor_state.output_buses,
-        };
+            &processor_state.input_indices,
+            &processor_state.input_ptrs,
+            &processor_state.output_indices,
+            &processor_state.output_ptrs,
+        );
 
         if !process_data.process_context.is_null() {
             processor_state.sample_rate = (*process_data.process_context).sample_rate;
@@ -1004,8 +1016,11 @@ impl<P: Plugin> Wrapper<P> {
         );
 
         if let Some(processor) = &mut processor_state.processor {
-            processor.process(&context, &mut buffers, &processor_state.events[..]);
+            processor.process(&context, buffers, &processor_state.events[..]);
         }
+
+        processor_state.input_ptrs.clear();
+        processor_state.output_ptrs.clear();
 
         processor_state.events.clear();
 
