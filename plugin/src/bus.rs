@@ -11,6 +11,21 @@ impl BusLayout {
     }
 }
 
+pub struct BusState {
+    pub(crate) layout: BusLayout,
+    pub(crate) enabled: bool,
+}
+
+impl BusState {
+    pub fn layout(&self) -> &BusLayout {
+        &self.layout
+    }
+
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+}
+
 pub struct BusInfo {
     pub name: String,
     pub default_layout: BusLayout,
