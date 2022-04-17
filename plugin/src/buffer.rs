@@ -135,6 +135,11 @@ impl<'a, 'b, 'c> Buffers<'a, 'b, 'c> {
 
         (first, second)
     }
+
+    #[inline]
+    pub fn chunks(self, chunk_size: usize) -> Chunks<'a, 'b, 'c> {
+        Chunks { buffers: self, chunk_size }
+    }
 }
 
 pub struct Buses<'a, 'b> {
@@ -282,5 +287,40 @@ impl<'a, 'b> BusMut<'a, 'b> {
         } else {
             None
         }
+    }
+}
+
+pub struct Chunks<'a, 'b, 'c> {
+    buffers: Buffers<'a, 'b, 'c>,
+    chunk_size: usize,
+}
+
+impl<'a, 'b, 'c> Iterator for Chunks<'a, 'b, 'c> {
+    type Item = Buffers<'a, 'b, 'c>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Buffers<'a, 'b, 'c>> {
+        if self.buffers.len == 0 {
+            return None;
+        }
+
+        let chunk_size = self.chunk_size.min(self.buffers.len);
+
+        let chunk = Buffers {
+            offset: self.buffers.offset,
+            len: chunk_size,
+            input_states: self.buffers.input_states,
+            input_indices: self.buffers.input_indices,
+            input_ptrs: self.buffers.input_ptrs,
+            output_states: self.buffers.output_states,
+            output_indices: self.buffers.output_indices,
+            output_ptrs: self.buffers.output_ptrs,
+            phantom: PhantomData,
+        };
+
+        self.buffers.offset += chunk_size;
+        self.buffers.len -= chunk_size;
+
+        Some(chunk)
     }
 }
