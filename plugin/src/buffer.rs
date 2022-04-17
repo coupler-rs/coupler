@@ -104,6 +104,37 @@ impl<'a, 'b, 'c> Buffers<'a, 'b, 'c> {
 
         (inputs, outputs)
     }
+
+    #[inline]
+    pub fn split_at(self, sample: usize) -> (Buffers<'a, 'b, 'c>, Buffers<'a, 'b, 'c>) {
+        assert!(sample <= self.len);
+
+        let first = Buffers {
+            offset: self.offset,
+            len: sample,
+            input_states: self.input_states,
+            input_indices: self.input_indices,
+            input_ptrs: self.input_ptrs,
+            output_states: self.output_states,
+            output_indices: self.output_indices,
+            output_ptrs: self.output_ptrs,
+            phantom: PhantomData,
+        };
+
+        let second = Buffers {
+            offset: self.offset + sample,
+            len: self.len - sample,
+            input_states: self.input_states,
+            input_indices: self.input_indices,
+            input_ptrs: self.input_ptrs,
+            output_states: self.output_states,
+            output_indices: self.output_indices,
+            output_ptrs: self.output_ptrs,
+            phantom: PhantomData,
+        };
+
+        (first, second)
+    }
 }
 
 pub struct Buses<'a, 'b> {
