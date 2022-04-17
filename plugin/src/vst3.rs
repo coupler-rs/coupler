@@ -130,6 +130,7 @@ struct BusStates {
 
 struct ProcessorState<P: Plugin> {
     sample_rate: f64,
+    max_buffer_size: usize,
     needs_reset: bool,
     input_channels: usize,
     input_indices: Vec<(usize, usize)>,
@@ -309,7 +310,8 @@ impl<P: Plugin> Wrapper<P> {
         let output_ptrs = Vec::new();
 
         let processor_state = UnsafeCell::new(ProcessorState {
-            sample_rate: 44_100.0,
+            sample_rate: 0.0,
+            max_buffer_size: 0,
             needs_reset: false,
             input_channels: 0,
             input_indices,
@@ -578,6 +580,7 @@ impl<P: Plugin> Wrapper<P> {
 
                 let context = ProcessContext::new(
                     processor_state.sample_rate,
+                    processor_state.max_buffer_size,
                     &bus_states.inputs[..],
                     &bus_states.outputs[..],
                 );
@@ -814,6 +817,7 @@ impl<P: Plugin> Wrapper<P> {
         let setup = &*setup;
 
         processor_state.sample_rate = setup.sample_rate;
+        processor_state.max_buffer_size = setup.max_samples_per_block as usize;
 
         result::OK
     }
@@ -837,6 +841,7 @@ impl<P: Plugin> Wrapper<P> {
 
             let context = ProcessContext::new(
                 processor_state.sample_rate,
+                processor_state.max_buffer_size,
                 &bus_states.inputs[..],
                 &bus_states.outputs[..],
             );
@@ -987,12 +992,9 @@ impl<P: Plugin> Wrapper<P> {
             &processor_state.output_ptrs,
         );
 
-        if !process_data.process_context.is_null() {
-            processor_state.sample_rate = (*process_data.process_context).sample_rate;
-        }
-
         let context = ProcessContext::new(
             processor_state.sample_rate,
+            processor_state.max_buffer_size,
             &bus_states.inputs[..],
             &bus_states.outputs[..],
         );
