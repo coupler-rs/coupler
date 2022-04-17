@@ -138,6 +138,11 @@ struct ProcessorState<P: Plugin> {
     output_channels: usize,
     output_indices: Vec<(usize, usize)>,
     output_ptrs: Vec<*mut f32>,
+    // Scratch buffers for copying inputs to when the host uses the same
+    // buffers for inputs and outputs
+    scratch_buffers: Vec<f32>,
+    output_ptr_set: Vec<*mut f32>,
+    aliased_inputs: Vec<usize>,
     events: Vec<Event>,
     processor: Option<P::Processor>,
 }
@@ -319,6 +324,9 @@ impl<P: Plugin> Wrapper<P> {
             output_channels: 0,
             output_indices,
             output_ptrs,
+            scratch_buffers: Vec::new(),
+            output_ptr_set: Vec::new(),
+            aliased_inputs: Vec::new(),
             // We can't know the maximum number of param changes in a
             // block, so make a reasonable guess and hope we don't have to
             // allocate more
@@ -613,6 +621,19 @@ impl<P: Plugin> Wrapper<P> {
 
                 processor_state.output_ptrs.reserve(processor_state.output_channels);
                 processor_state.output_ptrs.shrink_to(processor_state.output_channels);
+
+                // Ensure enough scratch buffer space for any number of aliased input buffers:
+
+                let scratch_buffer_size = processor_state.max_buffer_size
+                    * processor_state.input_channels.min(processor_state.output_channels);
+                processor_state.scratch_buffers.reserve(scratch_buffer_size);
+                processor_state.scratch_buffers.shrink_to(scratch_buffer_size);
+
+                processor_state.output_ptr_set.reserve(processor_state.output_channels);
+                processor_state.output_ptr_set.shrink_to(processor_state.output_channels);
+
+                processor_state.aliased_inputs.reserve(processor_state.input_channels);
+                processor_state.aliased_inputs.shrink_to(processor_state.input_channels);
             }
         }
 
@@ -755,11 +776,14 @@ impl<P: Plugin> Wrapper<P> {
         }
 
         if P::supports_layout(&candidate_inputs[..], &candidate_outputs[..]) {
-            for (input, bus_state) in candidate_inputs.into_iter().zip(bus_states.inputs.iter_mut()) {
+            for (input, bus_state) in candidate_inputs.into_iter().zip(bus_states.inputs.iter_mut())
+            {
                 bus_state.layout = input;
             }
 
-            for (output, bus_state) in candidate_outputs.into_iter().zip(bus_states.outputs.iter_mut()) {
+            for (output, bus_state) in
+                candidate_outputs.into_iter().zip(bus_states.outputs.iter_mut())
+            {
                 bus_state.layout = output;
             }
 
@@ -977,6 +1001,30 @@ impl<P: Plugin> Wrapper<P> {
                     processor_state.output_ptrs.extend_from_slice(channels);
                 }
             }
+
+            // Copy aliased input buffers into scratch buffers
+
+            processor_state.output_ptr_set.extend_from_slice(&processor_state.output_ptrs);
+            processor_state.output_ptr_set.sort();
+            processor_state.output_ptr_set.dedup();
+
+            for (channel, input_ptr) in processor_state.input_ptrs.iter().enumerate() {
+                if processor_state.output_ptr_set.binary_search(&(*input_ptr as *mut f32)).is_ok() {
+                    processor_state.aliased_inputs.push(channel);
+
+                    let input_buffer = slice::from_raw_parts(*input_ptr, samples);
+                    processor_state.scratch_buffers.extend_from_slice(input_buffer);
+                }
+            }
+
+            for (index, channel) in processor_state.aliased_inputs.iter().enumerate() {
+                let offset = index * processor_state.max_buffer_size;
+                let ptr = processor_state.scratch_buffers.as_ptr().add(offset) as *mut f32;
+                processor_state.input_ptrs[*channel] = ptr;
+            }
+
+            processor_state.output_ptr_set.clear();
+            processor_state.aliased_inputs.clear();
         } else {
             processor_state.input_ptrs.resize(processor_state.input_channels, ptr::null());
             processor_state.output_ptrs.resize(processor_state.output_channels, ptr::null_mut());
@@ -1002,6 +1050,8 @@ impl<P: Plugin> Wrapper<P> {
         if let Some(processor) = &mut processor_state.processor {
             processor.process(&context, &mut buffers, &processor_state.events[..]);
         }
+
+        processor_state.scratch_buffers.clear();
 
         processor_state.input_ptrs.clear();
         processor_state.output_ptrs.clear();
