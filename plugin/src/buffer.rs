@@ -66,6 +66,29 @@ impl<'a, 'b, 'c> Buffers<'a, 'b, 'c> {
             phantom: PhantomData,
         }
     }
+
+    #[inline]
+    pub fn split(&mut self) -> (Buses, BusesMut) {
+        let inputs = Buses {
+            offset: self.offset,
+            len: self.len,
+            states: self.input_states,
+            indices: self.input_indices,
+            ptrs: self.input_ptrs,
+            phantom: PhantomData,
+        };
+
+        let outputs = BusesMut {
+            offset: self.offset,
+            len: self.len,
+            states: self.output_states,
+            indices: self.output_indices,
+            ptrs: self.output_ptrs,
+            phantom: PhantomData,
+        };
+
+        (inputs, outputs)
+    }
 }
 
 pub struct Buses<'a, 'b> {
