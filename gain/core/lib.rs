@@ -60,26 +60,44 @@ impl Plugin for Gain {
 pub struct GainProcessor {
     plugin: PluginHandle<Gain>,
     gain: f32,
+    gain_target: f32,
 }
 
 impl Processor for GainProcessor {
     type Plugin = Gain;
 
     fn create(plugin: PluginHandle<Gain>, _context: &ProcessContext) -> Self {
-        GainProcessor { plugin, gain: 1.0 }
+        GainProcessor {
+            plugin: plugin.clone(),
+            gain: plugin.gain.get() as f32,
+            gain_target: plugin.gain.get() as f32,
+        }
     }
 
     fn reset(&mut self, _context: &ProcessContext) {
         self.gain = self.plugin.gain.get() as f32;
+        self.gain_target = self.gain;
     }
 
-    fn process(&mut self, _context: &ProcessContext, mut buffers: Buffers, _events: &[Event]) {
-        for i in 0..buffers.samples() {
-            for channel in 0..2 {
-                self.gain = 0.9995 * self.gain + 0.0005 * self.plugin.gain.get() as f32;
+    fn process(&mut self, _context: &ProcessContext, buffers: Buffers, events: &[Event]) {
+        for (mut buffers, events) in buffers.split_at_events(events) {
+            for event in events {
+                match event.event {
+                    EventType::ParamChange(change) => {
+                        if let Some(gain) = self.plugin.gain.read_change(change) {
+                            self.gain_target = gain as f32;
+                        }
+                    }
+                }
+            }
 
-                buffers.outputs().bus(0).unwrap().channel(channel).unwrap()[i] =
-                    self.gain * buffers.inputs().bus(0).unwrap().channel(channel).unwrap()[i];
+            for i in 0..buffers.samples() {
+                for channel in 0..2 {
+                    self.gain = 0.9995 * self.gain + 0.0005 * self.gain_target as f32;
+
+                    buffers.outputs().bus(0).unwrap().channel(channel).unwrap()[i] =
+                        self.gain * buffers.inputs().bus(0).unwrap().channel(channel).unwrap()[i];
+                }
             }
         }
     }
