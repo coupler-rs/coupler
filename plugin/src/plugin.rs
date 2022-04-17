@@ -25,9 +25,14 @@ pub trait Plugin: Send + Sync + Sized + 'static {
     fn deserialize(&self, read: &mut impl std::io::Read) -> Result<(), ()>;
 }
 
-#[derive(Clone)]
 pub struct PluginHandle<P> {
     plugin: Arc<P>,
+}
+
+impl<P> Clone for PluginHandle<P> {
+    fn clone(&self) -> PluginHandle<P> {
+        PluginHandle { plugin: self.plugin.clone() }
+    }
 }
 
 impl<P> PluginHandle<P> {
