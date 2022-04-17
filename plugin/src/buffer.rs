@@ -2,6 +2,7 @@ use crate::bus::BusState;
 use crate::process::Event;
 
 use std::marker::PhantomData;
+use std::mem::MaybeUninit;
 use std::slice;
 
 pub struct Buffers<'a, 'b, 'c> {
@@ -182,6 +183,28 @@ impl<'a, 'b> Buses<'a, 'b> {
             None
         }
     }
+
+    #[inline]
+    pub fn all_buses<const N: usize>(&self) -> Option<[Bus; N]> {
+        if N != self.indices.len() {
+            return None;
+        }
+
+        let buses: MaybeUninit<[Bus; N]> = MaybeUninit::uninit();
+        for (index, (start, end)) in self.indices.iter().enumerate() {
+            unsafe {
+                (buses.as_ptr() as *mut Bus).add(index).write(Bus {
+                    offset: self.offset,
+                    len: self.len,
+                    state: &self.states[index],
+                    ptrs: &self.ptrs[*start..*end],
+                    phantom: PhantomData,
+                });
+            }
+        }
+
+        Some(unsafe { buses.assume_init() })
+    }
 }
 
 pub struct Bus<'a, 'b> {
@@ -255,6 +278,28 @@ impl<'a, 'b> BusesMut<'a, 'b> {
         } else {
             None
         }
+    }
+
+    #[inline]
+    pub fn all_buses<const N: usize>(&mut self) -> Option<[BusMut; N]> {
+        if N != self.indices.len() {
+            return None;
+        }
+
+        let buses: MaybeUninit<[BusMut; N]> = MaybeUninit::uninit();
+        for (index, (start, end)) in self.indices.iter().enumerate() {
+            unsafe {
+                (buses.as_ptr() as *mut BusMut).add(index).write(BusMut {
+                    offset: self.offset,
+                    len: self.len,
+                    state: &self.states[index],
+                    ptrs: &self.ptrs[*start..*end],
+                    phantom: PhantomData,
+                });
+            }
+        }
+
+        Some(unsafe { buses.assume_init() })
     }
 }
 
