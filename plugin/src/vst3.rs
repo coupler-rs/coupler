@@ -1030,7 +1030,7 @@ impl<P: Plugin> Wrapper<P> {
             processor_state.output_ptrs.resize(processor_state.output_channels, ptr::null_mut());
         }
 
-        let mut buffers = Buffers::new(
+        let buffers = Buffers::new(
             samples,
             &bus_states.inputs,
             &processor_state.input_indices,
@@ -1048,7 +1048,7 @@ impl<P: Plugin> Wrapper<P> {
         );
 
         if let Some(processor) = &mut processor_state.processor {
-            processor.process(&context, &mut buffers, &processor_state.events[..]);
+            processor.process(&context, buffers, &processor_state.events[..]);
         }
 
         processor_state.scratch_buffers.clear();

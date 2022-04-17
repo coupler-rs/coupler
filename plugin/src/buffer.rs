@@ -44,6 +44,21 @@ impl<'a, 'b, 'c> Buffers<'a, 'b, 'c> {
     }
 
     #[inline]
+    pub fn borrow(&self) -> Buffers {
+        Buffers {
+            offset: self.offset,
+            len: self.len,
+            input_states: self.input_states,
+            input_indices: self.input_indices,
+            input_ptrs: self.input_ptrs,
+            output_states: self.output_states,
+            output_indices: self.output_indices,
+            output_ptrs: self.output_ptrs,
+            phantom: PhantomData,
+        }
+    }
+
+    #[inline]
     pub fn inputs(&self) -> Buses {
         Buses {
             offset: self.offset,
@@ -68,7 +83,7 @@ impl<'a, 'b, 'c> Buffers<'a, 'b, 'c> {
     }
 
     #[inline]
-    pub fn split(&mut self) -> (Buses, BusesMut) {
+    pub fn split(self) -> (Buses<'a, 'b>, BusesMut<'a, 'c>) {
         let inputs = Buses {
             offset: self.offset,
             len: self.len,

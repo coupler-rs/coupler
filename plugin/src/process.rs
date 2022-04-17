@@ -53,5 +53,5 @@ pub trait Processor: Send + Sized {
 
     fn create(plugin: PluginHandle<Self::Plugin>, context: &ProcessContext) -> Self;
     fn reset(&mut self, context: &ProcessContext);
-    fn process(&mut self, context: &ProcessContext, buffers: &mut Buffers, events: &[Event]);
+    fn process(&mut self, context: &ProcessContext, buffers: Buffers, events: &[Event]);
 }
