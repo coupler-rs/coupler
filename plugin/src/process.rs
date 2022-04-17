@@ -34,15 +34,18 @@ impl<'a> ProcessContext<'a> {
     }
 }
 
+#[derive(Copy, Clone)]
 pub struct Event {
     pub offset: usize,
     pub event: EventType,
 }
 
+#[derive(Copy, Clone)]
 pub enum EventType {
     ParamChange(ParamChange),
 }
 
+#[derive(Copy, Clone)]
 pub struct ParamChange {
     pub id: ParamId,
     pub value_normalized: f64,
