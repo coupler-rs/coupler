@@ -979,8 +979,10 @@ impl<P: Plugin> Wrapper<P> {
 
         let buffers = Buffers::new(
             samples,
+            &bus_states.inputs,
             &processor_state.input_indices,
             &processor_state.input_ptrs,
+            &bus_states.outputs,
             &processor_state.output_indices,
             &processor_state.output_ptrs,
         );

@@ -1,11 +1,15 @@
+use crate::bus::BusState;
+
 use std::marker::PhantomData;
 use std::slice;
 
 pub struct Buffers<'a> {
     offset: usize,
     len: usize,
+    input_states: &'a [BusState],
     input_indices: &'a [(usize, usize)],
     input_ptrs: &'a [*const f32],
+    output_states: &'a [BusState],
     output_indices: &'a [(usize, usize)],
     output_ptrs: &'a [*mut f32],
     phantom: PhantomData<(&'a f32, &'a mut f32)>,
@@ -14,16 +18,20 @@ pub struct Buffers<'a> {
 impl<'a> Buffers<'a> {
     pub(crate) unsafe fn new(
         len: usize,
+        input_states: &'a [BusState],
         input_indices: &'a [(usize, usize)],
         input_ptrs: &'a [*const f32],
+        output_states: &'a [BusState],
         output_indices: &'a [(usize, usize)],
         output_ptrs: &'a [*mut f32],
     ) -> Buffers<'a> {
         Buffers {
             offset: 0,
             len,
+            input_states,
             input_indices,
             input_ptrs,
+            output_states,
             output_indices,
             output_ptrs,
             phantom: PhantomData,
@@ -40,6 +48,7 @@ impl<'a> Buffers<'a> {
         Buses {
             offset: self.offset,
             len: self.len,
+            states: self.input_states,
             indices: self.input_indices,
             ptrs: self.input_ptrs,
             phantom: PhantomData,
@@ -51,6 +60,7 @@ impl<'a> Buffers<'a> {
         BusesMut {
             offset: self.offset,
             len: self.len,
+            states: self.output_states,
             indices: self.output_indices,
             ptrs: self.output_ptrs,
             phantom: PhantomData,
@@ -61,6 +71,7 @@ impl<'a> Buffers<'a> {
 pub struct Buses<'a> {
     offset: usize,
     len: usize,
+    states: &'a [BusState],
     indices: &'a [(usize, usize)],
     ptrs: &'a [*const f32],
     phantom: PhantomData<&'a f32>,
@@ -83,6 +94,7 @@ impl<'a> Buses<'a> {
             Some(Bus {
                 offset: self.offset,
                 len: self.len,
+                state: &self.states[index],
                 ptrs: &self.ptrs[*start..*end],
                 phantom: PhantomData,
             })
@@ -95,6 +107,7 @@ impl<'a> Buses<'a> {
 pub struct Bus<'a> {
     offset: usize,
     len: usize,
+    state: &'a BusState,
     ptrs: &'a [*const f32],
     phantom: PhantomData<&'a f32>,
 }
@@ -112,7 +125,7 @@ impl<'a> Bus<'a> {
 
     #[inline]
     pub fn enabled(&self) -> bool {
-        self.channels() != 0
+        self.state.enabled
     }
 
     #[inline]
@@ -132,6 +145,7 @@ impl<'a> Bus<'a> {
 pub struct BusesMut<'a> {
     offset: usize,
     len: usize,
+    states: &'a [BusState],
     indices: &'a [(usize, usize)],
     ptrs: &'a [*mut f32],
     phantom: PhantomData<&'a mut f32>,
@@ -154,6 +168,7 @@ impl<'a> BusesMut<'a> {
             Some(BusMut {
                 offset: self.offset,
                 len: self.len,
+                state: &self.states[index],
                 ptrs: &self.ptrs[*start..*end],
                 phantom: PhantomData,
             })
@@ -166,6 +181,7 @@ impl<'a> BusesMut<'a> {
 pub struct BusMut<'a> {
     offset: usize,
     len: usize,
+    state: &'a BusState,
     ptrs: &'a [*mut f32],
     phantom: PhantomData<&'a mut f32>,
 }
@@ -183,7 +199,7 @@ impl<'a> BusMut<'a> {
 
     #[inline]
     pub fn enabled(&self) -> bool {
-        self.channels() != 0
+        self.state.enabled
     }
 
     #[inline]
