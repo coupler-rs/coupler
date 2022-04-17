@@ -3,7 +3,7 @@ use crate::bus::BusState;
 use std::marker::PhantomData;
 use std::slice;
 
-pub struct Buffers<'a> {
+pub struct Buffers<'a, 'b, 'c> {
     offset: usize,
     len: usize,
     input_states: &'a [BusState],
@@ -12,10 +12,10 @@ pub struct Buffers<'a> {
     output_states: &'a [BusState],
     output_indices: &'a [(usize, usize)],
     output_ptrs: &'a [*mut f32],
-    phantom: PhantomData<(&'a f32, &'a mut f32)>,
+    phantom: PhantomData<(&'b f32, &'c mut f32)>,
 }
 
-impl<'a> Buffers<'a> {
+impl<'a, 'b, 'c> Buffers<'a, 'b, 'c> {
     pub(crate) unsafe fn new(
         len: usize,
         input_states: &'a [BusState],
@@ -24,7 +24,7 @@ impl<'a> Buffers<'a> {
         output_states: &'a [BusState],
         output_indices: &'a [(usize, usize)],
         output_ptrs: &'a [*mut f32],
-    ) -> Buffers<'a> {
+    ) -> Buffers<'a, 'b, 'c> {
         Buffers {
             offset: 0,
             len,
@@ -44,7 +44,7 @@ impl<'a> Buffers<'a> {
     }
 
     #[inline]
-    pub fn inputs(&self) -> Buses<'a> {
+    pub fn inputs(&self) -> Buses {
         Buses {
             offset: self.offset,
             len: self.len,
@@ -56,7 +56,7 @@ impl<'a> Buffers<'a> {
     }
 
     #[inline]
-    pub fn outputs(&mut self) -> BusesMut<'a> {
+    pub fn outputs(&mut self) -> BusesMut {
         BusesMut {
             offset: self.offset,
             len: self.len,
@@ -68,16 +68,16 @@ impl<'a> Buffers<'a> {
     }
 }
 
-pub struct Buses<'a> {
+pub struct Buses<'a, 'b> {
     offset: usize,
     len: usize,
     states: &'a [BusState],
     indices: &'a [(usize, usize)],
     ptrs: &'a [*const f32],
-    phantom: PhantomData<&'a f32>,
+    phantom: PhantomData<&'b f32>,
 }
 
-impl<'a> Buses<'a> {
+impl<'a, 'b> Buses<'a, 'b> {
     #[inline]
     pub fn samples(&self) -> usize {
         self.len
@@ -89,7 +89,7 @@ impl<'a> Buses<'a> {
     }
 
     #[inline]
-    pub fn bus(&self, index: usize) -> Option<Bus<'a>> {
+    pub fn bus(&self, index: usize) -> Option<Bus> {
         if let Some((start, end)) = self.indices.get(index) {
             Some(Bus {
                 offset: self.offset,
@@ -104,15 +104,15 @@ impl<'a> Buses<'a> {
     }
 }
 
-pub struct Bus<'a> {
+pub struct Bus<'a, 'b> {
     offset: usize,
     len: usize,
     state: &'a BusState,
     ptrs: &'a [*const f32],
-    phantom: PhantomData<&'a f32>,
+    phantom: PhantomData<&'b f32>,
 }
 
-impl<'a> Bus<'a> {
+impl<'a, 'b> Bus<'a, 'b> {
     #[inline]
     pub fn samples(&self) -> usize {
         self.len
@@ -142,16 +142,16 @@ impl<'a> Bus<'a> {
     }
 }
 
-pub struct BusesMut<'a> {
+pub struct BusesMut<'a, 'b> {
     offset: usize,
     len: usize,
     states: &'a [BusState],
     indices: &'a [(usize, usize)],
     ptrs: &'a [*mut f32],
-    phantom: PhantomData<&'a mut f32>,
+    phantom: PhantomData<&'b mut f32>,
 }
 
-impl<'a> BusesMut<'a> {
+impl<'a, 'b> BusesMut<'a, 'b> {
     #[inline]
     pub fn samples(&self) -> usize {
         self.len
@@ -163,7 +163,7 @@ impl<'a> BusesMut<'a> {
     }
 
     #[inline]
-    pub fn bus(&mut self, index: usize) -> Option<BusMut<'a>> {
+    pub fn bus(&mut self, index: usize) -> Option<BusMut> {
         if let Some((start, end)) = self.indices.get(index) {
             Some(BusMut {
                 offset: self.offset,
@@ -178,15 +178,15 @@ impl<'a> BusesMut<'a> {
     }
 }
 
-pub struct BusMut<'a> {
+pub struct BusMut<'a, 'b> {
     offset: usize,
     len: usize,
     state: &'a BusState,
     ptrs: &'a [*mut f32],
-    phantom: PhantomData<&'a mut f32>,
+    phantom: PhantomData<&'b mut f32>,
 }
 
-impl<'a> BusMut<'a> {
+impl<'a, 'b> BusMut<'a, 'b> {
     #[inline]
     pub fn samples(&self) -> usize {
         self.len
