@@ -770,12 +770,15 @@ impl<P: Plugin> Wrapper<P> {
             for (i, input) in candidate_inputs.into_iter().enumerate() {
                 bus_states.input_layouts[i] = input;
             }
+
             for (i, output) in candidate_outputs.into_iter().enumerate() {
                 bus_states.output_layouts[i] = output;
             }
+
+            return result::TRUE;
         }
 
-        result::TRUE
+        result::FALSE
     }
 
     unsafe extern "system" fn get_bus_arrangement(
