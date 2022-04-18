@@ -266,3 +266,6 @@ impl WindowHandler for GainWindowHandler {
         false
     }
 }
+
+#[cfg(feature = "vst3")]
+plugin::vst3!(Gain, [0x84B4DD04, 0x0D964565, 0x97AC3AAA, 0x87C5CCA7]);

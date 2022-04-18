@@ -6,10 +6,13 @@ edition = "2018"
 publish = false
 
 [lib]
-path = "lib.rs"
+crate-type = ["cdylib"]
 
 [dependencies]
-plugin = { path = "../../plugin" }
-window = { path = "../../window" }
-graphics = { path = "../../graphics" }
+plugin = { path = "../plugin" }
+window = { path = "../window" }
+graphics = { path = "../graphics" }
 raw-window-handle = "0.3.3"
+
+[features]
+vst3 = []

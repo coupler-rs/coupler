@@ -3,7 +3,7 @@
 members = [
     "api/auv2-sys",
     "api/vst3-sys",
-    "gain/*",
+    "gain",
     "graphics",
     "plugin",
     "simd",
