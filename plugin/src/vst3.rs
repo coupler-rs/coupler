@@ -1802,6 +1802,8 @@ impl<P: Plugin> Factory<P> {
 macro_rules! vst3 {
     ($plugin:ty, $uid:expr) => {
         mod vst3_impl {
+            use super::*;
+
             use std::ffi::c_void;
 
             use $crate::plugin::*;
