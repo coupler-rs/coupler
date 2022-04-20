@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 
 use graphics::{Canvas, Color, Path, Vec2};
-use plugin::{buffer::*, bus::*, editor::*, param, param::*, plugin::*, process::*};
+use coupler::{buffer::*, bus::*, editor::*, param, param::*, plugin::*, process::*};
 use window::{
     Application, Cursor, MouseButton, Parent, Point, Rect, Window, WindowHandler, WindowOptions,
 };
@@ -268,4 +268,4 @@ impl WindowHandler for GainWindowHandler {
 }
 
 #[cfg(feature = "vst3")]
-plugin::vst3!(Gain, [0x84B4DD04, 0x0D964565, 0x97AC3AAA, 0x87C5CCA7]);
+coupler::vst3!(Gain, [0x84B4DD04, 0x0D964565, 0x97AC3AAA, 0x87C5CCA7]);

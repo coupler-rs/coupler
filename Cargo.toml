@@ -1,11 +1,20 @@
-[workspace]
+[package]
+name = "coupler"
+version = "0.1.0"
+authors = ["Micah Johnston <micah@photophore.systems>"]
+edition = "2018"
+publish = false
 
+[dependencies]
+vst3-sys = { path = "api/vst3-sys" }
+raw-window-handle = "0.3.3"
+
+[workspace]
 members = [
     "api/auv2-sys",
     "api/vst3-sys",
     "gain",
     "graphics",
-    "plugin",
     "simd",
     "window",
 ]

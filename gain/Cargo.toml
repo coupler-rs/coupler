@@ -9,7 +9,7 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-plugin = { path = "../plugin" }
+coupler = { path = ".." }
 window = { path = "../window" }
 graphics = { path = "../graphics" }
 raw-window-handle = "0.3.3"
