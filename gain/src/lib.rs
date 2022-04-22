@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 
-use graphics::{Canvas, Color, Path, Vec2};
 use coupler::{buffer::*, bus::*, editor::*, param, param::*, plugin::*, process::*};
+use graphics::{Canvas, Color, Path, Vec2};
 use window::{
     Application, Cursor, MouseButton, Parent, Point, Rect, Window, WindowHandler, WindowOptions,
 };
@@ -80,7 +80,7 @@ impl Processor for GainProcessor {
     }
 
     fn process(&mut self, _context: &ProcessContext, buffers: Buffers, events: &[Event]) {
-        for (mut buffers, events) in buffers.split_at_events(events) {
+        for (buffers, events) in buffers.split_at_events(events) {
             for event in events {
                 match event.event {
                     EventType::ParamChange(change) => {
@@ -91,13 +91,20 @@ impl Processor for GainProcessor {
                 }
             }
 
-            for i in 0..buffers.samples() {
-                for channel in 0..2 {
-                    self.gain = 0.9995 * self.gain + 0.0005 * self.gain_target as f32;
+            let samples = buffers.samples();
 
-                    buffers.outputs().bus(0).unwrap().channel(channel).unwrap()[i] =
-                        self.gain * buffers.inputs().bus(0).unwrap().channel(channel).unwrap()[i];
-                }
+            let (inputs, mut outputs) = buffers.split();
+            let [input] = inputs.all_buses().unwrap();
+            let [mut output] = outputs.all_buses().unwrap();
+
+            let [input_l, input_r] = input.all_channels().unwrap();
+            let [output_l, output_r] = output.all_channels().unwrap();
+
+            for i in 0..samples {
+                self.gain = 0.9995 * self.gain + 0.0005 * self.gain_target as f32;
+
+                output_l[i] = self.gain * input_l[i];
+                output_r[i] = self.gain * input_r[i];
             }
         }
     }

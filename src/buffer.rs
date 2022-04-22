@@ -193,7 +193,67 @@ impl<'a, 'b> Buses<'a, 'b> {
         let buses: MaybeUninit<[Bus; N]> = MaybeUninit::uninit();
         for (index, (start, end)) in self.indices.iter().enumerate() {
             unsafe {
-                (buses.as_ptr() as *mut Bus).add(index).write(Bus {
+                let bus_ptr = (buses.as_ptr() as *mut Bus).add(index);
+                bus_ptr.write(Bus {
+                    offset: self.offset,
+                    len: self.len,
+                    state: &self.states[index],
+                    ptrs: &self.ptrs[*start..*end],
+                    phantom: PhantomData,
+                });
+            }
+        }
+
+        Some(unsafe { buses.assume_init() })
+    }
+}
+
+pub struct BusesMut<'a, 'b> {
+    offset: usize,
+    len: usize,
+    states: &'a [BusState],
+    indices: &'a [(usize, usize)],
+    ptrs: &'a [*mut f32],
+    phantom: PhantomData<&'b mut f32>,
+}
+
+impl<'a, 'b> BusesMut<'a, 'b> {
+    #[inline]
+    pub fn samples(&self) -> usize {
+        self.len
+    }
+
+    #[inline]
+    pub fn buses(&self) -> usize {
+        self.indices.len()
+    }
+
+    #[inline]
+    pub fn bus(&mut self, index: usize) -> Option<BusMut> {
+        if let Some((start, end)) = self.indices.get(index) {
+            Some(BusMut {
+                offset: self.offset,
+                len: self.len,
+                state: &self.states[index],
+                ptrs: &self.ptrs[*start..*end],
+                phantom: PhantomData,
+            })
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub fn all_buses<const N: usize>(&mut self) -> Option<[BusMut; N]> {
+        if N != self.indices.len() {
+            return None;
+        }
+
+        let buses: MaybeUninit<[BusMut; N]> = MaybeUninit::uninit();
+        for (index, (start, end)) in self.indices.iter().enumerate() {
+            unsafe {
+                let bus_ptr = (buses.as_ptr() as *mut BusMut).add(index);
+                bus_ptr.write(BusMut {
                     offset: self.offset,
                     len: self.len,
                     state: &self.states[index],
@@ -243,63 +303,22 @@ impl<'a, 'b> Bus<'a, 'b> {
             None
         }
     }
-}
-
-pub struct BusesMut<'a, 'b> {
-    offset: usize,
-    len: usize,
-    states: &'a [BusState],
-    indices: &'a [(usize, usize)],
-    ptrs: &'a [*mut f32],
-    phantom: PhantomData<&'b mut f32>,
-}
-
-impl<'a, 'b> BusesMut<'a, 'b> {
-    #[inline]
-    pub fn samples(&self) -> usize {
-        self.len
-    }
 
     #[inline]
-    pub fn buses(&self) -> usize {
-        self.indices.len()
-    }
-
-    #[inline]
-    pub fn bus(&mut self, index: usize) -> Option<BusMut> {
-        if let Some((start, end)) = self.indices.get(index) {
-            Some(BusMut {
-                offset: self.offset,
-                len: self.len,
-                state: &self.states[index],
-                ptrs: &self.ptrs[*start..*end],
-                phantom: PhantomData,
-            })
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    pub fn all_buses<const N: usize>(&mut self) -> Option<[BusMut; N]> {
-        if N != self.indices.len() {
+    pub fn all_channels<const N: usize>(&self) -> Option<[&[f32]; N]> {
+        if N != self.ptrs.len() {
             return None;
         }
 
-        let buses: MaybeUninit<[BusMut; N]> = MaybeUninit::uninit();
-        for (index, (start, end)) in self.indices.iter().enumerate() {
+        let channels: MaybeUninit<[&[f32]; N]> = MaybeUninit::uninit();
+        for (index, ptr) in self.ptrs.iter().enumerate() {
             unsafe {
-                (buses.as_ptr() as *mut BusMut).add(index).write(BusMut {
-                    offset: self.offset,
-                    len: self.len,
-                    state: &self.states[index],
-                    ptrs: &self.ptrs[*start..*end],
-                    phantom: PhantomData,
-                });
+                let channel_ptr = (channels.as_ptr() as *mut &[f32]).add(index);
+                channel_ptr.write(slice::from_raw_parts(ptr.add(self.offset), self.len));
             }
         }
 
-        Some(unsafe { buses.assume_init() })
+        Some(unsafe { channels.assume_init() })
     }
 }
 
@@ -338,6 +357,23 @@ impl<'a, 'b> BusMut<'a, 'b> {
         } else {
             None
         }
+    }
+
+    #[inline]
+    pub fn all_channels<const N: usize>(&mut self) -> Option<[&mut [f32]; N]> {
+        if N != self.ptrs.len() {
+            return None;
+        }
+
+        let channels: MaybeUninit<[&mut [f32]; N]> = MaybeUninit::uninit();
+        for (index, ptr) in self.ptrs.iter().enumerate() {
+            unsafe {
+                let channel_ptr = (channels.as_ptr() as *mut &mut [f32]).add(index);
+                channel_ptr.write(slice::from_raw_parts_mut(ptr.add(self.offset), self.len));
+            }
+        }
+
+        Some(unsafe { channels.assume_init() })
     }
 }
 
