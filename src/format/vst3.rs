@@ -1807,7 +1807,7 @@ macro_rules! vst3 {
             use std::ffi::c_void;
 
             use $crate::plugin::*;
-            use $crate::vst3::*;
+            use $crate::format::vst3::*;
 
             #[cfg(target_os = "windows")]
             #[no_mangle]
