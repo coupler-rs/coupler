@@ -1607,12 +1607,12 @@ impl<P: Plugin> Wrapper<P> {
 #[repr(C)]
 struct Factory<P> {
     plugin_factory_3: *const IPluginFactory3,
-    uid: TUID,
+    vst3_info: Vst3Info,
     info: PluginInfo,
     phantom: PhantomData<P>,
 }
 
-impl<P: Plugin> Factory<P> {
+impl<P: Plugin + Vst3Plugin> Factory<P> {
     const PLUGIN_FACTORY_3_VTABLE: IPluginFactory3 = IPluginFactory3 {
         plugin_factory_2: IPluginFactory2 {
             plugin_factory: IPluginFactory {
@@ -1632,10 +1632,10 @@ impl<P: Plugin> Factory<P> {
         set_host_context: Self::set_host_context,
     };
 
-    pub fn create(plugin_uid: [u32; 4]) -> *mut Factory<P> {
+    pub fn create() -> *mut Factory<P> {
         Arc::into_raw(Arc::new(Factory::<P> {
             plugin_factory_3: &Self::PLUGIN_FACTORY_3_VTABLE as *const _,
-            uid: uid(plugin_uid[0], plugin_uid[1], plugin_uid[2], plugin_uid[3]),
+            vst3_info: P::vst3_info(),
             info: P::info(),
             phantom: PhantomData,
         })) as *mut Factory<P>
@@ -1711,7 +1711,7 @@ impl<P: Plugin> Factory<P> {
 
         let info = &mut *info;
 
-        info.cid = factory.uid;
+        info.cid = factory.vst3_info.class_id.0;
         info.cardinality = PClassInfo::MANY_INSTANCES;
         copy_cstring("Audio Module Class", &mut info.category);
         copy_cstring(&factory.info.name, &mut info.name);
@@ -1729,7 +1729,7 @@ impl<P: Plugin> Factory<P> {
 
         let cid = *(cid as *const TUID);
         let iid = *(iid as *const TUID);
-        if cid != factory.uid || iid != IComponent::IID {
+        if cid != factory.vst3_info.class_id.0 || iid != IComponent::IID {
             return result::INVALID_ARGUMENT;
         }
 
@@ -1751,7 +1751,7 @@ impl<P: Plugin> Factory<P> {
 
         let info = &mut *info;
 
-        info.cid = factory.uid;
+        info.cid = factory.vst3_info.class_id.0;
         info.cardinality = PClassInfo::MANY_INSTANCES;
         copy_cstring("Audio Module Class", &mut info.category);
         copy_cstring(&factory.info.name, &mut info.name);
@@ -1777,7 +1777,7 @@ impl<P: Plugin> Factory<P> {
 
         let info = &mut *info;
 
-        info.cid = factory.uid;
+        info.cid = factory.vst3_info.class_id.0;
         info.cardinality = PClassInfo::MANY_INSTANCES;
         copy_cstring("Audio Module Class", &mut info.category);
         copy_wstring(&factory.info.name, &mut info.name);
@@ -1798,13 +1798,29 @@ impl<P: Plugin> Factory<P> {
     }
 }
 
-pub fn entry_point<P: Plugin>(uid: [u32; 4]) -> *mut c_void {
-    Factory::<P>::create(uid) as *const Factory<P> as *mut c_void
+pub struct Uid(TUID);
+
+impl Uid {
+    pub const fn new(a: u32, b: u32, c: u32, d: u32) -> Uid {
+        Uid(uid(a, b, c, d))
+    }
+}
+
+pub struct Vst3Info {
+    pub class_id: Uid,
+}
+
+pub trait Vst3Plugin {
+    fn vst3_info() -> Vst3Info;
+}
+
+pub fn entry_point<P: Plugin + Vst3Plugin>() -> *mut c_void {
+    Factory::<P>::create() as *const Factory<P> as *mut c_void
 }
 
 #[macro_export]
 macro_rules! vst3 {
-    ($plugin:ty, $uid:expr) => {
+    ($plugin:ty) => {
         #[cfg(target_os = "windows")]
         #[no_mangle]
         extern "system" fn InitDll() -> bool {
@@ -1843,7 +1859,7 @@ macro_rules! vst3 {
 
         #[no_mangle]
         extern "system" fn GetPluginFactory() -> *mut ::std::ffi::c_void {
-            ::coupler::format::vst3::entry_point::<$plugin>($uid)
+            ::coupler::format::vst3::entry_point::<$plugin>()
         }
     };
 }
