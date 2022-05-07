@@ -13,6 +13,7 @@ raw-window-handle = "0.3.3"
 members = [
     "api/auv2-sys",
     "api/vst3-sys",
+    "cargo-coupler",
     "gain",
     "graphics",
     "simd",
