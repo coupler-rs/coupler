@@ -1605,7 +1605,7 @@ impl<P: Plugin> Wrapper<P> {
 }
 
 #[repr(C)]
-pub struct Factory<P> {
+struct Factory<P> {
     plugin_factory_3: *const IPluginFactory3,
     uid: TUID,
     info: PluginInfo,
@@ -1798,57 +1798,52 @@ impl<P: Plugin> Factory<P> {
     }
 }
 
+pub fn entry_point<P: Plugin>(uid: [u32; 4]) -> *mut c_void {
+    Factory::<P>::create(uid) as *const Factory<P> as *mut c_void
+}
+
 #[macro_export]
 macro_rules! vst3 {
     ($plugin:ty, $uid:expr) => {
-        mod vst3_impl {
-            use super::*;
+        #[cfg(target_os = "windows")]
+        #[no_mangle]
+        extern "system" fn InitDll() -> bool {
+            true
+        }
 
-            use std::ffi::c_void;
+        #[cfg(target_os = "windows")]
+        #[no_mangle]
+        extern "system" fn ExitDll() -> bool {
+            true
+        }
 
-            use $crate::plugin::*;
-            use $crate::format::vst3::*;
+        #[cfg(target_os = "macos")]
+        #[no_mangle]
+        extern "system" fn BundleEntry(_bundle_ref: *mut ::std::ffi::c_void) -> bool {
+            true
+        }
 
-            #[cfg(target_os = "windows")]
-            #[no_mangle]
-            extern "system" fn InitDll() -> bool {
-                true
-            }
+        #[cfg(target_os = "macos")]
+        #[no_mangle]
+        extern "system" fn BundleExit() -> bool {
+            true
+        }
 
-            #[cfg(target_os = "windows")]
-            #[no_mangle]
-            extern "system" fn ExitDll() -> bool {
-                true
-            }
+        #[cfg(target_os = "linux")]
+        #[no_mangle]
+        extern "system" fn ModuleEntry(_library_handle: *mut ::std::ffi::c_void) -> bool {
+            true
+        }
 
-            #[cfg(target_os = "macos")]
-            #[no_mangle]
-            extern "system" fn BundleEntry(_bundle_ref: *mut c_void) -> bool {
-                true
-            }
+        #[cfg(target_os = "linux")]
+        #[no_mangle]
+        extern "system" fn ModuleExit() -> bool {
+            true
+        }
 
-            #[cfg(target_os = "macos")]
-            #[no_mangle]
-            extern "system" fn BundleExit() -> bool {
-                true
-            }
-
-            #[cfg(target_os = "linux")]
-            #[no_mangle]
-            extern "system" fn ModuleEntry(_library_handle: *mut c_void) -> bool {
-                true
-            }
-
-            #[cfg(target_os = "linux")]
-            #[no_mangle]
-            extern "system" fn ModuleExit() -> bool {
-                true
-            }
-
-            #[no_mangle]
-            extern "system" fn GetPluginFactory() -> *mut c_void {
-                Factory::<$plugin>::create($uid) as *const Factory<$plugin> as *mut c_void
-            }
+        #[no_mangle]
+        extern "system" fn GetPluginFactory() -> *mut ::std::ffi::c_void {
+            ::coupler::format::vst3::entry_point::<$plugin>($uid)
         }
     };
 }
