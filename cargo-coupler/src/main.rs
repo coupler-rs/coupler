@@ -1,3 +1,4 @@
+use cargo_metadata::{MetadataCommand};
 use clap::{AppSettings, Args, Parser, Subcommand};
 
 #[derive(Parser)]
@@ -54,11 +55,15 @@ struct Bundle {
 }
 
 fn main() {
-    let Cargo::Coupler(coupler) = Cargo::parse();
+    let Cargo::Coupler(cmd) = Cargo::parse();
 
-    match coupler {
-        Coupler::Bundle(bundle) => {
-
+    match cmd {
+        Coupler::Bundle(cmd) => {
+            let mut command = MetadataCommand::new();
+            if let Some(manifest_path) = &cmd.manifest_path {
+                command.manifest_path(manifest_path);
+            }
+            let metadata = command.exec().unwrap();
         }
     }
 }

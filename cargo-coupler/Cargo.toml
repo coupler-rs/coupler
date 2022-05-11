@@ -7,3 +7,4 @@ publish = false
 
 [dependencies]
 clap = { version = "3.1.17", features = ["derive", "cargo"] }
+cargo_metadata = "0.14.2"
