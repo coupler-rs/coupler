@@ -66,10 +66,25 @@ fn main() {
             if let Some(manifest_path) = &cmd.manifest_path {
                 command.manifest_path(manifest_path);
             }
-            let metadata = command.exec().unwrap();
+
+            let metadata = match command.exec() {
+                Ok(metadata) => metadata,
+                Err(error) => {
+                    match error {
+                        cargo_metadata::Error::CargoMetadata { stderr } => {
+                            eprint!("{}", stderr);
+                        }
+                        _ => {
+                            eprintln!("error: failed to invoke `cargo metadata`: {}", error);
+                        }
+                    }
+
+                    process::exit(1);
+                }
+            };
 
             if !cmd.workspace && !cmd.exclude.is_empty() {
-                eprintln!("--exclude can only be used together with --workspace");
+                eprintln!("error: --exclude can only be used together with --workspace");
                 process::exit(1);
             }
 
@@ -106,7 +121,7 @@ fn main() {
                         candidates.push(package_index);
                     } else {
                         eprintln!(
-                            "package `{}` not found in workspace `{}`",
+                            "error: package `{}` not found in workspace `{}`",
                             package_name, &metadata.workspace_root
                         );
                         process::exit(1);
