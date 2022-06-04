@@ -1,4 +1,4 @@
-use cargo_metadata::{MetadataCommand};
+use cargo_metadata::{MetadataCommand, CargoOpt};
 use clap::{AppSettings, Args, Parser, Subcommand};
 
 use std::collections::{HashMap, HashSet};
@@ -63,8 +63,19 @@ fn main() {
     match cmd {
         Coupler::Bundle(cmd) => {
             let mut command = MetadataCommand::new();
+
             if let Some(manifest_path) = &cmd.manifest_path {
                 command.manifest_path(manifest_path);
+            }
+
+            if cmd.no_default_features {
+                command.features(CargoOpt::NoDefaultFeatures);
+            }
+            if cmd.all_features {
+                command.features(CargoOpt::AllFeatures);
+            }
+            if !cmd.features.is_empty() {
+                command.features(CargoOpt::SomeFeatures(cmd.features.clone()));
             }
 
             let metadata = match command.exec() {
