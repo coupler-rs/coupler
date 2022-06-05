@@ -5,6 +5,9 @@ authors = ["Micah Johnston <micah@glowcoil.com>"]
 edition = "2018"
 publish = false
 
+[package.metadata.coupler]
+formats = ["vst3"]
+
 [lib]
 crate-type = ["cdylib"]
 

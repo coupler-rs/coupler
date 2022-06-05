@@ -1,8 +1,10 @@
-use cargo_metadata::{MetadataCommand, CargoOpt};
+use cargo_metadata::{CargoOpt, MetadataCommand};
 use clap::{AppSettings, Args, Parser, Subcommand};
+use serde::Deserialize;
 
 use std::collections::{HashMap, HashSet};
 use std::process;
+use std::str::FromStr;
 
 #[derive(Parser)]
 #[clap(bin_name = "cargo")]
@@ -55,6 +57,33 @@ struct Bundle {
 
     #[clap(long, parse(from_os_str))]
     manifest_path: Option<std::path::PathBuf>,
+}
+
+#[derive(Deserialize)]
+struct PackageMetadata {
+    coupler: Option<CouplerMetadata>,
+}
+
+#[derive(Deserialize)]
+struct CouplerMetadata {
+    #[serde(default)]
+    formats: Vec<String>,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+enum Format {
+    Vst3,
+}
+
+impl FromStr for Format {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "vst3" => Ok(Format::Vst3),
+            _ => Err(()),
+        }
+    }
 }
 
 fn main() {
@@ -149,8 +178,54 @@ fn main() {
                 }
             }
 
+            let mut packages_to_build = Vec::new();
+            let mut packages_to_bundle = Vec::new();
+
             for &candidate in &candidates {
-                dbg!(&metadata.packages[candidate].id);
+                let package = &metadata.packages[candidate];
+
+                let has_cdylib =
+                    package.targets.iter().any(|t| t.crate_types.iter().any(|c| c == "cdylib"));
+
+                let package_metadata: Option<PackageMetadata> =
+                    match serde_json::from_value(package.metadata.clone()) {
+                        Ok(package_metadata) => package_metadata,
+                        Err(err) => {
+                            eprintln!(
+                                "error: unable to parse [package.metadata.coupler] section: {}",
+                                err
+                            );
+                            process::exit(1);
+                        }
+                    };
+
+                if let Some(coupler_metadata) = package_metadata.and_then(|m| m.coupler) {
+                    if !has_cdylib {
+                        eprintln!("error: package `{}` has a [package.metadata.coupler] section but does not have a lib target of type cdylib", &package.name);
+                        process::exit(1);
+                    }
+
+                    if coupler_metadata.formats.is_empty() {
+                        eprintln!("warning: package `{}` does not specify any formats", &package.name);
+                        continue;
+                    }
+
+                    packages_to_build.push(candidate);
+
+                    for format_str in &coupler_metadata.formats {
+                        if let Ok(format) = Format::from_str(format_str) {
+                            packages_to_bundle.push((candidate, format));
+                        } else {
+                            eprintln!("error: package `{}` specifies invalid format `{}`", &package.name, format_str);
+                            process::exit(1);
+                        }
+                    }
+                }
+            }
+
+            if packages_to_build.is_empty() || packages_to_bundle.is_empty() {
+                eprintln!("error: no packages to bundle");
+                process::exit(1);
             }
         }
     }
