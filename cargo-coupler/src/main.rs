@@ -60,6 +60,15 @@ struct Bundle {
 
     #[clap(long, parse(from_os_str))]
     manifest_path: Option<std::path::PathBuf>,
+
+    #[clap(long)]
+    frozen: bool,
+
+    #[clap(long)]
+    locked: bool,
+
+    #[clap(long)]
+    offline: bool,
 }
 
 #[derive(Deserialize)]
@@ -108,6 +117,16 @@ fn main() {
             }
             if !cmd.features.is_empty() {
                 command.features(CargoOpt::SomeFeatures(cmd.features.clone()));
+            }
+
+            if cmd.frozen {
+                command.other_options(vec!["--frozen".to_string()]);
+            }
+            if cmd.locked {
+                command.other_options(vec!["--locked".to_string()]);
+            }
+            if cmd.offline {
+                command.other_options(vec!["--offline".to_string()]);
             }
 
             let metadata = match command.exec() {
@@ -302,6 +321,16 @@ fn main() {
             if let Some(manifest_path) = &cmd.manifest_path {
                 cargo_command.arg("--manifest-path");
                 cargo_command.arg(manifest_path);
+            }
+
+            if cmd.frozen {
+                cargo_command.arg("--frozen");
+            }
+            if cmd.locked {
+                cargo_command.arg("--locked");
+            }
+            if cmd.offline {
+                cargo_command.arg("--offline");
             }
 
             let result = cargo_command.spawn().and_then(|mut child| child.wait());
