@@ -178,6 +178,16 @@ fn main() {
                 }
             }
 
+            let mut formats = Vec::new();
+            for format_str in &cmd.format {
+                if let Ok(format) = Format::from_str(format_str) {
+                    formats.push(format);
+                } else {
+                    eprintln!("error: invalid format `{}`", format_str);
+                    process::exit(1);
+                }
+            }
+
             let mut packages_to_build = Vec::new();
             let mut packages_to_bundle = Vec::new();
 
@@ -210,15 +220,24 @@ fn main() {
                         continue;
                     }
 
-                    packages_to_build.push(candidate);
+                    let mut should_build = false;
 
                     for format_str in &coupler_metadata.formats {
-                        if let Ok(format) = Format::from_str(format_str) {
-                            packages_to_bundle.push((candidate, format));
+                        let format = if let Ok(format) = Format::from_str(format_str) {
+                            format
                         } else {
                             eprintln!("error: package `{}` specifies invalid format `{}`", &package.name, format_str);
                             process::exit(1);
+                        };
+
+                        if formats.is_empty() || formats.contains(&format) {
+                            packages_to_bundle.push((candidate, format));
+                            should_build = true;
                         }
+                    }
+
+                    if should_build {
+                        packages_to_build.push(candidate);
                     }
                 }
             }
