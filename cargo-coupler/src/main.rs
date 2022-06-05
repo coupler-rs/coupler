@@ -289,6 +289,8 @@ fn main() {
                 cargo_command.args(&["--package", &metadata.packages[package].name]);
             }
 
+            cargo_command.arg("--lib");
+
             if cmd.release {
                 cargo_command.arg("--release");
             }
