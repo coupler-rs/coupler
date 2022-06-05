@@ -103,6 +103,8 @@ fn main() {
 
     match cmd {
         Coupler::Bundle(cmd) => {
+            // Invoke `cargo metadata`
+
             let mut command = MetadataCommand::new();
 
             if let Some(manifest_path) = &cmd.manifest_path {
@@ -156,6 +158,7 @@ fn main() {
             }
 
             // Build a list of candidate packages for bundling
+
             let mut candidates = Vec::new();
             if cmd.workspace {
                 let mut exclude = HashSet::new();
@@ -210,10 +213,9 @@ fn main() {
                 }
             }
 
-            // Assemble a list of packages to build and bundles to create
+            // Build the actual list of packages to bundle
 
             let mut packages_to_build = Vec::new();
-            let mut packages_to_bundle = Vec::new();
 
             for &candidate in &candidates {
                 let package = &metadata.packages[candidate];
@@ -247,8 +249,7 @@ fn main() {
                         continue;
                     }
 
-                    let mut should_build = false;
-
+                    let mut package_formats = Vec::new();
                     for format_str in &coupler_metadata.formats {
                         let format = if let Ok(format) = Format::from_str(format_str) {
                             format
@@ -261,18 +262,17 @@ fn main() {
                         };
 
                         if formats.is_empty() || formats.contains(&format) {
-                            packages_to_bundle.push((candidate, format));
-                            should_build = true;
+                            package_formats.push(format);
                         }
                     }
 
-                    if should_build {
-                        packages_to_build.push(candidate);
+                    if !package_formats.is_empty() {
+                        packages_to_build.push((candidate, package_formats));
                     }
                 }
             }
 
-            if packages_to_build.is_empty() || packages_to_bundle.is_empty() {
+            if packages_to_build.is_empty() {
                 eprintln!("error: no packages to bundle");
                 process::exit(1);
             }
@@ -285,7 +285,7 @@ fn main() {
             let mut cargo_command = Command::new(cargo);
             cargo_command.arg("build");
 
-            for &package in &packages_to_build {
+            for &(package, _) in &packages_to_build {
                 cargo_command.args(&["--package", &metadata.packages[package].name]);
             }
 
