@@ -3,7 +3,10 @@ use clap::{AppSettings, Args, Parser, Subcommand};
 use serde::Deserialize;
 
 use std::collections::{HashMap, HashSet};
+use std::env;
+use std::path::PathBuf;
 use std::process;
+use std::process::Command;
 use std::str::FromStr;
 
 #[derive(Parser)]
@@ -188,6 +191,8 @@ fn main() {
                 }
             }
 
+            // Assemble a list of packages to build and bundles to create
+
             let mut packages_to_build = Vec::new();
             let mut packages_to_bundle = Vec::new();
 
@@ -216,7 +221,10 @@ fn main() {
                     }
 
                     if coupler_metadata.formats.is_empty() {
-                        eprintln!("warning: package `{}` does not specify any formats", &package.name);
+                        eprintln!(
+                            "warning: package `{}` does not specify any formats",
+                            &package.name
+                        );
                         continue;
                     }
 
@@ -226,7 +234,10 @@ fn main() {
                         let format = if let Ok(format) = Format::from_str(format_str) {
                             format
                         } else {
-                            eprintln!("error: package `{}` specifies invalid format `{}`", &package.name, format_str);
+                            eprintln!(
+                                "error: package `{}` specifies invalid format `{}`",
+                                &package.name, format_str
+                            );
                             process::exit(1);
                         };
 
@@ -244,6 +255,62 @@ fn main() {
 
             if packages_to_build.is_empty() || packages_to_bundle.is_empty() {
                 eprintln!("error: no packages to bundle");
+                process::exit(1);
+            }
+
+            // Invoke `cargo build`
+
+            let cargo =
+                env::var("CARGO").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("cargo"));
+
+            let mut cargo_command = Command::new(cargo);
+            cargo_command.arg("build");
+
+            for &package in &packages_to_build {
+                cargo_command.args(&["--package", &metadata.packages[package].name]);
+            }
+
+            if cmd.release {
+                cargo_command.arg("--release");
+            }
+            if let Some(profile) = &cmd.profile {
+                cargo_command.args(&["--profile", profile]);
+            }
+
+            if !cmd.features.is_empty() {
+                cargo_command.arg("--features");
+                for feature in cmd.features {
+                    cargo_command.arg(feature);
+                }
+            }
+            if cmd.all_features {
+                cargo_command.arg("--all-features");
+            }
+            if cmd.no_default_features {
+                cargo_command.arg("--no-default-features");
+            }
+
+            if let Some(target) = &cmd.target {
+                cargo_command.args(&["--target", target]);
+            }
+
+            if let Some(target_dir) = &cmd.target_dir {
+                cargo_command.arg("--target-dir");
+                cargo_command.arg(target_dir);
+            }
+
+            if let Some(manifest_path) = &cmd.manifest_path {
+                cargo_command.arg("--manifest-path");
+                cargo_command.arg(manifest_path);
+            }
+
+            let result = cargo_command.spawn().and_then(|mut child| child.wait());
+            if let Err(error) = result {
+                eprintln!("error: failed to invoke `cargo build`: {}", error);
+                process::exit(1);
+            }
+
+            if !result.unwrap().success() {
                 process::exit(1);
             }
         }
