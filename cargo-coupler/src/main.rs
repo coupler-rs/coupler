@@ -4,10 +4,10 @@ use serde::Deserialize;
 
 use std::collections::{HashMap, HashSet};
 use std::env;
+use std::io::{self, Write};
 use std::path::PathBuf;
-use std::process;
-use std::process::Command;
-use std::str::FromStr;
+use std::process::{self, Command};
+use std::str::{self, FromStr};
 
 #[derive(Parser)]
 #[clap(bin_name = "cargo")]
@@ -103,9 +103,51 @@ fn main() {
 
     match cmd {
         Coupler::Bundle(cmd) => {
+            // Query `rustc` for host target if no --target argument was given
+
+            let target = if let Some(target) = &cmd.target {
+                target.clone()
+            } else {
+                let rustc_path =
+                    env::var("RUSTC").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("rustc"));
+                let mut rustc = Command::new(rustc_path);
+                rustc.args(&["--version", "--verbose"]);
+
+                let result = rustc.output();
+                if let Err(error) = result {
+                    eprintln!(
+                        "error: failed to invoke `rustc` to query host information: {}",
+                        error
+                    );
+                    process::exit(1);
+                }
+
+                let output = result.unwrap();
+                if !output.status.success() {
+                    eprintln!("error: failed to invoke `rustc` to query host information");
+                    eprintln!();
+                    io::stderr().write_all(&output.stderr).unwrap();
+                    process::exit(1);
+                }
+
+                const HOST_FIELD: &str = "host: ";
+                let output_str = str::from_utf8(&output.stdout).unwrap();
+                let host = output_str
+                    .lines()
+                    .find(|l| l.starts_with(HOST_FIELD))
+                    .map(|l| &l[HOST_FIELD.len()..]);
+                if host.is_none() {
+                    eprintln!("error: failed to invoke `rustc` to query host information");
+                    process::exit(1);
+                }
+                host.unwrap().to_string()
+            };
+
             // Invoke `cargo metadata`
 
             let mut command = MetadataCommand::new();
+
+            command.other_options(vec!["--filter-platform".to_string(), target.clone()]);
 
             if let Some(manifest_path) = &cmd.manifest_path {
                 command.manifest_path(manifest_path);
@@ -279,63 +321,62 @@ fn main() {
 
             // Invoke `cargo build`
 
-            let cargo =
+            let cargo_path =
                 env::var("CARGO").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("cargo"));
-
-            let mut cargo_command = Command::new(cargo);
-            cargo_command.arg("build");
+            let mut cargo = Command::new(cargo_path);
+            cargo.arg("build");
 
             for &(package, _) in &packages_to_build {
-                cargo_command.args(&["--package", &metadata.packages[package].name]);
+                cargo.args(&["--package", &metadata.packages[package].name]);
             }
 
-            cargo_command.arg("--lib");
+            cargo.arg("--lib");
 
             if cmd.release {
-                cargo_command.arg("--release");
+                cargo.arg("--release");
             }
             if let Some(profile) = &cmd.profile {
-                cargo_command.args(&["--profile", profile]);
+                cargo.args(&["--profile", profile]);
             }
 
             if !cmd.features.is_empty() {
-                cargo_command.arg("--features");
+                cargo.arg("--features");
                 for feature in cmd.features {
-                    cargo_command.arg(feature);
+                    cargo.arg(feature);
                 }
             }
             if cmd.all_features {
-                cargo_command.arg("--all-features");
+                cargo.arg("--all-features");
             }
             if cmd.no_default_features {
-                cargo_command.arg("--no-default-features");
+                cargo.arg("--no-default-features");
             }
 
             if let Some(target) = &cmd.target {
-                cargo_command.args(&["--target", target]);
+                cargo.args(&["--target", target]);
             }
 
             if let Some(target_dir) = &cmd.target_dir {
-                cargo_command.arg("--target-dir");
-                cargo_command.arg(target_dir);
+                cargo.arg("--target-dir");
+                cargo.arg(target_dir);
             }
 
             if let Some(manifest_path) = &cmd.manifest_path {
-                cargo_command.arg("--manifest-path");
-                cargo_command.arg(manifest_path);
+                cargo.arg("--manifest-path");
+                cargo.arg(manifest_path);
             }
 
             if cmd.frozen {
-                cargo_command.arg("--frozen");
+                cargo.arg("--frozen");
             }
             if cmd.locked {
-                cargo_command.arg("--locked");
+                cargo.arg("--locked");
             }
             if cmd.offline {
-                cargo_command.arg("--offline");
+                cargo.arg("--offline");
             }
 
-            let result = cargo_command.spawn().and_then(|mut child| child.wait());
+            let result = cargo.spawn().and_then(|mut child| child.wait());
             if let Err(error) = result {
                 eprintln!("error: failed to invoke `cargo build`: {}", error);
                 process::exit(1);
