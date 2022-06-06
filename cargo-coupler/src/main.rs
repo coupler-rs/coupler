@@ -78,6 +78,8 @@ struct PackageMetadata {
 
 #[derive(Deserialize)]
 struct CouplerMetadata {
+    name: Option<String>,
+
     #[serde(default)]
     formats: Vec<String>,
 }
@@ -96,6 +98,12 @@ impl FromStr for Format {
             _ => Err(()),
         }
     }
+}
+
+struct PackageInfo {
+    index: usize,
+    name: String,
+    formats: Vec<Format>,
 }
 
 fn main() {
@@ -258,7 +266,6 @@ fn main() {
             // Build the actual list of packages to bundle
 
             let mut packages_to_build = Vec::new();
-
             for &candidate in &candidates {
                 let package = &metadata.packages[candidate];
 
@@ -309,7 +316,11 @@ fn main() {
                     }
 
                     if !package_formats.is_empty() {
-                        packages_to_build.push((candidate, package_formats));
+                        packages_to_build.push(PackageInfo {
+                            index: candidate,
+                            name: coupler_metadata.name.as_ref().unwrap_or(&package.name).clone(),
+                            formats: package_formats,
+                        });
                     }
                 }
             }
@@ -326,8 +337,8 @@ fn main() {
             let mut cargo = Command::new(cargo_path);
             cargo.arg("build");
 
-            for &(package, _) in &packages_to_build {
-                cargo.args(&["--package", &metadata.packages[package].name]);
+            for package_info in &packages_to_build {
+                cargo.args(&["--package", &metadata.packages[package_info.index].name]);
             }
 
             cargo.arg("--lib");
