@@ -4,6 +4,7 @@ use serde::Deserialize;
 
 use std::collections::{HashMap, HashSet};
 use std::env;
+use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::{self, Command};
@@ -451,6 +452,69 @@ fn main() {
 
             if !result.unwrap().success() {
                 process::exit(1);
+            }
+
+            // Create bundles
+
+            let target_dir = if let Some(target_dir) = &cmd.target_dir {
+                target_dir
+            } else {
+                metadata.target_directory.as_std_path()
+            };
+
+            let profile = if let Some(profile) = &cmd.profile {
+                profile
+            } else if cmd.release {
+                "release"
+            } else {
+                "dev"
+            };
+
+            let mut binary_dir = PathBuf::from(target_dir);
+            if let Some(target) = &cmd.target {
+                binary_dir.push(target);
+            }
+            binary_dir.push(if profile == "dev" { "debug" } else { profile });
+
+            for package_info in &packages_to_build {
+                for format in &package_info.formats {
+                    match format {
+                        Format::Vst3 => {
+                            let mut bundle_path = binary_dir.join("bundle");
+                            bundle_path.push(format!("{}.vst3", &package_info.name));
+
+                            if bundle_path.exists() {
+                                fs::remove_dir_all(&bundle_path).unwrap();
+                            }
+
+                            let mut dst_dir = bundle_path.clone();
+                            dst_dir.push("Contents");
+
+                            let arch_str = match arch {
+                                Arch::X86 => "x64",
+                                Arch::X86_64 => "x86_64",
+                            };
+                            let os_str = match os {
+                                Os::Windows => "win",
+                            };
+                            dst_dir.push(format!("{}-{}", arch_str, os_str));
+
+                            fs::create_dir_all(&dst_dir).unwrap();
+
+                            let src_filename = match os {
+                                Os::Windows => format!("{}.dll", &metadata.packages[package_info.index].name),
+                            };
+                            let src = binary_dir.join(&src_filename);
+
+                            let dst_filename = match os {
+                                Os::Windows => format!("{}.vst3", &package_info.name),
+                            };
+                            let dst = dst_dir.join(&dst_filename);
+
+                            fs::copy(&src, &dst).unwrap();
+                        }
+                    }
+                }
             }
         }
     }

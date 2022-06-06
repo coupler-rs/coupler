@@ -6,6 +6,7 @@ edition = "2018"
 publish = false
 
 [package.metadata.coupler]
+name = "Gain"
 formats = ["vst3"]
 
 [lib]
