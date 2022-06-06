@@ -100,6 +100,40 @@ impl FromStr for Format {
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+enum Arch {
+    X86,
+    X86_64,
+}
+
+impl FromStr for Arch {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "x86" => Ok(Arch::X86),
+            "x86_64" => Ok(Arch::X86_64),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+enum Os {
+    Windows,
+}
+
+impl FromStr for Os {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "windows" => Ok(Os::Windows),
+            _ => Err(()),
+        }
+    }
+}
+
 struct PackageInfo {
     index: usize,
     name: String,
@@ -149,6 +183,28 @@ fn main() {
                     process::exit(1);
                 }
                 host.unwrap().to_string()
+            };
+
+            // Extract arch and OS from target triple
+
+            let triple: Vec<&str> = target.split('-').collect();
+            if !(triple.len() == 3 || triple.len() == 4) {
+                eprintln!("error: malformed target triple `{}`", &target);
+                process::exit(1);
+            }
+
+            let arch = if let Ok(arch) = Arch::from_str(triple[0]) {
+                arch
+            } else {
+                eprintln!("error: unsupported target `{}`", &target);
+                process::exit(1);
+            };
+
+            let os = if let Ok(os) = Os::from_str(triple[2]) {
+                os
+            } else {
+                eprintln!("error: unsupported target `{}`", &target);
+                process::exit(1);
             };
 
             // Invoke `cargo metadata`
