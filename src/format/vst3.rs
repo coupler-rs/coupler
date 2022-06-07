@@ -1814,7 +1814,8 @@ pub trait Vst3Plugin {
     fn vst3_info() -> Vst3Info;
 }
 
-pub fn entry_point<P: Plugin + Vst3Plugin>() -> *mut c_void {
+#[doc(hidden)]
+pub fn get_plugin_factory<P: Plugin + Vst3Plugin>() -> *mut c_void {
     Factory::<P>::create() as *const Factory<P> as *mut c_void
 }
 
@@ -1859,7 +1860,7 @@ macro_rules! vst3 {
 
         #[no_mangle]
         extern "system" fn GetPluginFactory() -> *mut ::std::ffi::c_void {
-            ::coupler::format::vst3::entry_point::<$plugin>()
+            ::coupler::format::vst3::get_plugin_factory::<$plugin>()
         }
     };
 }
