@@ -281,5 +281,8 @@ impl WindowHandler for GainWindowHandler {
     }
 }
 
+#[cfg(feature = "clap")]
+coupler::clap!(Gain);
+
 #[cfg(feature = "vst3")]
 coupler::vst3!(Gain);

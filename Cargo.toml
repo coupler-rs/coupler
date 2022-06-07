@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 vst3-sys = { path = "api/vst3-sys" }
+clap-sys = { git = "https://github.com/glowcoil/clap-sys", rev = "b0dc0b419924a37423b56dc3ef77ec415fa86da2" }
 raw-window-handle = "0.3.3"
 
 [workspace]
