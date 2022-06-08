@@ -122,7 +122,7 @@ macro_rules! clap {
     ($plugin:ty) => {
         #[allow(non_upper_case_globals)]
         #[no_mangle]
-        static clap_plugin_entry: ::coupler::format::clap::EntryPoint<$plugin> = {
+        static clap_entry: ::coupler::format::clap::EntryPoint<$plugin> = {
             // Safety: The CLAP headers specify that init must be called before get_factory or
             // deinit, init must not be called more than once, and none of the three may be called
             // after deinit.
