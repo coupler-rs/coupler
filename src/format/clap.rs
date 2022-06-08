@@ -2,40 +2,82 @@ use crate::plugin::*;
 
 use clap_sys::{entry::*, host::*, plugin::*, plugin_factory::*, version::*};
 
-use std::ffi::{c_void, CStr};
+use std::ffi::{c_void, CStr, CString};
 use std::marker::PhantomData;
 use std::os::raw::c_char;
 use std::ptr;
+
+struct DescriptorBufs {
+    id: CString,
+    name: CString,
+    vendor: CString,
+    url: CString,
+    manual_url: CString,
+    support_url: CString,
+    version: CString,
+    description: CString,
+    #[allow(unused)]
+    features: Vec<CString>,
+    feature_ptrs: Vec<*const c_char>,
+}
 
 #[doc(hidden)]
 #[repr(C)]
 pub struct Factory<P> {
     #[allow(unused)]
     factory: clap_plugin_factory,
+    #[allow(unused)]
+    descriptor_bufs: DescriptorBufs,
     descriptor: clap_plugin_descriptor,
     phantom: PhantomData<P>,
 }
 
-impl<P: Plugin> Factory<P> {
+impl<P: Plugin + ClapPlugin> Factory<P> {
     fn new() -> Factory<P> {
+        let info = P::info();
+        let clap_info = P::clap_info();
+
+        let features: Vec<CString> = Vec::new();
+        let mut feature_ptrs = Vec::with_capacity(features.len() + 1);
+        for feature in features.iter() {
+            feature_ptrs.push(feature.as_ptr());
+        }
+        feature_ptrs.push(ptr::null());
+
+        let descriptor_bufs = DescriptorBufs {
+            id: CString::new(&clap_info.id[..]).unwrap(),
+            name: CString::new(&info.name[..]).unwrap(),
+            vendor: CString::new(&info.vendor[..]).unwrap(),
+            url: CString::new(&info.url[..]).unwrap(),
+            manual_url: CString::new("").unwrap(),
+            support_url: CString::new("").unwrap(),
+            version: CString::new("").unwrap(),
+            description: CString::new("").unwrap(),
+            features,
+            feature_ptrs,
+        };
+
+        let descriptor = clap_plugin_descriptor {
+            clap_version: CLAP_VERSION,
+            id: descriptor_bufs.id.as_ptr(),
+            name: descriptor_bufs.name.as_ptr(),
+            vendor: descriptor_bufs.vendor.as_ptr(),
+            url: descriptor_bufs.url.as_ptr(),
+            manual_url: descriptor_bufs.manual_url.as_ptr(),
+            support_url: descriptor_bufs.support_url.as_ptr(),
+            version: descriptor_bufs.version.as_ptr(),
+            description: descriptor_bufs.description.as_ptr(),
+            features: descriptor_bufs.feature_ptrs.as_ptr(),
+        };
+
         Factory {
             factory: clap_plugin_factory {
                 get_plugin_count: Self::get_plugin_count,
                 get_plugin_descriptor: Self::get_plugin_descriptor,
                 create_plugin: Self::create_plugin,
             },
-            descriptor: clap_plugin_descriptor {
-                clap_version: CLAP_VERSION,
-                id: b"\0".as_ptr() as *const c_char,
-                name: b"\0".as_ptr() as *const c_char,
-                vendor: b"\0".as_ptr() as *const c_char,
-                url: b"\0".as_ptr() as *const c_char,
-                manual_url: b"\0".as_ptr() as *const c_char,
-                support_url: b"\0".as_ptr() as *const c_char,
-                version: b"\0".as_ptr() as *const c_char,
-                description: b"\0".as_ptr() as *const c_char,
-                features: [ptr::null()].as_ptr(),
-            },
+            descriptor_bufs,
+            descriptor,
             phantom: PhantomData,
         }
     }
@@ -74,7 +116,7 @@ pub struct EntryPoint<P> {
     phantom: std::marker::PhantomData<P>,
 }
 
-impl<P: Plugin> EntryPoint<P> {
+impl<P: Plugin + ClapPlugin> EntryPoint<P> {
     pub const fn new(
         init: unsafe extern "C" fn(plugin_path: *const c_char) -> bool,
         deinit: unsafe extern "C" fn(),
@@ -116,6 +158,14 @@ impl<P: Plugin> EntryPoint<P> {
 
         ptr::null()
     }
+}
+
+pub struct ClapInfo {
+    pub id: String,
+}
+
+pub trait ClapPlugin {
+    fn clap_info() -> ClapInfo;
 }
 
 #[macro_export]

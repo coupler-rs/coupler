@@ -1,6 +1,6 @@
 use std::cell::{Cell, RefCell};
 
-use coupler::format::vst3::*;
+use coupler::format::{clap::*, vst3::*};
 use coupler::{buffer::*, bus::*, editor::*, param, param::*, plugin::*, process::*};
 use graphics::{Canvas, Color, Path, Vec2};
 use window::{
@@ -55,6 +55,12 @@ impl Plugin for Gain {
         } else {
             Err(())
         }
+    }
+}
+
+impl ClapPlugin for Gain {
+    fn clap_info() -> ClapInfo {
+        ClapInfo { id: "systems.photophore.gain".to_string() }
     }
 }
 
