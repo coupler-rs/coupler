@@ -8,6 +8,7 @@ use std::os::raw::c_char;
 use std::ptr;
 
 #[doc(hidden)]
+#[repr(C)]
 pub struct Factory<P> {
     #[allow(unused)]
     factory: clap_plugin_factory,
