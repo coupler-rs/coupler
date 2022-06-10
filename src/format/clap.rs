@@ -1,11 +1,82 @@
 use crate::plugin::*;
 
-use clap_sys::{entry::*, host::*, plugin::*, plugin_factory::*, version::*};
+use clap_sys::{entry::*, host::*, plugin::*, plugin_factory::*, process::*, version::*};
 
 use std::ffi::{c_void, CStr, CString};
 use std::marker::PhantomData;
 use std::os::raw::c_char;
 use std::ptr;
+
+struct Wrapper<P> {
+    #[allow(unused)]
+    clap_plugin: clap_plugin,
+    plugin: P,
+}
+
+impl<P: Plugin> Wrapper<P> {
+    pub fn create(desc: *const clap_plugin_descriptor) -> *mut Wrapper<P> {
+        Box::into_raw(Box::new(Wrapper {
+            clap_plugin: clap_plugin {
+                desc,
+                plugin_data: ptr::null_mut(),
+                init: Self::init,
+                destroy: Self::destroy,
+                activate: Self::activate,
+                deactivate: Self::deactivate,
+                start_processing: Self::start_processing,
+                stop_processing: Self::stop_processing,
+                reset: Self::reset,
+                process: Self::process,
+                get_extension: Self::get_extension,
+                on_main_thread: Self::on_main_thread,
+            },
+            plugin: P::create(),
+        }))
+    }
+
+    unsafe extern "C" fn init(_plugin: *const clap_plugin) -> bool {
+        true
+    }
+
+    unsafe extern "C" fn destroy(plugin: *const clap_plugin) {
+        drop(Box::from_raw(plugin as *mut Wrapper<P>));
+    }
+
+    unsafe extern "C" fn activate(
+        _plugin: *const clap_plugin,
+        _sample_rate: f64,
+        _min_frames_count: u32,
+        _max_frames_count: u32,
+    ) -> bool {
+        true
+    }
+
+    unsafe extern "C" fn deactivate(_plugin: *const clap_plugin) {}
+
+    unsafe extern "C" fn start_processing(_plugin: *const clap_plugin) -> bool {
+        true
+    }
+
+    unsafe extern "C" fn stop_processing(_plugin: *const clap_plugin) {}
+
+    unsafe extern "C" fn reset(_plugin: *const clap_plugin) {}
+
+    unsafe extern "C" fn process(
+        _plugin: *const clap_plugin,
+        _process: *const clap_process,
+    ) -> clap_process_status {
+        CLAP_PROCESS_CONTINUE
+    }
+
+    unsafe extern "C" fn get_extension(
+        _plugin: *const clap_plugin,
+        _id: *const c_char,
+    ) -> *const c_void {
+        ptr::null()
+    }
+
+    unsafe extern "C" fn on_main_thread(_plugin: *const clap_plugin) {}
+}
 
 struct DescriptorBufs {
     id: CString,
@@ -26,7 +97,6 @@ struct DescriptorBufs {
 pub struct Factory<P> {
     #[allow(unused)]
     factory: clap_plugin_factory,
-    #[allow(unused)]
     descriptor_bufs: DescriptorBufs,
     descriptor: clap_plugin_descriptor,
     phantom: PhantomData<P>,
@@ -90,20 +160,26 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
         factory: *const clap_plugin_factory,
         index: u32,
     ) -> *const clap_plugin_descriptor {
-        let this = &*(factory as *const Self);
+        let factory = &*(factory as *const Self);
 
         if index == 0 {
-            &this.descriptor
+            &factory.descriptor
         } else {
             ptr::null()
         }
     }
 
     unsafe extern "C" fn create_plugin(
-        _factory: *const clap_plugin_factory,
+        factory: *const clap_plugin_factory,
         _host: *const clap_host,
-        _plugin_id: *const c_char,
+        plugin_id: *const c_char,
     ) -> *const clap_plugin {
+        let factory = &*(factory as *const Self);
+
+        if CStr::from_ptr(plugin_id) == factory.descriptor_bufs.id.as_c_str() {
+            return Wrapper::<P>::create(&factory.descriptor) as *const clap_plugin;
+        }
+
         ptr::null()
     }
 }
