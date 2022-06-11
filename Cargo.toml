@@ -6,14 +6,13 @@ edition = "2018"
 publish = false
 
 [dependencies]
-vst3-sys = { path = "api/vst3-sys" }
 clap-sys = { version = "0.1.0" }
+vst3-sys = { git = "https://github.com/photophoresystems/vst3-sys", rev = "2fe59f3a03dcdebd860f42c95f996ff891c4c93b" }
 raw-window-handle = "0.3.3"
 
 [workspace]
 members = [
     "api/auv2-sys",
-    "api/vst3-sys",
     "cargo-coupler",
     "gain",
     "graphics",
