@@ -1,6 +1,9 @@
 use crate::{plugin::*, process::*};
 
-use clap_sys::{entry::*, host::*, plugin::*, plugin_factory::*, process::*, version::*};
+use clap_sys::ext::params::*;
+use clap_sys::{
+    entry::*, events::*, host::*, id::*, plugin::*, plugin_factory::*, process::*, version::*,
+};
 
 use std::cell::UnsafeCell;
 use std::ffi::{c_void, CStr, CString};
@@ -25,6 +28,15 @@ struct Wrapper<P: Plugin> {
 unsafe impl<P: Plugin> Sync for Wrapper<P> {}
 
 impl<P: Plugin> Wrapper<P> {
+    const PARAMS: clap_plugin_params = clap_plugin_params {
+        count: Self::count,
+        get_info: Self::get_info,
+        get_value: Self::get_value,
+        value_to_text: Self::value_to_text,
+        text_to_value: Self::text_to_value,
+        flush: Self::flush,
+    };
+
     pub fn create(desc: *const clap_plugin_descriptor) -> *mut Wrapper<P> {
         Box::into_raw(Box::new(Wrapper {
             clap_plugin: clap_plugin {
@@ -120,12 +132,62 @@ impl<P: Plugin> Wrapper<P> {
 
     unsafe extern "C" fn get_extension(
         _plugin: *const clap_plugin,
-        _id: *const c_char,
+        id: *const c_char,
     ) -> *const c_void {
+        if CStr::from_ptr(id) == CStr::from_ptr(CLAP_EXT_PARAMS) {
+            return &Self::PARAMS as *const clap_plugin_params as *const c_void;
+        }
+
         ptr::null()
     }
 
     unsafe extern "C" fn on_main_thread(_plugin: *const clap_plugin) {}
+
+    unsafe extern "C" fn count(_plugin: *const clap_plugin) -> u32 {
+        0
+    }
+
+    unsafe extern "C" fn get_info(
+        _plugin: *const clap_plugin,
+        _param_index: u32,
+        _param_info: *mut clap_param_info,
+    ) -> bool {
+        false
+    }
+
+    unsafe extern "C" fn get_value(
+        _plugin: *const clap_plugin,
+        _param_id: clap_id,
+        _value: *mut f64,
+    ) -> bool {
+        false
+    }
+
+    unsafe extern "C" fn value_to_text(
+        _plugin: *const clap_plugin,
+        _param_id: clap_id,
+        _value: f64,
+        _display: *mut c_char,
+        _size: u32,
+    ) -> bool {
+        false
+    }
+
+    unsafe extern "C" fn text_to_value(
+        _plugin: *const clap_plugin,
+        _param_id: clap_id,
+        _display: *const c_char,
+        _value: *mut f64,
+    ) -> bool {
+        false
+    }
+
+    unsafe extern "C" fn flush(
+        _plugin: *const clap_plugin,
+        _in_: *const clap_input_events,
+        _out: *const clap_output_events,
+    ) {
+    }
 }
 
 struct DescriptorBufs {
