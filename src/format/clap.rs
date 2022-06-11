@@ -1,17 +1,28 @@
-use crate::plugin::*;
+use crate::{plugin::*, process::*};
 
 use clap_sys::{entry::*, host::*, plugin::*, plugin_factory::*, process::*, version::*};
 
+use std::cell::UnsafeCell;
 use std::ffi::{c_void, CStr, CString};
 use std::marker::PhantomData;
 use std::os::raw::c_char;
 use std::ptr;
+use std::sync::Arc;
 
-struct Wrapper<P> {
+struct ProcessorState<P: Plugin> {
+    sample_rate: f64,
+    max_buffer_size: usize,
+    processor: Option<P::Processor>,
+}
+
+struct Wrapper<P: Plugin> {
     #[allow(unused)]
     clap_plugin: clap_plugin,
-    plugin: P,
+    plugin: Arc<P>,
+    processor_state: UnsafeCell<ProcessorState<P>>,
 }
+
+unsafe impl<P: Plugin> Sync for Wrapper<P> {}
 
 impl<P: Plugin> Wrapper<P> {
     pub fn create(desc: *const clap_plugin_descriptor) -> *mut Wrapper<P> {
@@ -30,7 +41,12 @@ impl<P: Plugin> Wrapper<P> {
                 get_extension: Self::get_extension,
                 on_main_thread: Self::on_main_thread,
             },
-            plugin: P::create(),
+            plugin: Arc::new(P::create()),
+            processor_state: UnsafeCell::new(ProcessorState {
+                sample_rate: 0.0,
+                max_buffer_size: 0,
+                processor: None,
+            }),
         }))
     }
 
@@ -43,15 +59,36 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     unsafe extern "C" fn activate(
-        _plugin: *const clap_plugin,
-        _sample_rate: f64,
+        plugin: *const clap_plugin,
+        sample_rate: f64,
         _min_frames_count: u32,
-        _max_frames_count: u32,
+        max_frames_count: u32,
     ) -> bool {
+        let wrapper = &*(plugin as *mut Wrapper<P>);
+        let processor_state = &mut *wrapper.processor_state.get();
+
+        processor_state.sample_rate = sample_rate;
+        processor_state.max_buffer_size = max_frames_count as usize;
+
+        let plugin = PluginHandle::new(wrapper.plugin.clone());
+
+        let context = ProcessContext::new(
+            processor_state.sample_rate,
+            processor_state.max_buffer_size,
+            &[],
+            &[],
+        );
+        processor_state.processor = Some(P::Processor::create(plugin, &context));
+
         true
     }
 
-    unsafe extern "C" fn deactivate(_plugin: *const clap_plugin) {}
+    unsafe extern "C" fn deactivate(plugin: *const clap_plugin) {
+        let wrapper = &*(plugin as *mut Wrapper<P>);
+        let processor_state = &mut *wrapper.processor_state.get();
+
+        processor_state.processor = None;
+    }
 
     unsafe extern "C" fn start_processing(_plugin: *const clap_plugin) -> bool {
         true
@@ -59,7 +96,20 @@ impl<P: Plugin> Wrapper<P> {
 
     unsafe extern "C" fn stop_processing(_plugin: *const clap_plugin) {}
 
-    unsafe extern "C" fn reset(_plugin: *const clap_plugin) {}
+    unsafe extern "C" fn reset(plugin: *const clap_plugin) {
+        let wrapper = &*(plugin as *mut Wrapper<P>);
+        let processor_state = &mut *wrapper.processor_state.get();
+
+        if let Some(processor) = &mut processor_state.processor {
+            let context = ProcessContext::new(
+                processor_state.sample_rate,
+                processor_state.max_buffer_size,
+                &[],
+                &[],
+            );
+            processor.reset(&context);
+        }
+    }
 
     unsafe extern "C" fn process(
         _plugin: *const clap_plugin,
