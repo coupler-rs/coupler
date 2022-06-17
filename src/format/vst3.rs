@@ -79,6 +79,7 @@ fn speaker_arrangement_to_bus_layout(speaker_arrangement: SpeakerArrangement) ->
 struct Vst3EditorContext {
     component_handler: Cell<Option<*mut *const IComponentHandler>>,
     plug_frame: Cell<Option<*mut *const IPlugFrame>>,
+    param_states: Arc<ParamStates>,
 }
 
 impl Drop for Vst3EditorContext {
@@ -99,6 +100,8 @@ impl Drop for Vst3EditorContext {
 
 impl EditorContextHandler for Vst3EditorContext {
     fn begin_edit(&self, id: ParamId) {
+        let _ = self.param_states.index.get(&id).expect("Invalid parameter id");
+
         if let Some(component_handler) = self.component_handler.get() {
             unsafe {
                 ((*(*component_handler)).begin_edit)(component_handler as *mut c_void, id);
@@ -107,18 +110,31 @@ impl EditorContextHandler for Vst3EditorContext {
     }
 
     fn perform_edit(&self, id: ParamId, value: f64) {
+        let param_index = *self.param_states.index.get(&id).expect("Invalid parameter id");
+
         if let Some(component_handler) = self.component_handler.get() {
             unsafe {
                 ((*(*component_handler)).perform_edit)(component_handler as *mut c_void, id, value);
             }
         }
+
+        self.param_states.dirty_processor.set(param_index, Ordering::Release);
     }
 
     fn end_edit(&self, id: ParamId) {
+        let _ = self.param_states.index.get(&id).expect("Invalid parameter id");
+
         if let Some(component_handler) = self.component_handler.get() {
             unsafe {
                 ((*(*component_handler)).end_edit)(component_handler as *mut c_void, id);
             }
+        }
+    }
+
+    fn poll_params(&self) -> PollParams {
+        PollParams {
+            iter: self.param_states.dirty_editor.drain_indices(Ordering::Acquire),
+            param_states: &self.param_states,
         }
     }
 }
@@ -337,6 +353,7 @@ impl<P: Plugin> Wrapper<P> {
         let editor_context = Rc::new(Vst3EditorContext {
             component_handler: Cell::new(None),
             plug_frame: Cell::new(None),
+            param_states: param_states.clone(),
         });
 
         let editor_state = UnsafeCell::new(EditorState { context: editor_context, editor: None });
@@ -1389,8 +1406,7 @@ impl<P: Plugin> Wrapper<P> {
 
         let plugin = PluginHandle::new(wrapper.plugin.clone());
 
-        let context =
-            EditorContext::new(wrapper.param_states.clone(), editor_state.context.clone());
+        let context = EditorContext::new(editor_state.context.clone());
 
         let editor = P::Editor::open(plugin, context, Some(&ParentWindow(parent)));
 

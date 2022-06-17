@@ -5,43 +5,30 @@ use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
 use std::marker::PhantomData;
 use std::rc::Rc;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 pub struct EditorContext {
-    param_states: Arc<ParamStates>,
     handler: Rc<dyn EditorContextHandler>,
 }
 
 impl EditorContext {
-    pub(crate) fn new(
-        param_states: Arc<ParamStates>,
-        handler: Rc<dyn EditorContextHandler>,
-    ) -> EditorContext {
-        EditorContext { param_states, handler }
+    pub(crate) fn new(handler: Rc<dyn EditorContextHandler>) -> EditorContext {
+        EditorContext { handler }
     }
 
     pub fn begin_edit(&self, id: ParamId) {
-        let _ = self.param_states.index.get(&id).expect("Invalid parameter id");
         self.handler.begin_edit(id);
     }
 
     pub fn perform_edit(&self, id: ParamId, value_normalized: f64) {
-        let param_index = *self.param_states.index.get(&id).expect("Invalid parameter id");
         self.handler.perform_edit(id, value_normalized);
-        self.param_states.dirty_processor.set(param_index, Ordering::Release);
     }
 
     pub fn end_edit(&self, id: ParamId) {
-        let _ = self.param_states.index.get(&id).expect("Invalid parameter id");
         self.handler.end_edit(id);
     }
 
     pub fn poll_params(&self) -> PollParams {
-        PollParams {
-            iter: self.param_states.dirty_editor.drain_indices(Ordering::Acquire),
-            param_states: &self.param_states,
-        }
+        self.handler.poll_params()
     }
 }
 
@@ -49,11 +36,12 @@ pub trait EditorContextHandler {
     fn begin_edit(&self, param_id: ParamId);
     fn perform_edit(&self, param_id: ParamId, value: f64);
     fn end_edit(&self, param_id: ParamId);
+    fn poll_params(&self) -> PollParams;
 }
 
 pub struct PollParams<'a> {
-    iter: DrainIndices<'a>,
-    param_states: &'a ParamStates,
+    pub(crate) iter: DrainIndices<'a>,
+    pub(crate) param_states: &'a ParamStates,
 }
 
 impl<'a> Iterator for PollParams<'a> {
