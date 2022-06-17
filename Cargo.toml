@@ -7,11 +7,11 @@ publish = false
 
 [dependencies]
 clap-sys = { version = "0.1.0" }
-vst3-sys = { git = "https://github.com/photophoresystems/vst3-sys", rev = "2fe59f3a03dcdebd860f42c95f996ff891c4c93b" }
+vst3-sys = { git = "https://github.com/coupler-rs/vst3-sys", rev = "2fe59f3a03dcdebd860f42c95f996ff891c4c93b" }
 raw-window-handle = "0.3.3"
 
 [target.'cfg(target_os="macos")'.dependencies]
-auv2-sys = { git = "https://github.com/photophoresystems/auv2-sys", rev = "18632591cfe5c53fd01954e4258c95341582cde5" }
+auv2-sys = { git = "https://github.com/coupler-rs/auv2-sys", rev = "18632591cfe5c53fd01954e4258c95341582cde5" }
 
 [workspace]
 members = [
