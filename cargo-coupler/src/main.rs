@@ -502,7 +502,9 @@ fn main() {
                             fs::create_dir_all(&dst_dir).unwrap();
 
                             let src_filename = match os {
-                                Os::Windows => format!("{}.dll", &metadata.packages[package_info.index].name),
+                                Os::Windows => {
+                                    format!("{}.dll", &metadata.packages[package_info.index].name)
+                                }
                             };
                             let src = binary_dir.join(&src_filename);
 
