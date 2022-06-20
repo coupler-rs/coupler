@@ -43,11 +43,12 @@ impl Plugin for Gain {
     }
 
     fn buses() -> BusList {
-        BusList::new().input("Input", BusFormat::Stereo).output("Output", BusFormat::Stereo)
+        BusList::new().input(BusInfo::new("Input")).output(BusInfo::new("Output"))
     }
 
-    fn supports_layout(inputs: &[BusFormat], outputs: &[BusFormat]) -> bool {
-        inputs[0] == BusFormat::Stereo && outputs[0] == BusFormat::Stereo
+    fn bus_configs() -> BusConfigList {
+        BusConfigList::new()
+            .default(BusConfig::new().input(BusFormat::Stereo).output(BusFormat::Stereo))
     }
 
     fn create() -> Gain {
