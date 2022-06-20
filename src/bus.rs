@@ -1,31 +1,31 @@
 #[derive(Eq, PartialEq, Clone)]
-pub enum BusLayout {
+pub enum BusFormat {
     Stereo,
 }
 
-impl BusLayout {
+impl BusFormat {
     #[inline]
     pub fn channels(&self) -> usize {
         match self {
-            BusLayout::Stereo => 2,
+            BusFormat::Stereo => 2,
         }
     }
 }
 
 pub struct BusState {
-    layout: BusLayout,
+    format: BusFormat,
     enabled: bool,
 }
 
 impl BusState {
     #[inline]
-    pub fn new(layout: BusLayout, enabled: bool) -> BusState {
-        BusState { layout, enabled }
+    pub fn new(format: BusFormat, enabled: bool) -> BusState {
+        BusState { format, enabled }
     }
 
     #[inline]
-    pub fn layout(&self) -> &BusLayout {
-        &self.layout
+    pub fn format(&self) -> &BusFormat {
+        &self.format
     }
 
     #[inline]
@@ -34,8 +34,8 @@ impl BusState {
     }
 
     #[inline]
-    pub fn set_layout(&mut self, layout: BusLayout) {
-        self.layout = layout;
+    pub fn set_format(&mut self, format: BusFormat) {
+        self.format = format;
     }
 
     #[inline]
@@ -46,7 +46,7 @@ impl BusState {
 
 pub struct BusInfo {
     pub name: String,
-    pub default_layout: BusLayout,
+    pub default_format: BusFormat,
 }
 
 pub struct BusList {
@@ -59,13 +59,13 @@ impl BusList {
         BusList { inputs: Vec::new(), outputs: Vec::new() }
     }
 
-    pub fn input(mut self, name: &str, default_layout: BusLayout) -> BusList {
-        self.inputs.push(BusInfo { name: name.to_string(), default_layout });
+    pub fn input(mut self, name: &str, default_format: BusFormat) -> BusList {
+        self.inputs.push(BusInfo { name: name.to_string(), default_format });
         self
     }
 
-    pub fn output(mut self, name: &str, default_layout: BusLayout) -> BusList {
-        self.outputs.push(BusInfo { name: name.to_string(), default_layout });
+    pub fn output(mut self, name: &str, default_format: BusFormat) -> BusList {
+        self.outputs.push(BusInfo { name: name.to_string(), default_format });
         self
     }
 }

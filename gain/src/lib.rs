@@ -43,11 +43,11 @@ impl Plugin for Gain {
     }
 
     fn buses() -> BusList {
-        BusList::new().input("Input", BusLayout::Stereo).output("Output", BusLayout::Stereo)
+        BusList::new().input("Input", BusFormat::Stereo).output("Output", BusFormat::Stereo)
     }
 
-    fn supports_layout(inputs: &[BusLayout], outputs: &[BusLayout]) -> bool {
-        inputs[0] == BusLayout::Stereo && outputs[0] == BusLayout::Stereo
+    fn supports_layout(inputs: &[BusFormat], outputs: &[BusFormat]) -> bool {
+        inputs[0] == BusFormat::Stereo && outputs[0] == BusFormat::Stereo
     }
 
     fn create() -> Gain {
