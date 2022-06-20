@@ -308,10 +308,10 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
         feature_ptrs.push(ptr::null());
 
         let descriptor_bufs = DescriptorBufs {
-            id: CString::new(&clap_info.id[..]).unwrap(),
-            name: CString::new(&info.name[..]).unwrap(),
-            vendor: CString::new(&info.vendor[..]).unwrap(),
-            url: CString::new(&info.url[..]).unwrap(),
+            id: CString::new(clap_info.get_id()).unwrap(),
+            name: CString::new(info.get_name()).unwrap(),
+            vendor: CString::new(info.get_vendor()).unwrap(),
+            url: CString::new(info.get_url()).unwrap(),
             manual_url: CString::new("").unwrap(),
             support_url: CString::new("").unwrap(),
             version: CString::new("").unwrap(),
@@ -430,7 +430,25 @@ impl<P: Plugin + ClapPlugin> EntryPoint<P> {
 }
 
 pub struct ClapInfo {
-    pub id: String,
+    id: String,
+}
+
+impl ClapInfo {
+    #[inline]
+    pub fn with_id(id: &str) -> ClapInfo {
+        ClapInfo { id: id.to_string() }
+    }
+
+    #[inline]
+    pub fn id(mut self, id: &str) -> ClapInfo {
+        self.id = id.to_string();
+        self
+    }
+
+    #[inline]
+    pub fn get_id(&self) -> &str {
+        &self.id
+    }
 }
 
 pub trait ClapPlugin {

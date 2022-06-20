@@ -454,7 +454,7 @@ impl<P: Plugin> Wrapper<P> {
             return result::OK;
         }
 
-        if iid == IPlugView::IID && wrapper.info.has_editor {
+        if iid == IPlugView::IID && wrapper.info.get_has_editor() {
             Self::add_ref(this);
             *obj = this.offset(offset_of!(Self, plug_view));
             return result::OK;
@@ -1369,7 +1369,7 @@ impl<P: Plugin> Wrapper<P> {
     ) -> *mut *const IPlugView {
         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
-        if !wrapper.info.has_editor {
+        if !wrapper.info.get_has_editor() {
             return ptr::null_mut();
         }
 
@@ -1746,9 +1746,9 @@ impl<P: Plugin + Vst3Plugin> Factory<P> {
 
         let info = &mut *info;
 
-        copy_cstring(&factory.info.vendor, &mut info.vendor);
-        copy_cstring(&factory.info.url, &mut info.url);
-        copy_cstring(&factory.info.email, &mut info.email);
+        copy_cstring(&factory.info.get_vendor(), &mut info.vendor);
+        copy_cstring(&factory.info.get_url(), &mut info.url);
+        copy_cstring(&factory.info.get_email(), &mut info.email);
         info.flags = PFactoryInfo::UNICODE;
 
         result::OK
@@ -1771,10 +1771,10 @@ impl<P: Plugin + Vst3Plugin> Factory<P> {
 
         let info = &mut *info;
 
-        info.cid = factory.vst3_info.class_id.0;
+        info.cid = factory.vst3_info.get_class_id().0;
         info.cardinality = PClassInfo::MANY_INSTANCES;
         copy_cstring("Audio Module Class", &mut info.category);
-        copy_cstring(&factory.info.name, &mut info.name);
+        copy_cstring(&factory.info.get_name(), &mut info.name);
 
         result::OK
     }
@@ -1789,7 +1789,7 @@ impl<P: Plugin + Vst3Plugin> Factory<P> {
 
         let cid = *(cid as *const TUID);
         let iid = *(iid as *const TUID);
-        if cid != factory.vst3_info.class_id.0 || iid != IComponent::IID {
+        if cid != factory.vst3_info.get_class_id().0 || iid != IComponent::IID {
             return result::INVALID_ARGUMENT;
         }
 
@@ -1811,13 +1811,13 @@ impl<P: Plugin + Vst3Plugin> Factory<P> {
 
         let info = &mut *info;
 
-        info.cid = factory.vst3_info.class_id.0;
+        info.cid = factory.vst3_info.get_class_id().0;
         info.cardinality = PClassInfo::MANY_INSTANCES;
         copy_cstring("Audio Module Class", &mut info.category);
-        copy_cstring(&factory.info.name, &mut info.name);
+        copy_cstring(&factory.info.get_name(), &mut info.name);
         info.class_flags = 0;
         copy_cstring("Fx", &mut info.sub_categories);
-        copy_cstring(&factory.info.vendor, &mut info.vendor);
+        copy_cstring(&factory.info.get_vendor(), &mut info.vendor);
         copy_cstring("", &mut info.version);
         copy_cstring("VST 3.7", &mut info.sdk_version);
 
@@ -1837,13 +1837,13 @@ impl<P: Plugin + Vst3Plugin> Factory<P> {
 
         let info = &mut *info;
 
-        info.cid = factory.vst3_info.class_id.0;
+        info.cid = factory.vst3_info.get_class_id().0;
         info.cardinality = PClassInfo::MANY_INSTANCES;
         copy_cstring("Audio Module Class", &mut info.category);
-        copy_wstring(&factory.info.name, &mut info.name);
+        copy_wstring(&factory.info.get_name(), &mut info.name);
         info.class_flags = 0;
         copy_cstring("Fx", &mut info.sub_categories);
-        copy_wstring(&factory.info.vendor, &mut info.vendor);
+        copy_wstring(&factory.info.get_vendor(), &mut info.vendor);
         copy_wstring("", &mut info.version);
         copy_wstring("VST 3.7", &mut info.sdk_version);
 
@@ -1858,6 +1858,7 @@ impl<P: Plugin + Vst3Plugin> Factory<P> {
     }
 }
 
+#[derive(Copy, Clone)]
 pub struct Uid(TUID);
 
 impl Uid {
@@ -1867,7 +1868,25 @@ impl Uid {
 }
 
 pub struct Vst3Info {
-    pub class_id: Uid,
+    class_id: Uid,
+}
+
+impl Vst3Info {
+    #[inline]
+    pub fn with_class_id(class_id: Uid) -> Vst3Info {
+        Vst3Info { class_id }
+    }
+
+    #[inline]
+    pub fn class_id(mut self, class_id: Uid) -> Self {
+        self.class_id = class_id;
+        self
+    }
+
+    #[inline]
+    pub fn get_class_id(&self) -> Uid {
+        self.class_id
+    }
 }
 
 pub trait Vst3Plugin {

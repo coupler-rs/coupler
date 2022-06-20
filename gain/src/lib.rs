@@ -33,13 +33,12 @@ impl Plugin for Gain {
     type Editor = GainEditor;
 
     fn info() -> PluginInfo {
-        PluginInfo {
-            name: "Gain".to_string(),
-            vendor: "Photophore Systems".to_string(),
-            url: "https://photophore.systems".to_string(),
-            email: "support@photophore.systems".to_string(),
-            has_editor: true,
-        }
+        PluginInfo::new()
+            .name("Gain")
+            .vendor("Photophore Systems")
+            .url("https://photophore.systems")
+            .email("support@photophore.systems")
+            .has_editor(true)
     }
 
     fn buses() -> BusList {
@@ -76,13 +75,13 @@ impl Plugin for Gain {
 
 impl ClapPlugin for Gain {
     fn clap_info() -> ClapInfo {
-        ClapInfo { id: "systems.photophore.gain".to_string() }
+        ClapInfo::with_id("systems.photophore.gain")
     }
 }
 
 impl Vst3Plugin for Gain {
     fn vst3_info() -> Vst3Info {
-        Vst3Info { class_id: Uid::new(0x84B4DD04, 0x0D964565, 0x97AC3AAA, 0x87C5CCA7) }
+        Vst3Info::with_class_id(Uid::new(0x84B4DD04, 0x0D964565, 0x97AC3AAA, 0x87C5CCA7))
     }
 }
 
