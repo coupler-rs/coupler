@@ -316,12 +316,12 @@ impl<P: Plugin> Wrapper<P> {
 
         let mut inputs = Vec::with_capacity(bus_list.inputs.len());
         for bus_info in bus_list.inputs.iter() {
-            inputs.push(BusState { layout: bus_info.default_layout.clone(), enabled: true });
+            inputs.push(BusState::new(bus_info.default_layout.clone(), true));
         }
 
         let mut outputs = Vec::with_capacity(bus_list.outputs.len());
         for bus_info in bus_list.outputs.iter() {
-            outputs.push(BusState { layout: bus_info.default_layout.clone(), enabled: true });
+            outputs.push(BusState::new(bus_info.default_layout.clone(), true));
         }
 
         let bus_states = UnsafeCell::new(BusStates { inputs, outputs });
@@ -545,7 +545,7 @@ impl<P: Plugin> Wrapper<P> {
 
                     bus.media_type = media_types::AUDIO;
                     bus.direction = dir;
-                    bus.channel_count = bus_state.layout.channels() as i32;
+                    bus.channel_count = bus_state.layout().channels() as i32;
                     copy_wstring(&bus_info.name, &mut bus.name);
                     bus.bus_type = if index == 0 { bus_types::MAIN } else { bus_types::AUX };
                     bus.flags = BusInfo::DEFAULT_ACTIVE;
@@ -587,7 +587,7 @@ impl<P: Plugin> Wrapper<P> {
                 };
 
                 if let Some(bus_state) = bus_state {
-                    bus_state.enabled = if state == 0 { false } else { true };
+                    bus_state.set_enabled(if state == 0 { false } else { true });
                     return result::OK;
                 }
             }
@@ -625,7 +625,7 @@ impl<P: Plugin> Wrapper<P> {
                 processor_state.input_indices.clear();
                 let mut total_channels = 0;
                 for bus_state in bus_states.inputs.iter() {
-                    let channels = if bus_state.enabled { bus_state.layout.channels() } else { 0 };
+                    let channels = if bus_state.enabled() { bus_state.layout().channels() } else { 0 };
                     processor_state.input_indices.push((total_channels, total_channels + channels));
                     total_channels += channels;
                 }
@@ -637,7 +637,7 @@ impl<P: Plugin> Wrapper<P> {
                 processor_state.output_indices.clear();
                 let mut total_channels = 0;
                 for bus_state in bus_states.outputs.iter() {
-                    let channels = if bus_state.enabled { bus_state.layout.channels() } else { 0 };
+                    let channels = if bus_state.enabled() { bus_state.layout().channels() } else { 0 };
                     processor_state
                         .output_indices
                         .push((total_channels, total_channels + channels));
@@ -804,13 +804,13 @@ impl<P: Plugin> Wrapper<P> {
         if P::supports_layout(&candidate_inputs[..], &candidate_outputs[..]) {
             for (input, bus_state) in candidate_inputs.into_iter().zip(bus_states.inputs.iter_mut())
             {
-                bus_state.layout = input;
+                bus_state.set_layout(input);
             }
 
             for (output, bus_state) in
                 candidate_outputs.into_iter().zip(bus_states.outputs.iter_mut())
             {
-                bus_state.layout = output;
+                bus_state.set_layout(output);
             }
 
             return result::TRUE;
@@ -835,7 +835,7 @@ impl<P: Plugin> Wrapper<P> {
         };
 
         if let Some(bus_state) = bus_state {
-            *arr = bus_layout_to_speaker_arrangement(&bus_state.layout);
+            *arr = bus_layout_to_speaker_arrangement(bus_state.layout());
             return result::OK;
         }
 
@@ -986,11 +986,11 @@ impl<P: Plugin> Wrapper<P> {
                     slice::from_raw_parts(process_data.inputs, process_data.num_inputs as usize);
 
                 for (input, bus_state) in inputs.iter().zip(bus_states.inputs.iter()) {
-                    if !bus_state.enabled || bus_state.layout.channels() == 0 {
+                    if !bus_state.enabled() || bus_state.layout().channels() == 0 {
                         continue;
                     }
 
-                    if input.num_channels as usize != bus_state.layout.channels() {
+                    if input.num_channels as usize != bus_state.layout().channels() {
                         return result::INVALID_ARGUMENT;
                     }
 
@@ -1011,11 +1011,11 @@ impl<P: Plugin> Wrapper<P> {
                     slice::from_raw_parts(process_data.outputs, process_data.num_outputs as usize);
 
                 for (output, bus_state) in outputs.iter().zip(bus_states.outputs.iter()) {
-                    if !bus_state.enabled || bus_state.layout.channels() == 0 {
+                    if !bus_state.enabled() || bus_state.layout().channels() == 0 {
                         continue;
                     }
 
-                    if output.num_channels as usize != bus_state.layout.channels() {
+                    if output.num_channels as usize != bus_state.layout().channels() {
                         return result::INVALID_ARGUMENT;
                     }
 

@@ -4,6 +4,7 @@ pub enum BusLayout {
 }
 
 impl BusLayout {
+    #[inline]
     pub fn channels(&self) -> usize {
         match self {
             BusLayout::Stereo => 2,
@@ -12,17 +13,34 @@ impl BusLayout {
 }
 
 pub struct BusState {
-    pub(crate) layout: BusLayout,
-    pub(crate) enabled: bool,
+    layout: BusLayout,
+    enabled: bool,
 }
 
 impl BusState {
+    #[inline]
+    pub fn new(layout: BusLayout, enabled: bool) -> BusState {
+        BusState { layout, enabled }
+    }
+
+    #[inline]
     pub fn layout(&self) -> &BusLayout {
         &self.layout
     }
 
+    #[inline]
     pub fn enabled(&self) -> bool {
         self.enabled
+    }
+
+    #[inline]
+    pub fn set_layout(&mut self, layout: BusLayout) {
+        self.layout = layout;
+    }
+
+    #[inline]
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
     }
 }
 

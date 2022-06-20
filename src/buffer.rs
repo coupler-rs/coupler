@@ -288,7 +288,7 @@ impl<'a, 'b> Bus<'a, 'b> {
 
     #[inline]
     pub fn enabled(&self) -> bool {
-        self.state.enabled
+        self.state.enabled()
     }
 
     #[inline]
@@ -343,7 +343,7 @@ impl<'a, 'b> BusMut<'a, 'b> {
 
     #[inline]
     pub fn enabled(&self) -> bool {
-        self.state.enabled
+        self.state.enabled()
     }
 
     #[inline]
