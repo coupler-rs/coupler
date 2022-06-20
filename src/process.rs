@@ -48,7 +48,7 @@ pub enum EventType {
 #[derive(Copy, Clone)]
 pub struct ParamChange {
     pub id: ParamId,
-    pub value_normalized: f64,
+    pub value: f64,
 }
 
 pub trait Processor: Send + Sized {

@@ -6,12 +6,12 @@ use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 use std::marker::PhantomData;
 use std::rc::Rc;
 
-pub struct EditorContext {
-    handler: Rc<dyn EditorContextHandler>,
+pub struct EditorContext<P> {
+    handler: Rc<dyn EditorContextHandler<P>>,
 }
 
-impl EditorContext {
-    pub(crate) fn new(handler: Rc<dyn EditorContextHandler>) -> EditorContext {
+impl<P> EditorContext<P> {
+    pub fn new(handler: Rc<dyn EditorContextHandler<P>>) -> EditorContext<P> {
         EditorContext { handler }
     }
 
@@ -27,29 +27,29 @@ impl EditorContext {
         self.handler.end_edit(id);
     }
 
-    pub fn poll_params(&self) -> PollParams {
+    pub fn poll_params(&self) -> PollParams<P> {
         self.handler.poll_params()
     }
 }
 
-pub trait EditorContextHandler {
+pub trait EditorContextHandler<P> {
     fn begin_edit(&self, param_id: ParamId);
     fn perform_edit(&self, param_id: ParamId, value: f64);
     fn end_edit(&self, param_id: ParamId);
-    fn poll_params(&self) -> PollParams;
+    fn poll_params(&self) -> PollParams<P>;
 }
 
-pub struct PollParams<'a> {
+pub struct PollParams<'a, P> {
     pub(crate) iter: DrainIndices<'a>,
-    pub(crate) param_states: &'a ParamStates,
+    pub(crate) param_list: &'a ParamList<P>,
 }
 
-impl<'a> Iterator for PollParams<'a> {
+impl<'a, P> Iterator for PollParams<'a, P> {
     type Item = ParamId;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(index) = self.iter.next() {
-            Some(self.param_states.info[index].id)
+            Some(self.param_list.params()[index].get_id())
         } else {
             None
         }
@@ -69,7 +69,7 @@ pub trait Editor: Sized {
 
     fn open(
         plugin: PluginHandle<Self::Plugin>,
-        context: EditorContext,
+        context: EditorContext<Self::Plugin>,
         parent: Option<&ParentWindow>,
     ) -> Self;
     fn close(&mut self);
@@ -91,7 +91,7 @@ impl<P: Plugin> Editor for NoEditor<P> {
 
     fn open(
         _plugin: PluginHandle<Self::Plugin>,
-        _context: EditorContext,
+        _context: EditorContext<Self::Plugin>,
         _parent: Option<&ParentWindow>,
     ) -> Self {
         NoEditor { phantom: PhantomData }

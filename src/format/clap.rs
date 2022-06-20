@@ -10,7 +10,6 @@ use std::ffi::{c_void, CStr, CString};
 use std::marker::PhantomData;
 use std::os::raw::c_char;
 use std::ptr;
-use std::sync::Arc;
 
 struct ProcessorState<P: Plugin> {
     sample_rate: f64,
@@ -21,7 +20,7 @@ struct ProcessorState<P: Plugin> {
 struct Wrapper<P: Plugin> {
     #[allow(unused)]
     clap_plugin: clap_plugin,
-    plugin: Arc<P>,
+    plugin: PluginHandle<P>,
     processor_state: UnsafeCell<ProcessorState<P>>,
 }
 
@@ -53,7 +52,7 @@ impl<P: Plugin> Wrapper<P> {
                 get_extension: Self::get_extension,
                 on_main_thread: Self::on_main_thread,
             },
-            plugin: Arc::new(P::create()),
+            plugin: PluginHandle::new(),
             processor_state: UnsafeCell::new(ProcessorState {
                 sample_rate: 0.0,
                 max_buffer_size: 0,
@@ -82,15 +81,13 @@ impl<P: Plugin> Wrapper<P> {
         processor_state.sample_rate = sample_rate;
         processor_state.max_buffer_size = max_frames_count as usize;
 
-        let plugin = PluginHandle::new(wrapper.plugin.clone());
-
         let context = ProcessContext::new(
             processor_state.sample_rate,
             processor_state.max_buffer_size,
             &[],
             &[],
         );
-        processor_state.processor = Some(P::Processor::create(plugin, &context));
+        processor_state.processor = Some(P::Processor::create(wrapper.plugin.clone(), &context));
 
         true
     }

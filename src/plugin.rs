@@ -25,19 +25,33 @@ pub trait Plugin: Send + Sync + Sized + 'static {
     fn deserialize(&self, read: &mut impl std::io::Read) -> Result<(), ()>;
 }
 
+struct PluginState<P> {
+    params: ParamList<P>,
+    plugin: P,
+}
+
 pub struct PluginHandle<P> {
-    plugin: Arc<P>,
+    state: Arc<PluginState<P>>,
 }
 
 impl<P> Clone for PluginHandle<P> {
     fn clone(&self) -> PluginHandle<P> {
-        PluginHandle { plugin: self.plugin.clone() }
+        PluginHandle { state: self.state.clone() }
+    }
+}
+
+impl<P: Plugin> PluginHandle<P> {
+    pub fn new() -> PluginHandle<P> {
+        let plugin = P::create();
+        let params = plugin.params();
+
+        PluginHandle { state: Arc::new(PluginState { params, plugin }) }
     }
 }
 
 impl<P> PluginHandle<P> {
-    pub fn new(plugin: Arc<P>) -> PluginHandle<P> {
-        PluginHandle { plugin }
+    pub fn params(&self) -> &ParamList<P> {
+        &self.state.params
     }
 }
 
@@ -45,6 +59,6 @@ impl<P> Deref for PluginHandle<P> {
     type Target = P;
 
     fn deref(&self) -> &Self::Target {
-        &self.plugin
+        &self.state.plugin
     }
 }
