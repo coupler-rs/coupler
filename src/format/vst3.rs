@@ -1198,7 +1198,7 @@ impl<P: Plugin> Wrapper<P> {
             copy_wstring(&param_info.get_name(), &mut info.short_title);
             copy_wstring(&param_info.get_label(), &mut info.units);
             info.step_count = if let Some(steps) = param_info.get_steps() {
-                steps.saturating_sub(1) as i32
+                (steps.max(2) - 1) as i32
             } else {
                 0
             };
