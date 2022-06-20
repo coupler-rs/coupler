@@ -1,7 +1,8 @@
 use std::cell::{Cell, RefCell};
 
+use coupler::atomic::AtomicF64;
 use coupler::format::{clap::*, vst3::*};
-use coupler::{buffer::*, bus::*, editor::*, param, param::*, plugin::*, process::*};
+use coupler::{buffer::*, bus::*, editor::*, param::*, plugin::*, process::*};
 use graphics::{Canvas, Color, Path, Vec2};
 use window::{
     Application, Cursor, MouseButton, Parent, Point, Rect, Window, WindowHandler, WindowOptions,
@@ -9,8 +10,22 @@ use window::{
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
-pub struct Gain {
-    gain: FloatParam,
+const GAIN: ParamId = 0;
+
+struct GainAccessor;
+
+impl Access<Gain> for GainAccessor {
+    fn get(&self, target: &Gain) -> f64 {
+        target.gain.load()
+    }
+
+    fn set(&self, target: &Gain, value: f64) {
+        target.gain.store(value);
+    }
+}
+
+struct Gain {
+    gain: AtomicF64,
 }
 
 impl Plugin for Gain {
@@ -36,21 +51,21 @@ impl Plugin for Gain {
     }
 
     fn create() -> Gain {
-        Gain { gain: FloatParam::new(0, "Gain", 0.0, 1.0, 1.0) }
+        Gain { gain: AtomicF64::new(0.0) }
     }
 
     fn params(&self) -> ParamList<Self> {
-        ParamList::new().param(param!(Gain, gain))
+        ParamList::new().param(ParamInfo::new(GAIN).name("Gain").accessor(GainAccessor))
     }
 
     fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()> {
-        write.write(&self.gain.get().to_le_bytes()).map(|_| ()).map_err(|_| ())
+        write.write(&self.gain.load().to_le_bytes()).map(|_| ()).map_err(|_| ())
     }
 
     fn deserialize(&self, read: &mut impl std::io::Read) -> Result<(), ()> {
         let mut buf = [0; std::mem::size_of::<u64>()];
         if read.read(&mut buf).is_ok() {
-            self.gain.set(f64::from_le_bytes(buf));
+            self.gain.store(f64::from_le_bytes(buf));
             Ok(())
         } else {
             Err(())
@@ -70,7 +85,7 @@ impl Vst3Plugin for Gain {
     }
 }
 
-pub struct GainProcessor {
+struct GainProcessor {
     plugin: PluginHandle<Gain>,
     gain: f32,
     gain_target: f32,
@@ -82,13 +97,13 @@ impl Processor for GainProcessor {
     fn create(plugin: PluginHandle<Gain>, _context: &ProcessContext) -> Self {
         GainProcessor {
             plugin: plugin.clone(),
-            gain: plugin.gain.get() as f32,
-            gain_target: plugin.gain.get() as f32,
+            gain: plugin.gain.load() as f32,
+            gain_target: plugin.gain.load() as f32,
         }
     }
 
     fn reset(&mut self, _context: &ProcessContext) {
-        self.gain = self.plugin.gain.get() as f32;
+        self.gain = self.plugin.gain.load() as f32;
         self.gain_target = self.gain;
     }
 
@@ -96,11 +111,12 @@ impl Processor for GainProcessor {
         for (buffers, events) in buffers.split_at_events(events) {
             for event in events {
                 match event.event {
-                    EventType::ParamChange(change) => {
-                        if let Some(gain) = self.plugin.gain.read_change(change) {
-                            self.gain_target = gain as f32;
+                    EventType::ParamChange(change) => match change.id {
+                        GAIN => {
+                            self.gain_target = change.value as f32;
                         }
-                    }
+                        _ => {}
+                    },
                 }
             }
 
@@ -123,7 +139,7 @@ impl Processor for GainProcessor {
     }
 }
 
-pub struct GainEditor {
+struct GainEditor {
     #[allow(unused)]
     application: Application,
     window: Window,
@@ -134,7 +150,7 @@ impl Editor for GainEditor {
 
     fn open(
         plugin: PluginHandle<Gain>,
-        context: EditorContext,
+        context: EditorContext<Gain>,
         parent: Option<&ParentWindow>,
     ) -> Self {
         let parent =
@@ -179,14 +195,14 @@ impl Editor for GainEditor {
 
 struct GainWindowHandler {
     plugin: PluginHandle<Gain>,
-    context: EditorContext,
+    context: EditorContext<Gain>,
     canvas: RefCell<Canvas>,
     mouse: Cell<Point>,
     down: Cell<Option<(Point, f32)>>,
 }
 
 impl GainWindowHandler {
-    fn new(plugin: PluginHandle<Gain>, context: EditorContext) -> GainWindowHandler {
+    fn new(plugin: PluginHandle<Gain>, context: EditorContext<Gain>) -> GainWindowHandler {
         GainWindowHandler {
             plugin,
             context,
@@ -216,7 +232,7 @@ impl WindowHandler for GainWindowHandler {
 
         canvas.clear(Color::rgba(21, 26, 31, 255));
 
-        let value = self.plugin.gain.get() as f32;
+        let value = self.plugin.gain.load() as f32;
 
         let center = Vec2::new(128.0, 128.0);
         let radius = 32.0;
@@ -250,7 +266,7 @@ impl WindowHandler for GainWindowHandler {
         if let Some((start_position, start_value)) = self.down.get() {
             let new_value =
                 (start_value - 0.005 * (position.y - start_position.y) as f32).max(0.0).min(1.0);
-            self.plugin.gain.perform_edit(&self.context, new_value as f64);
+            self.context.perform_edit(GAIN, new_value as f64);
         } else {
             self.update_cursor(window);
         }
@@ -262,9 +278,9 @@ impl WindowHandler for GainWindowHandler {
             if position.x >= 96.0 && position.x < 160.0 && position.y >= 96.0 && position.y < 160.0
             {
                 window.set_cursor(Cursor::SizeNs);
-                self.plugin.gain.begin_edit(&self.context);
-                let value = self.plugin.gain.get() as f32;
-                self.plugin.gain.perform_edit(&self.context, value as f64);
+                self.context.begin_edit(GAIN);
+                let value = self.plugin.gain.load() as f32;
+                self.context.perform_edit(GAIN, value as f64);
                 self.down.set(Some((position, value)));
                 return true;
             }
@@ -276,7 +292,7 @@ impl WindowHandler for GainWindowHandler {
     fn mouse_up(&self, window: &Window, button: MouseButton) -> bool {
         if button == MouseButton::Left {
             if self.down.get().is_some() {
-                self.plugin.gain.end_edit(&self.context);
+                self.context.end_edit(GAIN);
                 self.down.set(None);
                 self.update_cursor(window);
                 return true;
