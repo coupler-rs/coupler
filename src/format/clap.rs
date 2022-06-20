@@ -1,5 +1,7 @@
 use crate::{plugin::*, process::*};
 
+use super::util::copy_cstring;
+
 use clap_sys::ext::params::*;
 use clap_sys::{
     entry::*, events::*, host::*, id::*, plugin::*, plugin_factory::*, process::*, version::*,
@@ -10,6 +12,7 @@ use std::ffi::{c_void, CStr, CString};
 use std::marker::PhantomData;
 use std::os::raw::c_char;
 use std::ptr;
+use std::slice;
 
 struct ProcessorState<P: Plugin> {
     sample_rate: f64,
@@ -28,12 +31,12 @@ unsafe impl<P: Plugin> Sync for Wrapper<P> {}
 
 impl<P: Plugin> Wrapper<P> {
     const PARAMS: clap_plugin_params = clap_plugin_params {
-        count: Self::count,
-        get_info: Self::get_info,
-        get_value: Self::get_value,
-        value_to_text: Self::value_to_text,
-        text_to_value: Self::text_to_value,
-        flush: Self::flush,
+        count: Self::params_count,
+        get_info: Self::params_get_info,
+        get_value: Self::params_get_value,
+        value_to_text: Self::params_value_to_text,
+        text_to_value: Self::params_text_to_value,
+        flush: Self::params_flush,
     };
 
     pub fn create(desc: *const clap_plugin_descriptor) -> *mut Wrapper<P> {
@@ -140,50 +143,131 @@ impl<P: Plugin> Wrapper<P> {
 
     unsafe extern "C" fn on_main_thread(_plugin: *const clap_plugin) {}
 
-    unsafe extern "C" fn count(_plugin: *const clap_plugin) -> u32 {
-        0
+    unsafe extern "C" fn params_count(plugin: *const clap_plugin) -> u32 {
+        let wrapper = &*(plugin as *mut Wrapper<P>);
+
+        PluginHandle::params(&wrapper.plugin).params().len() as u32
     }
 
-    unsafe extern "C" fn get_info(
-        _plugin: *const clap_plugin,
-        _param_index: u32,
-        _param_info: *mut clap_param_info,
+    unsafe extern "C" fn params_get_info(
+        plugin: *const clap_plugin,
+        param_index: u32,
+        param_info: *mut clap_param_info,
     ) -> bool {
+        let wrapper = &*(plugin as *mut Wrapper<P>);
+
+        let info = &mut *param_info;
+
+        if let Some(param_info) =
+            PluginHandle::params(&wrapper.plugin).params().get(param_index as usize)
+        {
+            info.id = param_info.get_id();
+            info.flags = CLAP_PARAM_IS_AUTOMATABLE;
+            info.cookie = ptr::null_mut();
+            copy_cstring(param_info.get_name(), &mut info.name);
+            copy_cstring("", &mut info.module);
+            info.default_value = param_info.get_default();
+
+            if let Some(steps) = param_info.get_steps() {
+                info.flags |= CLAP_PARAM_IS_STEPPED;
+                info.min_value = 0.0;
+                info.max_value = (steps.max(2) - 1) as f64;
+            } else {
+                info.min_value = 0.0;
+                info.max_value = 1.0;
+            }
+
+            return true;
+        }
+
         false
     }
 
-    unsafe extern "C" fn get_value(
-        _plugin: *const clap_plugin,
-        _param_id: clap_id,
-        _value: *mut f64,
+    unsafe extern "C" fn params_get_value(
+        plugin: *const clap_plugin,
+        param_id: clap_id,
+        value: *mut f64,
     ) -> bool {
+        let wrapper = &*(plugin as *mut Wrapper<P>);
+
+        if let Some(param_info) = PluginHandle::params(&wrapper.plugin).get(param_id) {
+            let value_mapped = param_info.get_accessor().get(&wrapper.plugin);
+            *value = param_info.get_mapping().unmap(value_mapped);
+
+            return true;
+        }
+
         false
     }
 
-    unsafe extern "C" fn value_to_text(
-        _plugin: *const clap_plugin,
-        _param_id: clap_id,
-        _value: f64,
-        _display: *mut c_char,
-        _size: u32,
+    unsafe extern "C" fn params_value_to_text(
+        plugin: *const clap_plugin,
+        param_id: clap_id,
+        value: f64,
+        display: *mut c_char,
+        size: u32,
     ) -> bool {
+        let wrapper = &*(plugin as *mut Wrapper<P>);
+
+        if let Some(param_info) = PluginHandle::params(&wrapper.plugin).get(param_id) {
+            let mut string = String::new();
+            let value_mapped = param_info.get_mapping().map(value);
+            param_info.get_format().display(value_mapped, &mut string);
+
+            if size == 0 {
+                return false;
+            }
+
+            let display = slice::from_raw_parts_mut(display, size as usize);
+            copy_cstring(&string, display);
+
+            return true;
+        }
+
         false
     }
 
-    unsafe extern "C" fn text_to_value(
-        _plugin: *const clap_plugin,
-        _param_id: clap_id,
-        _display: *const c_char,
-        _value: *mut f64,
+    unsafe extern "C" fn params_text_to_value(
+        plugin: *const clap_plugin,
+        param_id: clap_id,
+        display: *const c_char,
+        value: *mut f64,
     ) -> bool {
+        let wrapper = &*(plugin as *mut Wrapper<P>);
+
+        if let Some(param_info) = PluginHandle::params(&wrapper.plugin).get(param_id) {
+            if let Ok(display) = CStr::from_ptr(display).to_str() {
+                if let Ok(value_mapped) = param_info.get_format().parse(display) {
+                    *value = param_info.get_mapping().unmap(value_mapped);
+                    return true;
+                }
+            }
+        }
+
         false
     }
 
-    unsafe extern "C" fn flush(
-        _plugin: *const clap_plugin,
-        _in_: *const clap_input_events,
+    unsafe extern "C" fn params_flush(
+        plugin: *const clap_plugin,
+        in_: *const clap_input_events,
         _out: *const clap_output_events,
     ) {
+        let wrapper = &*(plugin as *mut Wrapper<P>);
+
+        let size = ((*in_).size)(in_);
+        for i in 0..size {
+            let event = ((*in_).get)(in_, i);
+
+            if (*event).type_ == CLAP_EVENT_PARAM_VALUE {
+                let event = &*(event as *const clap_event_param_value);
+
+                if let Some(param_info) = PluginHandle::params(&wrapper.plugin).get(event.param_id)
+                {
+                    let value = param_info.get_mapping().map(event.value);
+                    param_info.get_accessor().set(&wrapper.plugin, value);
+                }
+            }
+        }
     }
 }
 

@@ -2,8 +2,10 @@ use crate::atomic::AtomicBitset;
 use crate::process::{Event, ProcessContext, *};
 use crate::{buffer::*, bus::*, editor::*, param::*, plugin::*};
 
+use super::util::copy_cstring;
+
 use std::cell::{Cell, UnsafeCell};
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{c_void, CStr};
 use std::marker::PhantomData;
 use std::os::raw::{c_char, c_int};
 use std::rc::Rc;
@@ -23,21 +25,6 @@ macro_rules! offset_of {
 
         (field as *const c_void).offset_from(base as *const c_void)
     }};
-}
-
-fn copy_cstring(src: &str, dst: &mut [c_char]) {
-    let c_string = CString::new(src).unwrap_or_else(|_| CString::default());
-    let bytes = c_string.as_bytes_with_nul();
-
-    for (src, dst) in bytes.iter().zip(dst.iter_mut()) {
-        *dst = *src as c_char;
-    }
-
-    if bytes.len() > dst.len() {
-        if let Some(last) = dst.last_mut() {
-            *last = 0;
-        }
-    }
 }
 
 fn copy_wstring(src: &str, dst: &mut [i16]) {
