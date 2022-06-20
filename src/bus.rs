@@ -1,3 +1,4 @@
+#[non_exhaustive]
 #[derive(Eq, PartialEq, Clone)]
 pub enum BusFormat {
     Stereo,
