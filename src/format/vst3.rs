@@ -197,7 +197,7 @@ struct Wrapper<P: Plugin> {
     plug_view: *const IPlugView,
     event_handler: *const IEventHandler,
     timer_handler: *const ITimerHandler,
-    info: PluginInfo,
+    has_editor: bool,
     bus_list: BusList,
     bus_config_list: BusConfigList,
     bus_config_set: HashSet<BusConfig>,
@@ -324,7 +324,7 @@ impl<P: Plugin> Wrapper<P> {
         on_timer: Self::on_timer,
     };
 
-    pub fn create(info: PluginInfo) -> *mut Wrapper<P> {
+    pub fn create(info: &PluginInfo) -> *mut Wrapper<P> {
         let bus_list = P::buses();
         let bus_config_list = P::bus_configs();
 
@@ -409,7 +409,7 @@ impl<P: Plugin> Wrapper<P> {
             plug_view: &Wrapper::<P>::PLUG_VIEW_VTABLE as *const _,
             event_handler: &Wrapper::<P>::EVENT_HANDLER_VTABLE as *const _,
             timer_handler: &Wrapper::<P>::TIMER_HANDLER_VTABLE as *const _,
-            info,
+            has_editor: info.get_has_editor(),
             bus_list,
             bus_config_list,
             bus_config_set,
@@ -454,7 +454,7 @@ impl<P: Plugin> Wrapper<P> {
             return result::OK;
         }
 
-        if iid == IPlugView::IID && wrapper.info.get_has_editor() {
+        if iid == IPlugView::IID && wrapper.has_editor {
             Self::add_ref(this);
             *obj = this.offset(offset_of!(Self, plug_view));
             return result::OK;
@@ -1451,7 +1451,7 @@ impl<P: Plugin> Wrapper<P> {
     ) -> *mut *const IPlugView {
         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
-        if !wrapper.info.get_has_editor() {
+        if !wrapper.has_editor {
             return ptr::null_mut();
         }
 
@@ -1884,7 +1884,7 @@ impl<P: Plugin + Vst3Plugin> Factory<P> {
             return result::INVALID_ARGUMENT;
         }
 
-        *obj = Wrapper::<P>::create(factory.info.clone()) as *mut c_void;
+        *obj = Wrapper::<P>::create(&factory.info) as *mut c_void;
 
         result::OK
     }
