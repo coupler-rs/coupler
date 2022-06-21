@@ -1,8 +1,8 @@
 use crate::{bus::*, plugin::*, process::*};
 
-use super::util::copy_cstring;
+use super::util::{self, copy_cstring};
 
-use clap_sys::ext::{audio_ports::*, params::*};
+use clap_sys::ext::{audio_ports::*, audio_ports_config::*, params::*};
 use clap_sys::{
     entry::*, events::*, host::*, id::*, plugin::*, plugin_factory::*, process::*, version::*,
 };
@@ -13,6 +13,12 @@ use std::marker::PhantomData;
 use std::os::raw::c_char;
 use std::ptr;
 use std::slice;
+
+fn bus_format_to_port_type(bus_format: &BusFormat) -> *const c_char {
+    match bus_format {
+        BusFormat::Stereo => CLAP_PORT_STEREO,
+    }
+}
 
 struct BusStates {
     inputs: Vec<BusState>,
@@ -32,6 +38,7 @@ struct Wrapper<P: Plugin> {
     #[allow(unused)]
     clap_plugin: clap_plugin,
     bus_list: BusList,
+    bus_config_list: BusConfigList,
     plugin: PluginHandle<P>,
     processor_state: UnsafeCell<ProcessorState<P>>,
 }
@@ -41,6 +48,12 @@ unsafe impl<P: Plugin> Sync for Wrapper<P> {}
 impl<P: Plugin> Wrapper<P> {
     const AUDIO_PORTS: clap_plugin_audio_ports =
         clap_plugin_audio_ports { count: Self::audio_ports_count, get: Self::audio_ports_get };
+
+    const AUDIO_PORTS_CONFIG: clap_plugin_audio_ports_config = clap_plugin_audio_ports_config {
+        count: Self::audio_ports_config_count,
+        get: Self::audio_ports_config_get,
+        select: Self::audio_ports_config_select,
+    };
 
     const PARAMS: clap_plugin_params = clap_plugin_params {
         count: Self::params_count,
@@ -54,6 +67,8 @@ impl<P: Plugin> Wrapper<P> {
     pub fn create(desc: *const clap_plugin_descriptor) -> *mut Wrapper<P> {
         let bus_list = P::buses();
         let bus_config_list = P::bus_configs();
+
+        util::validate_bus_configs(&bus_list, &bus_config_list);
 
         let default_config = bus_config_list.get_default().unwrap();
 
@@ -85,6 +100,7 @@ impl<P: Plugin> Wrapper<P> {
                 on_main_thread: Self::on_main_thread,
             },
             bus_list,
+            bus_config_list,
             plugin: PluginHandle::new(),
             processor_state: UnsafeCell::new(ProcessorState {
                 sample_rate: 0.0,
@@ -171,6 +187,11 @@ impl<P: Plugin> Wrapper<P> {
             return &Self::AUDIO_PORTS as *const clap_plugin_audio_ports as *const c_void;
         }
 
+        if id == CStr::from_ptr(CLAP_EXT_AUDIO_PORTS_CONFIG) {
+            return &Self::AUDIO_PORTS_CONFIG as *const clap_plugin_audio_ports_config
+                as *const c_void;
+        }
+
         if id == CStr::from_ptr(CLAP_EXT_PARAMS) {
             return &Self::PARAMS as *const clap_plugin_params as *const c_void;
         }
@@ -218,10 +239,79 @@ impl<P: Plugin> Wrapper<P> {
             copy_cstring(bus_info.get_name(), &mut info.name);
             info.flags = if index == 0 { CLAP_AUDIO_PORT_IS_MAIN } else { 0 };
             info.channel_count = bus_state.format().channels() as u32;
-            info.port_type = match bus_state.format() {
-                BusFormat::Stereo => CLAP_PORT_STEREO,
-            };
+            info.port_type = bus_format_to_port_type(bus_state.format());
             info.in_place_pair = CLAP_INVALID_ID;
+
+            return true;
+        }
+
+        false
+    }
+
+    unsafe extern "C" fn audio_ports_config_count(plugin: *const clap_plugin) -> u32 {
+        let wrapper = &*(plugin as *mut Wrapper<P>);
+
+        wrapper.bus_config_list.get_configs().len() as u32
+    }
+
+    unsafe extern "C" fn audio_ports_config_get(
+        plugin: *const clap_plugin,
+        index: u32,
+        config: *mut clap_audio_ports_config,
+    ) -> bool {
+        let wrapper = &*(plugin as *mut Wrapper<P>);
+
+        if let Some(bus_config) = wrapper.bus_config_list.get_configs().get(index as usize) {
+            let config = &mut *config;
+
+            config.id = index;
+            copy_cstring("", &mut config.name); // TODO: Generate a name for the bus config
+            config.input_port_count = bus_config.get_inputs().len() as u32;
+            config.output_port_count = bus_config.get_outputs().len() as u32;
+
+            config.has_main_input = !bus_config.get_inputs().is_empty();
+            if let Some(bus_format) = bus_config.get_inputs().first() {
+                config.main_input_channel_count = bus_format.channels() as u32;
+                config.main_input_port_type = bus_format_to_port_type(bus_format);
+            } else {
+                config.main_input_channel_count = 0;
+                config.main_input_port_type = ptr::null();
+            }
+
+            config.has_main_output = !bus_config.get_outputs().is_empty();
+            if let Some(bus_format) = bus_config.get_outputs().first() {
+                config.main_output_channel_count = bus_format.channels() as u32;
+                config.main_output_port_type = bus_format_to_port_type(bus_format);
+            } else {
+                config.main_output_channel_count = 0;
+                config.main_output_port_type = ptr::null();
+            }
+
+            return true;
+        }
+
+        false
+    }
+
+    unsafe extern "C" fn audio_ports_config_select(
+        plugin: *const clap_plugin,
+        config_id: clap_id,
+    ) -> bool {
+        let wrapper = &*(plugin as *mut Wrapper<P>);
+        let processor_state = &mut *wrapper.processor_state.get();
+
+        if let Some(bus_config) = wrapper.bus_config_list.get_configs().get(config_id as usize) {
+            for (input, bus_state) in
+                bus_config.get_inputs().iter().zip(processor_state.bus_states.inputs.iter_mut())
+            {
+                bus_state.set_format(input.clone());
+            }
+
+            for (output, bus_state) in
+                bus_config.get_outputs().iter().zip(processor_state.bus_states.outputs.iter_mut())
+            {
+                bus_state.set_format(output.clone());
+            }
 
             return true;
         }

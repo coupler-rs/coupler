@@ -2,7 +2,7 @@ use crate::atomic::AtomicBitset;
 use crate::process::{Event, ProcessContext, *};
 use crate::{buffer::*, bus::*, editor::*, param::*, plugin::*};
 
-use super::util::copy_cstring;
+use super::util::{self, copy_cstring};
 
 use std::cell::{Cell, UnsafeCell};
 use std::collections::HashSet;
@@ -318,31 +318,12 @@ impl<P: Plugin> Wrapper<P> {
         let bus_list = P::buses();
         let bus_config_list = P::bus_configs();
 
-        let input_count = bus_list.get_inputs().len();
-        let output_count = bus_list.get_inputs().len();
-        for config in bus_config_list.get_configs() {
-            assert!(
-                config.get_inputs().len() == input_count,
-                "bus config specifies {} inputs but plugin has {} inputs:\n{:?}",
-                config.get_inputs().len(),
-                input_count,
-                &config
-            );
-
-            assert!(
-                config.get_outputs().len() == output_count,
-                "bus config specifies {} outputs but plugin has {} outputs:\n{:?}",
-                config.get_outputs().len(),
-                output_count,
-                &config
-            );
-        }
+        util::validate_bus_configs(&bus_list, &bus_config_list);
 
         let bus_config_set =
             bus_config_list.get_configs().iter().cloned().collect::<HashSet<BusConfig>>();
 
-        let default_config =
-            bus_config_list.get_default().expect("must specify at least one bus config");
+        let default_config = bus_config_list.get_default().unwrap();
 
         let mut inputs = Vec::with_capacity(bus_list.get_inputs().len());
         for format in default_config.get_inputs() {
