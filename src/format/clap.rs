@@ -60,6 +60,7 @@ struct EditorState<P: Plugin> {
     editor: Option<P::Editor>,
 }
 
+#[repr(C)]
 struct Wrapper<P: Plugin> {
     #[allow(unused)]
     clap_plugin: clap_plugin,
