@@ -46,8 +46,10 @@ struct Wrapper<P: Plugin> {
 unsafe impl<P: Plugin> Sync for Wrapper<P> {}
 
 impl<P: Plugin> Wrapper<P> {
-    const AUDIO_PORTS: clap_plugin_audio_ports =
-        clap_plugin_audio_ports { count: Self::audio_ports_count, get: Self::audio_ports_get };
+    const AUDIO_PORTS: clap_plugin_audio_ports = clap_plugin_audio_ports {
+        count: Self::audio_ports_count,
+        get: Self::audio_ports_get,
+    };
 
     const AUDIO_PORTS_CONFIG: clap_plugin_audio_ports_config = clap_plugin_audio_ports_config {
         count: Self::audio_ports_config_count,
@@ -237,7 +239,11 @@ impl<P: Plugin> Wrapper<P> {
 
             info.id = index;
             copy_cstring(bus_info.get_name(), &mut info.name);
-            info.flags = if index == 0 { CLAP_AUDIO_PORT_IS_MAIN } else { 0 };
+            info.flags = if index == 0 {
+                CLAP_AUDIO_PORT_IS_MAIN
+            } else {
+                0
+            };
             info.channel_count = bus_state.format().channels() as u32;
             info.port_type = bus_format_to_port_type(bus_state.format());
             info.in_place_pair = CLAP_INVALID_ID;
@@ -300,15 +306,23 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(plugin as *mut Wrapper<P>);
         let processor_state = &mut *wrapper.processor_state.get();
 
-        if let Some(bus_config) = wrapper.bus_config_list.get_configs().get(config_id as usize) {
-            for (input, bus_state) in
-                bus_config.get_inputs().iter().zip(processor_state.bus_states.inputs.iter_mut())
+        if let Some(bus_config) = wrapper
+            .bus_config_list
+            .get_configs()
+            .get(config_id as usize)
+        {
+            for (input, bus_state) in bus_config
+                .get_inputs()
+                .iter()
+                .zip(processor_state.bus_states.inputs.iter_mut())
             {
                 bus_state.set_format(input.clone());
             }
 
-            for (output, bus_state) in
-                bus_config.get_outputs().iter().zip(processor_state.bus_states.outputs.iter_mut())
+            for (output, bus_state) in bus_config
+                .get_outputs()
+                .iter()
+                .zip(processor_state.bus_states.outputs.iter_mut())
             {
                 bus_state.set_format(output.clone());
             }
@@ -334,8 +348,9 @@ impl<P: Plugin> Wrapper<P> {
 
         let info = &mut *param_info;
 
-        if let Some(param_info) =
-            PluginHandle::params(&wrapper.plugin).params().get(param_index as usize)
+        if let Some(param_info) = PluginHandle::params(&wrapper.plugin)
+            .params()
+            .get(param_index as usize)
         {
             info.id = param_info.get_id();
             info.flags = CLAP_PARAM_IS_AUTOMATABLE;

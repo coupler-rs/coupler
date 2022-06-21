@@ -42,16 +42,23 @@ impl Plugin for Gain {
     }
 
     fn buses() -> BusList {
-        BusList::new().input(BusInfo::new("Input")).output(BusInfo::new("Output"))
+        BusList::new()
+            .input(BusInfo::new("Input"))
+            .output(BusInfo::new("Output"))
     }
 
     fn bus_configs() -> BusConfigList {
-        BusConfigList::new()
-            .default(BusConfig::new().input(BusFormat::Stereo).output(BusFormat::Stereo))
+        BusConfigList::new().default(
+            BusConfig::new()
+                .input(BusFormat::Stereo)
+                .output(BusFormat::Stereo),
+        )
     }
 
     fn create() -> Gain {
-        Gain { gain: AtomicF64::new(0.0) }
+        Gain {
+            gain: AtomicF64::new(0.0),
+        }
     }
 
     fn params(&self) -> ParamList<Self> {
@@ -59,7 +66,10 @@ impl Plugin for Gain {
     }
 
     fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()> {
-        write.write(&self.gain.load().to_le_bytes()).map(|_| ()).map_err(|_| ())
+        write
+            .write(&self.gain.load().to_le_bytes())
+            .map(|_| ())
+            .map_err(|_| ())
     }
 
     fn deserialize(&self, read: &mut impl std::io::Read) -> Result<(), ()> {
@@ -153,15 +163,23 @@ impl Editor for GainEditor {
         context: EditorContext<Gain>,
         parent: Option<&ParentWindow>,
     ) -> Self {
-        let parent =
-            if let Some(parent) = parent { Parent::Parent(parent) } else { Parent::Detached };
+        let parent = if let Some(parent) = parent {
+            Parent::Parent(parent)
+        } else {
+            Parent::Detached
+        };
 
         let application = Application::new().unwrap();
 
         let window = Window::open(
             &application,
             WindowOptions {
-                rect: Rect { x: 0.0, y: 0.0, width: 256.0, height: 256.0 },
+                rect: Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 256.0,
+                    height: 256.0,
+                },
                 parent,
                 handler: Box::new(GainWindowHandler::new(plugin, context)),
                 ..WindowOptions::default()
@@ -169,7 +187,10 @@ impl Editor for GainEditor {
         )
         .unwrap();
 
-        GainEditor { application, window }
+        GainEditor {
+            application,
+            window,
+        }
     }
 
     fn close(&mut self) {}
@@ -264,8 +285,9 @@ impl WindowHandler for GainWindowHandler {
     fn mouse_move(&self, window: &Window, position: Point) {
         self.mouse.set(position);
         if let Some((start_position, start_value)) = self.down.get() {
-            let new_value =
-                (start_value - 0.005 * (position.y - start_position.y) as f32).max(0.0).min(1.0);
+            let new_value = (start_value - 0.005 * (position.y - start_position.y) as f32)
+                .max(0.0)
+                .min(1.0);
             self.context.perform_edit(GAIN, new_value as f64);
         } else {
             self.update_cursor(window);

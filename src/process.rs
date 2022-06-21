@@ -14,7 +14,12 @@ impl<'a> ProcessContext<'a> {
         inputs: &'a [BusState],
         outputs: &'a [BusState],
     ) -> ProcessContext<'a> {
-        ProcessContext { sample_rate, max_buffer_size, inputs, outputs }
+        ProcessContext {
+            sample_rate,
+            max_buffer_size,
+            inputs,
+            outputs,
+        }
     }
 
     pub fn sample_rate(&self) -> f64 {

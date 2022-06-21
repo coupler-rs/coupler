@@ -90,7 +90,9 @@ impl<P> Drop for Vst3EditorContext<P> {
 
 impl<P> EditorContextHandler<P> for Vst3EditorContext<P> {
     fn begin_edit(&self, id: ParamId) {
-        let _ = PluginHandle::params(&self.plugin).index_of(id).expect("Invalid parameter id");
+        let _ = PluginHandle::params(&self.plugin)
+            .index_of(id)
+            .expect("Invalid parameter id");
 
         if let Some(component_handler) = self.component_handler.get() {
             unsafe {
@@ -100,8 +102,9 @@ impl<P> EditorContextHandler<P> for Vst3EditorContext<P> {
     }
 
     fn perform_edit(&self, id: ParamId, value: f64) {
-        let param_index =
-            PluginHandle::params(&self.plugin).index_of(id).expect("Invalid parameter id");
+        let param_index = PluginHandle::params(&self.plugin)
+            .index_of(id)
+            .expect("Invalid parameter id");
         let param_info = &PluginHandle::params(&self.plugin).params()[param_index];
 
         // If currently active, param changes will be delivered via process(), but if not,
@@ -122,11 +125,15 @@ impl<P> EditorContextHandler<P> for Vst3EditorContext<P> {
             }
         }
 
-        self.param_states.dirty_processor.set(param_index, Ordering::Release);
+        self.param_states
+            .dirty_processor
+            .set(param_index, Ordering::Release);
     }
 
     fn end_edit(&self, id: ParamId) {
-        let _ = PluginHandle::params(&self.plugin).index_of(id).expect("Invalid parameter id");
+        let _ = PluginHandle::params(&self.plugin)
+            .index_of(id)
+            .expect("Invalid parameter id");
 
         if let Some(component_handler) = self.component_handler.get() {
             unsafe {
@@ -137,7 +144,10 @@ impl<P> EditorContextHandler<P> for Vst3EditorContext<P> {
 
     fn poll_params(&self) -> PollParams<P> {
         PollParams {
-            iter: self.param_states.dirty_editor.drain_indices(Ordering::Acquire),
+            iter: self
+                .param_states
+                .dirty_editor
+                .drain_indices(Ordering::Acquire),
             param_list: PluginHandle::params(&self.plugin),
         }
     }
@@ -320,8 +330,11 @@ impl<P: Plugin> Wrapper<P> {
 
         util::validate_bus_configs(&bus_list, &bus_config_list);
 
-        let bus_config_set =
-            bus_config_list.get_configs().iter().cloned().collect::<HashSet<BusConfig>>();
+        let bus_config_set = bus_config_list
+            .get_configs()
+            .iter()
+            .cloned()
+            .collect::<HashSet<BusConfig>>();
 
         let default_config = bus_config_list.get_default().unwrap();
 
@@ -343,8 +356,11 @@ impl<P: Plugin> Wrapper<P> {
 
         let dirty_processor = AtomicBitset::with_len(param_count);
         let dirty_editor = AtomicBitset::with_len(param_count);
-        let param_states =
-            Arc::new(ParamStates { active: AtomicBool::new(false), dirty_processor, dirty_editor });
+        let param_states = Arc::new(ParamStates {
+            active: AtomicBool::new(false),
+            dirty_processor,
+            dirty_editor,
+        });
 
         let input_indices = Vec::with_capacity(bus_list.get_inputs().len());
         let input_ptrs = Vec::new();
@@ -379,7 +395,10 @@ impl<P: Plugin> Wrapper<P> {
             param_states: param_states.clone(),
         });
 
-        let editor_state = UnsafeCell::new(EditorState { context: editor_context, editor: None });
+        let editor_state = UnsafeCell::new(EditorState {
+            context: editor_context,
+            editor: None,
+        });
 
         Arc::into_raw(Arc::new(Wrapper {
             component: &Wrapper::<P>::COMPONENT_VTABLE as *const _,
@@ -560,7 +579,11 @@ impl<P: Plugin> Wrapper<P> {
                     bus.direction = dir;
                     bus.channel_count = bus_state.format().channels() as i32;
                     copy_wstring(bus_info.get_name(), &mut bus.name);
-                    bus.bus_type = if index == 0 { bus_types::MAIN } else { bus_types::AUX };
+                    bus.bus_type = if index == 0 {
+                        bus_types::MAIN
+                    } else {
+                        bus_types::AUX
+                    };
                     bus.flags = BusInfo::DEFAULT_ACTIVE;
 
                     return result::OK;
@@ -638,21 +661,33 @@ impl<P: Plugin> Wrapper<P> {
                 processor_state.input_indices.clear();
                 let mut total_channels = 0;
                 for bus_state in bus_states.inputs.iter() {
-                    let channels =
-                        if bus_state.enabled() { bus_state.format().channels() } else { 0 };
-                    processor_state.input_indices.push((total_channels, total_channels + channels));
+                    let channels = if bus_state.enabled() {
+                        bus_state.format().channels()
+                    } else {
+                        0
+                    };
+                    processor_state
+                        .input_indices
+                        .push((total_channels, total_channels + channels));
                     total_channels += channels;
                 }
                 processor_state.input_channels = total_channels;
 
-                processor_state.input_ptrs.reserve(processor_state.input_channels);
-                processor_state.input_ptrs.shrink_to(processor_state.input_channels);
+                processor_state
+                    .input_ptrs
+                    .reserve(processor_state.input_channels);
+                processor_state
+                    .input_ptrs
+                    .shrink_to(processor_state.input_channels);
 
                 processor_state.output_indices.clear();
                 let mut total_channels = 0;
                 for bus_state in bus_states.outputs.iter() {
-                    let channels =
-                        if bus_state.enabled() { bus_state.format().channels() } else { 0 };
+                    let channels = if bus_state.enabled() {
+                        bus_state.format().channels()
+                    } else {
+                        0
+                    };
                     processor_state
                         .output_indices
                         .push((total_channels, total_channels + channels));
@@ -660,21 +695,37 @@ impl<P: Plugin> Wrapper<P> {
                 }
                 processor_state.output_channels = total_channels;
 
-                processor_state.output_ptrs.reserve(processor_state.output_channels);
-                processor_state.output_ptrs.shrink_to(processor_state.output_channels);
+                processor_state
+                    .output_ptrs
+                    .reserve(processor_state.output_channels);
+                processor_state
+                    .output_ptrs
+                    .shrink_to(processor_state.output_channels);
 
                 // Ensure enough scratch buffer space for any number of aliased input buffers:
 
                 let scratch_buffer_size = processor_state.max_buffer_size
-                    * processor_state.input_channels.min(processor_state.output_channels);
+                    * processor_state
+                        .input_channels
+                        .min(processor_state.output_channels);
                 processor_state.scratch_buffers.reserve(scratch_buffer_size);
-                processor_state.scratch_buffers.shrink_to(scratch_buffer_size);
+                processor_state
+                    .scratch_buffers
+                    .shrink_to(scratch_buffer_size);
 
-                processor_state.output_ptr_set.reserve(processor_state.output_channels);
-                processor_state.output_ptr_set.shrink_to(processor_state.output_channels);
+                processor_state
+                    .output_ptr_set
+                    .reserve(processor_state.output_channels);
+                processor_state
+                    .output_ptr_set
+                    .shrink_to(processor_state.output_channels);
 
-                processor_state.aliased_inputs.reserve(processor_state.input_channels);
-                processor_state.aliased_inputs.shrink_to(processor_state.input_channels);
+                processor_state
+                    .aliased_inputs
+                    .reserve(processor_state.input_channels);
+                processor_state
+                    .aliased_inputs
+                    .shrink_to(processor_state.input_channels);
             }
         }
 
@@ -702,7 +753,10 @@ impl<P: Plugin> Wrapper<P> {
                 if result == result::OK {
                     Ok(bytes as usize)
                 } else {
-                    Err(io::Error::new(io::ErrorKind::Other, "Failed to read from stream"))
+                    Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Failed to read from stream",
+                    ))
                 }
             }
         }
@@ -711,7 +765,10 @@ impl<P: Plugin> Wrapper<P> {
 
         match wrapper.plugin.deserialize(&mut StreamReader(state)) {
             Ok(_) => {
-                wrapper.param_states.dirty_processor.set_all(Ordering::Release);
+                wrapper
+                    .param_states
+                    .dirty_processor
+                    .set_all(Ordering::Release);
                 wrapper.param_states.dirty_editor.set_all(Ordering::Release);
 
                 result::OK
@@ -741,7 +798,10 @@ impl<P: Plugin> Wrapper<P> {
                 if result == result::OK {
                     Ok(bytes as usize)
                 } else {
-                    Err(io::Error::new(io::ErrorKind::Other, "Failed to write to stream"))
+                    Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Failed to write to stream",
+                    ))
                 }
             }
 
@@ -794,8 +854,11 @@ impl<P: Plugin> Wrapper<P> {
 
         // Don't use from_raw_parts for zero-length inputs, since the pointer
         // may be null or unaligned
-        let inputs =
-            if num_ins > 0 { slice::from_raw_parts(inputs, num_ins as usize) } else { &[] };
+        let inputs = if num_ins > 0 {
+            slice::from_raw_parts(inputs, num_ins as usize)
+        } else {
+            &[]
+        };
         for input in inputs {
             if let Some(bus_format) = speaker_arrangement_to_bus_format(*input) {
                 candidate = candidate.input(bus_format);
@@ -806,8 +869,11 @@ impl<P: Plugin> Wrapper<P> {
 
         // Don't use from_raw_parts for zero-length inputs, since the pointer
         // may be null or unaligned
-        let outputs =
-            if num_outs > 0 { slice::from_raw_parts(outputs, num_outs as usize) } else { &[] };
+        let outputs = if num_outs > 0 {
+            slice::from_raw_parts(outputs, num_outs as usize)
+        } else {
+            &[]
+        };
         for output in outputs {
             if let Some(bus_format) = speaker_arrangement_to_bus_format(*output) {
                 candidate = candidate.output(bus_format);
@@ -817,14 +883,18 @@ impl<P: Plugin> Wrapper<P> {
         }
 
         if wrapper.bus_config_set.contains(&candidate) {
-            for (input, bus_state) in
-                candidate.get_inputs().iter().zip(bus_states.inputs.iter_mut())
+            for (input, bus_state) in candidate
+                .get_inputs()
+                .iter()
+                .zip(bus_states.inputs.iter_mut())
             {
                 bus_state.set_format(input.clone());
             }
 
-            for (output, bus_state) in
-                candidate.get_outputs().iter().zip(bus_states.outputs.iter_mut())
+            for (output, bus_state) in candidate
+                .get_outputs()
+                .iter()
+                .zip(bus_states.outputs.iter_mut())
             {
                 bus_state.set_format(output.clone());
             }
@@ -928,13 +998,20 @@ impl<P: Plugin> Wrapper<P> {
 
         processor_state.events.clear();
 
-        for index in wrapper.param_states.dirty_processor.drain_indices(Ordering::Acquire) {
+        for index in wrapper
+            .param_states
+            .dirty_processor
+            .drain_indices(Ordering::Acquire)
+        {
             let param_info = &PluginHandle::params(&wrapper.plugin).params()[index];
             let value = param_info.get_accessor().get(&wrapper.plugin);
 
             processor_state.events.push(Event {
                 offset: 0,
-                event: EventType::ParamChange(ParamChange { id: param_info.get_id(), value }),
+                event: EventType::ParamChange(ParamChange {
+                    id: param_info.get_id(),
+                    value,
+                }),
             });
         }
 
@@ -974,7 +1051,10 @@ impl<P: Plugin> Wrapper<P> {
                             &PluginHandle::params(&wrapper.plugin).params()[param_index];
                         let value = param_info.get_mapping().map(value_normalized);
                         param_info.get_accessor().set(&wrapper.plugin, value);
-                        wrapper.param_states.dirty_editor.set(param_index, Ordering::Release);
+                        wrapper
+                            .param_states
+                            .dirty_editor
+                            .set(param_index, Ordering::Release);
 
                         processor_state.events.push(Event {
                             offset: offset as usize,
@@ -985,7 +1065,9 @@ impl<P: Plugin> Wrapper<P> {
             }
         }
 
-        processor_state.events.sort_by_key(|param_change| param_change.offset);
+        processor_state
+            .events
+            .sort_by_key(|param_change| param_change.offset);
 
         processor_state.input_ptrs.clear();
         processor_state.output_ptrs.clear();
@@ -1045,16 +1127,24 @@ impl<P: Plugin> Wrapper<P> {
 
             // Copy aliased input buffers into scratch buffers
 
-            processor_state.output_ptr_set.extend_from_slice(&processor_state.output_ptrs);
+            processor_state
+                .output_ptr_set
+                .extend_from_slice(&processor_state.output_ptrs);
             processor_state.output_ptr_set.sort();
             processor_state.output_ptr_set.dedup();
 
             for (channel, input_ptr) in processor_state.input_ptrs.iter().enumerate() {
-                if processor_state.output_ptr_set.binary_search(&(*input_ptr as *mut f32)).is_ok() {
+                if processor_state
+                    .output_ptr_set
+                    .binary_search(&(*input_ptr as *mut f32))
+                    .is_ok()
+                {
                     processor_state.aliased_inputs.push(channel);
 
                     let input_buffer = slice::from_raw_parts(*input_ptr, samples);
-                    processor_state.scratch_buffers.extend_from_slice(input_buffer);
+                    processor_state
+                        .scratch_buffers
+                        .extend_from_slice(input_buffer);
                 }
             }
 
@@ -1067,8 +1157,12 @@ impl<P: Plugin> Wrapper<P> {
             processor_state.output_ptr_set.clear();
             processor_state.aliased_inputs.clear();
         } else {
-            processor_state.input_ptrs.resize(processor_state.input_channels, ptr::null());
-            processor_state.output_ptrs.resize(processor_state.output_channels, ptr::null_mut());
+            processor_state
+                .input_ptrs
+                .resize(processor_state.input_channels, ptr::null());
+            processor_state
+                .output_ptrs
+                .resize(processor_state.output_channels, ptr::null_mut());
         }
 
         let buffers = Buffers::new(
@@ -1191,8 +1285,9 @@ impl<P: Plugin> Wrapper<P> {
     ) -> TResult {
         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
 
-        if let Some(param_info) =
-            PluginHandle::params(&wrapper.plugin).params().get(param_index as usize)
+        if let Some(param_info) = PluginHandle::params(&wrapper.plugin)
+            .params()
+            .get(param_index as usize)
         {
             let info = &mut *info;
 
@@ -1316,8 +1411,14 @@ impl<P: Plugin> Wrapper<P> {
             let value = param_info.get_mapping().map(value);
             param_info.get_accessor().set(&wrapper.plugin, value);
 
-            wrapper.param_states.dirty_processor.set(param_index, Ordering::Release);
-            wrapper.param_states.dirty_editor.set(param_index, Ordering::Release);
+            wrapper
+                .param_states
+                .dirty_processor
+                .set(param_index, Ordering::Release);
+            wrapper
+                .param_states
+                .dirty_editor
+                .set(param_index, Ordering::Release);
 
             return result::OK;
         }
@@ -1416,19 +1517,28 @@ impl<P: Plugin> Wrapper<P> {
         #[cfg(target_os = "macos")]
         let parent = {
             use raw_window_handle::macos::MacOSHandle;
-            RawWindowHandle::MacOS(MacOSHandle { ns_view: parent, ..MacOSHandle::empty() })
+            RawWindowHandle::MacOS(MacOSHandle {
+                ns_view: parent,
+                ..MacOSHandle::empty()
+            })
         };
 
         #[cfg(target_os = "windows")]
         let parent = {
             use raw_window_handle::windows::WindowsHandle;
-            RawWindowHandle::Windows(WindowsHandle { hwnd: parent, ..WindowsHandle::empty() })
+            RawWindowHandle::Windows(WindowsHandle {
+                hwnd: parent,
+                ..WindowsHandle::empty()
+            })
         };
 
         #[cfg(target_os = "linux")]
         let parent = {
             use raw_window_handle::unix::XcbHandle;
-            RawWindowHandle::Xcb(XcbHandle { window: parent as u32, ..XcbHandle::empty() })
+            RawWindowHandle::Xcb(XcbHandle {
+                window: parent as u32,
+                ..XcbHandle::empty()
+            })
         };
 
         let context = EditorContext::new(editor_state.context.clone());

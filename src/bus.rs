@@ -52,7 +52,9 @@ pub struct BusInfo {
 impl BusInfo {
     #[inline]
     pub fn new(name: &str) -> BusInfo {
-        BusInfo { name: name.to_string() }
+        BusInfo {
+            name: name.to_string(),
+        }
     }
 
     #[inline]
@@ -75,7 +77,10 @@ pub struct BusList {
 impl BusList {
     #[inline]
     pub fn new() -> BusList {
-        BusList { inputs: Vec::new(), outputs: Vec::new() }
+        BusList {
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+        }
     }
 
     #[inline]
@@ -110,7 +115,10 @@ pub struct BusConfig {
 impl BusConfig {
     #[inline]
     pub fn new() -> BusConfig {
-        BusConfig { inputs: Vec::new(), outputs: Vec::new() }
+        BusConfig {
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+        }
     }
 
     #[inline]
@@ -143,7 +151,9 @@ pub struct BusConfigList {
 impl BusConfigList {
     #[inline]
     pub fn new() -> BusConfigList {
-        BusConfigList { configs: Vec::new() }
+        BusConfigList {
+            configs: Vec::new(),
+        }
     }
 
     #[inline]

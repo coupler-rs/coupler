@@ -190,12 +190,19 @@ pub struct ParamList<P> {
 impl<P> ParamList<P> {
     #[inline]
     pub fn new() -> ParamList<P> {
-        ParamList { params: Vec::new(), index: HashMap::new() }
+        ParamList {
+            params: Vec::new(),
+            index: HashMap::new(),
+        }
     }
 
     #[inline]
     pub fn param(mut self, param: ParamInfo<P>) -> Self {
-        assert!(self.index.get(&param.id).is_none(), "Duplicate parameter id {}", param.id);
+        assert!(
+            self.index.get(&param.id).is_none(),
+            "Duplicate parameter id {}",
+            param.id
+        );
 
         self.index.insert(param.id, self.params.len());
         self.params.push(param);

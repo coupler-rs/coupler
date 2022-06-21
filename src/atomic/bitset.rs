@@ -44,7 +44,13 @@ impl AtomicBitset {
         let mut iter = self.bits.iter();
         let first_cell = iter.next().map_or(0, |cell| cell.swap(0, ordering));
 
-        DrainIndices { iter, ordering, len: self.len, index: 0, current_cell: first_cell }
+        DrainIndices {
+            iter,
+            ordering,
+            len: self.len,
+            index: 0,
+            current_cell: first_cell,
+        }
     }
 }
 

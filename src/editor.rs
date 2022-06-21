@@ -94,7 +94,9 @@ impl<P: Plugin> Editor for NoEditor<P> {
         _context: EditorContext<Self::Plugin>,
         _parent: Option<&ParentWindow>,
     ) -> Self {
-        NoEditor { phantom: PhantomData }
+        NoEditor {
+            phantom: PhantomData,
+        }
     }
 
     fn close(&mut self) {}

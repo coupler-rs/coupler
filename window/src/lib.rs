@@ -40,7 +40,10 @@ pub struct Application {
 impl Application {
     pub fn new() -> Result<Application, ApplicationError> {
         match platform::Application::new() {
-            Ok(application) => Ok(Application { application, phantom: PhantomData }),
+            Ok(application) => Ok(Application {
+                application,
+                phantom: PhantomData,
+            }),
             Err(error) => Err(ApplicationError(error)),
         }
     }
@@ -144,7 +147,12 @@ impl<'p> Default for WindowOptions<'p> {
     fn default() -> Self {
         WindowOptions {
             title: "".to_string(),
-            rect: Rect { x: 0.0, y: 0.0, width: 0.0, height: 0.0 },
+            rect: Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 0.0,
+                height: 0.0,
+            },
             parent: Parent::None,
             handler: Box::new(DefaultWindowHandler),
         }

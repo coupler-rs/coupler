@@ -71,7 +71,12 @@ impl Application {
                 ));
             }
 
-            Ok(Application { inner: Rc::new(ApplicationInner { running: Cell::new(0), class }) })
+            Ok(Application {
+                inner: Rc::new(ApplicationInner {
+                    running: Cell::new(0),
+                    class,
+                }),
+            })
         }
     }
 
@@ -101,7 +106,9 @@ impl Application {
     }
 
     pub fn stop(&self) {
-        self.inner.running.set(self.inner.running.get().saturating_sub(1));
+        self.inner
+            .running
+            .set(self.inner.running.get().saturating_sub(1));
     }
 
     pub fn poll(&self) {
@@ -243,7 +250,10 @@ impl Window {
                 winuser::UpdateWindow(hwnd);
             }
 
-            Ok(crate::Window { window: Window { state }, phantom: PhantomData })
+            Ok(crate::Window {
+                window: Window { state },
+                phantom: PhantomData,
+            })
         }
     }
 
@@ -387,7 +397,10 @@ unsafe impl HasRawWindowHandle for Window {
             ptr::null_mut()
         };
 
-        RawWindowHandle::Windows(WindowsHandle { hwnd, ..WindowsHandle::empty() })
+        RawWindowHandle::Windows(WindowsHandle {
+            hwnd,
+            ..WindowsHandle::empty()
+        })
     }
 }
 
@@ -417,7 +430,10 @@ unsafe extern "system" fn wnd_proc(
     if !state_ptr.is_null() {
         let state = Rc::from_raw(state_ptr);
         let _ = Rc::into_raw(state.clone());
-        let window = crate::Window { window: Window { state }, phantom: PhantomData };
+        let window = crate::Window {
+            window: Window { state },
+            phantom: PhantomData,
+        };
 
         match msg {
             winuser::WM_CREATE => {

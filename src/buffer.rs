@@ -140,12 +140,19 @@ impl<'a, 'b, 'c> Buffers<'a, 'b, 'c> {
 
     #[inline]
     pub fn chunks(self, chunk_size: usize) -> Chunks<'a, 'b, 'c> {
-        Chunks { buffers: self, chunk_size }
+        Chunks {
+            buffers: self,
+            chunk_size,
+        }
     }
 
     #[inline]
     pub fn split_at_events<'e>(self, events: &'e [Event]) -> SplitAtEvents<'a, 'b, 'c, 'e> {
-        SplitAtEvents { buffers: self, events, offset: 0 }
+        SplitAtEvents {
+            buffers: self,
+            events,
+            offset: 0,
+        }
     }
 }
 

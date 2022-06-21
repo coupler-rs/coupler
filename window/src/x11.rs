@@ -17,7 +17,12 @@ unsafe fn intern_atom(
     connection: *mut xcb::xcb_connection_t,
     name: &[u8],
 ) -> xcb::xcb_intern_atom_cookie_t {
-    xcb::xcb_intern_atom(connection, 1, name.len() as u16, name.as_ptr() as *const os::raw::c_char)
+    xcb::xcb_intern_atom(
+        connection,
+        1,
+        name.len() as u16,
+        name.as_ptr() as *const os::raw::c_char,
+    )
 }
 
 unsafe fn intern_atom_reply(
@@ -138,10 +143,17 @@ impl Application {
                     self.handle_event(event);
                 }
 
-                let to_next_frame =
-                    self.inner.next_frame.get().saturating_duration_since(Instant::now());
+                let to_next_frame = self
+                    .inner
+                    .next_frame
+                    .get()
+                    .saturating_duration_since(Instant::now());
                 if !to_next_frame.is_zero() {
-                    let mut fds = [libc::pollfd { fd, events: libc::POLLIN, revents: 0 }];
+                    let mut fds = [libc::pollfd {
+                        fd,
+                        events: libc::POLLIN,
+                        revents: 0,
+                    }];
                     libc::poll(
                         fds.as_mut_ptr(),
                         fds.len() as u64,
@@ -155,7 +167,9 @@ impl Application {
     }
 
     pub fn stop(&self) {
-        self.inner.running.set(self.inner.running.get().saturating_sub(1));
+        self.inner
+            .running
+            .set(self.inner.running.get().saturating_sub(1));
     }
 
     pub fn poll(&self) {
@@ -197,12 +211,17 @@ impl Application {
             xcb::XCB_EXPOSE => {
                 let event = &*(event as *mut xcb_sys::xcb_expose_event_t);
                 if let Some(window) = self.inner.windows.borrow().get(&event.window) {
-                    window.window.state.expose_rects.borrow_mut().push(xcb::xcb_rectangle_t {
-                        x: event.x as i16,
-                        y: event.y as i16,
-                        width: event.width,
-                        height: event.height,
-                    });
+                    window
+                        .window
+                        .state
+                        .expose_rects
+                        .borrow_mut()
+                        .push(xcb::xcb_rectangle_t {
+                            x: event.x as i16,
+                            y: event.y as i16,
+                            width: event.width,
+                            height: event.height,
+                        });
 
                     if event.count == 0 {
                         let rects = window.window.state.expose_rects.take();
@@ -233,7 +252,10 @@ impl Application {
             xcb::XCB_MOTION_NOTIFY => {
                 let event = &*(event as *mut xcb_sys::xcb_motion_notify_event_t);
                 if let Some(window) = self.inner.windows.borrow().get(&event.event) {
-                    let point = Point { x: event.event_x as f64, y: event.event_y as f64 };
+                    let point = Point {
+                        x: event.event_x as f64,
+                        y: event.event_y as f64,
+                    };
                     window.window.state.handler.mouse_move(&window, point);
                 }
             }
@@ -472,7 +494,12 @@ impl Window {
                 phantom: PhantomData,
             };
 
-            application.application.inner.windows.borrow_mut().insert(window_id, window.clone());
+            application
+                .application
+                .inner
+                .windows
+                .borrow_mut()
+                .insert(window_id, window.clone());
 
             window.window.state.handler.create(&window);
 
@@ -498,8 +525,11 @@ impl Window {
                 return None;
             }
 
-            let shm_id =
-                libc::shmget(libc::IPC_PRIVATE, width * height * 4, libc::IPC_CREAT | 0o600);
+            let shm_id = libc::shmget(
+                libc::IPC_PRIVATE,
+                width * height * 4,
+                libc::IPC_CREAT | 0o600,
+            );
             if shm_id == -1 {
                 return None;
             }
@@ -524,13 +554,22 @@ impl Window {
                 return None;
             }
 
-            Some(ShmState { shm_id, shm_seg_id, shm_ptr, width, height })
+            Some(ShmState {
+                shm_id,
+                shm_seg_id,
+                shm_ptr,
+                width,
+                height,
+            })
         }
     }
 
     fn deinit_shm(application: &crate::Application, shm_state: ShmState) {
         unsafe {
-            xcb::xcb_shm_detach(application.application.inner.connection, shm_state.shm_seg_id);
+            xcb::xcb_shm_detach(
+                application.application.inner.connection,
+                shm_state.shm_seg_id,
+            );
             libc::shmdt(shm_state.shm_ptr);
             libc::shmctl(shm_state.shm_id, libc::IPC_RMID, ptr::null_mut());
         }
@@ -728,9 +767,17 @@ impl Window {
                 self.state.open.set(false);
 
                 let application = &self.state.application;
-                application.application.inner.windows.borrow_mut().remove(&self.state.window_id);
+                application
+                    .application
+                    .inner
+                    .windows
+                    .borrow_mut()
+                    .remove(&self.state.window_id);
 
-                let window = crate::Window { window: self.clone(), phantom: PhantomData };
+                let window = crate::Window {
+                    window: self.clone(),
+                    phantom: PhantomData,
+                };
                 window.window.state.handler.destroy(&window);
 
                 if let Some(shm_state) = self.state.shm_state.take() {

@@ -47,7 +47,11 @@ impl f32x4 {
     #[inline]
     pub fn replace<const INDEX: i32>(&self, value: f32) -> f32x4 {
         assert!(INDEX >= 0 && INDEX < 4);
-        f32x4::select(i32x4::new(0, 1, 2, 3).eq(i32x4::splat(INDEX)), *self, f32x4::splat(value))
+        f32x4::select(
+            i32x4::new(0, 1, 2, 3).eq(i32x4::splat(INDEX)),
+            *self,
+            f32x4::splat(value),
+        )
     }
 
     #[inline]
@@ -254,7 +258,11 @@ impl u32x4 {
     #[inline]
     pub fn replace<const INDEX: i32>(&self, value: u32) -> u32x4 {
         assert!(INDEX >= 0 && INDEX < 4);
-        u32x4::select(i32x4::new(0, 1, 2, 3).eq(i32x4::splat(INDEX)), *self, u32x4::splat(value))
+        u32x4::select(
+            i32x4::new(0, 1, 2, 3).eq(i32x4::splat(INDEX)),
+            *self,
+            u32x4::splat(value),
+        )
     }
 
     #[inline]
@@ -265,7 +273,12 @@ impl u32x4 {
 
     #[inline]
     pub fn select(mask: m32x4, a: u32x4, b: u32x4) -> u32x4 {
-        unsafe { u32x4(_mm_or_si128(_mm_and_si128(mask.0, a.0), _mm_andnot_si128(mask.0, b.0))) }
+        unsafe {
+            u32x4(_mm_or_si128(
+                _mm_and_si128(mask.0, a.0),
+                _mm_andnot_si128(mask.0, b.0),
+            ))
+        }
     }
 
     #[inline]
@@ -282,7 +295,10 @@ impl u32x4 {
     pub fn lt(&self, other: u32x4) -> m32x4 {
         unsafe {
             let bias = _mm_set1_epi32(i32::MIN);
-            m32x4(_mm_cmplt_epi32(_mm_add_epi32(self.0, bias), _mm_add_epi32(other.0, bias)))
+            m32x4(_mm_cmplt_epi32(
+                _mm_add_epi32(self.0, bias),
+                _mm_add_epi32(other.0, bias),
+            ))
         }
     }
 
@@ -290,7 +306,10 @@ impl u32x4 {
     pub fn gt(&self, other: u32x4) -> m32x4 {
         unsafe {
             let bias = _mm_set1_epi32(i32::MIN);
-            m32x4(_mm_cmpgt_epi32(_mm_add_epi32(self.0, bias), _mm_add_epi32(other.0, bias)))
+            m32x4(_mm_cmpgt_epi32(
+                _mm_add_epi32(self.0, bias),
+                _mm_add_epi32(other.0, bias),
+            ))
         }
     }
 
@@ -494,7 +513,11 @@ impl i32x4 {
     #[inline]
     pub fn replace<const INDEX: i32>(&self, value: i32) -> i32x4 {
         assert!(INDEX >= 0 && INDEX < 4);
-        i32x4::select(i32x4::new(0, 1, 2, 3).eq(i32x4::splat(INDEX)), *self, i32x4::splat(value))
+        i32x4::select(
+            i32x4::new(0, 1, 2, 3).eq(i32x4::splat(INDEX)),
+            *self,
+            i32x4::splat(value),
+        )
     }
 
     #[inline]
@@ -505,7 +528,12 @@ impl i32x4 {
 
     #[inline]
     pub fn select(mask: m32x4, a: i32x4, b: i32x4) -> i32x4 {
-        unsafe { i32x4(_mm_or_si128(_mm_and_si128(mask.0, a.0), _mm_andnot_si128(mask.0, b.0))) }
+        unsafe {
+            i32x4(_mm_or_si128(
+                _mm_and_si128(mask.0, a.0),
+                _mm_andnot_si128(mask.0, b.0),
+            ))
+        }
     }
 
     #[inline]
@@ -735,7 +763,11 @@ impl m32x4 {
     #[inline]
     pub fn replace<const INDEX: i32>(&self, value: bool) -> m32x4 {
         assert!(INDEX >= 0 && INDEX < 4);
-        m32x4::select(i32x4::new(0, 1, 2, 3).eq(i32x4::splat(INDEX)), *self, m32x4::splat(value))
+        m32x4::select(
+            i32x4::new(0, 1, 2, 3).eq(i32x4::splat(INDEX)),
+            *self,
+            m32x4::splat(value),
+        )
     }
 
     #[inline]
@@ -746,7 +778,12 @@ impl m32x4 {
 
     #[inline]
     pub fn select(mask: m32x4, a: m32x4, b: m32x4) -> m32x4 {
-        unsafe { m32x4(_mm_or_si128(_mm_and_si128(mask.0, a.0), _mm_andnot_si128(mask.0, b.0))) }
+        unsafe {
+            m32x4(_mm_or_si128(
+                _mm_and_si128(mask.0, a.0),
+                _mm_andnot_si128(mask.0, b.0),
+            ))
+        }
     }
 
     #[inline]

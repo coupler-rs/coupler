@@ -109,12 +109,14 @@ impl Canvas {
 
             let offset = Vec2::new(0.0, (index << BAND_HEIGHT_BITS) as f32);
             for segment in band.iter() {
-                self.rasterizer.add_line(segment.p1 - offset, segment.p2 - offset);
+                self.rasterizer
+                    .add_line(segment.p1 - offset, segment.p2 - offset);
             }
 
             let data_start = (index << BAND_HEIGHT_BITS) * self.width;
             let data_end = data_start + BAND_HEIGHT * self.width;
-            self.rasterizer.finish(color, &mut self.data[data_start..data_end], self.width);
+            self.rasterizer
+                .finish(color, &mut self.data[data_start..data_end], self.width);
         }
 
         for band in self.bands.iter_mut() {

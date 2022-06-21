@@ -28,7 +28,10 @@ pub enum Command {
 
 impl Path {
     pub fn new() -> Path {
-        Path { verbs: Vec::new(), points: Vec::new() }
+        Path {
+            verbs: Vec::new(),
+            points: Vec::new(),
+        }
     }
 
     pub fn move_to(&mut self, point: Vec2) -> &mut Self {
@@ -193,7 +196,11 @@ impl Path {
 
         #[inline]
         fn offset(path: &mut Path, width: f32, contour: &[Vec2], closed: bool, reverse: bool) {
-            let first_point = if closed == reverse { contour[0] } else { *contour.last().unwrap() };
+            let first_point = if closed == reverse {
+                contour[0]
+            } else {
+                *contour.last().unwrap()
+            };
             let mut prev_point = first_point;
             let mut prev_normal = Vec2::new(0.0, 0.0);
             let mut i = 0;

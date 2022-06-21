@@ -111,7 +111,9 @@ pub struct PluginHandle<P> {
 
 impl<P> Clone for PluginHandle<P> {
     fn clone(&self) -> PluginHandle<P> {
-        PluginHandle { state: self.state.clone() }
+        PluginHandle {
+            state: self.state.clone(),
+        }
     }
 }
 
@@ -120,7 +122,9 @@ impl<P: Plugin> PluginHandle<P> {
         let plugin = P::create();
         let params = plugin.params();
 
-        PluginHandle { state: Arc::new(PluginState { params, plugin }) }
+        PluginHandle {
+            state: Arc::new(PluginState { params, plugin }),
+        }
     }
 }
 

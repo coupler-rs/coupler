@@ -35,7 +35,10 @@ impl ThreadPool {
             handles.push(handle);
         }
 
-        ThreadPool { handles, sender: Some(sender) }
+        ThreadPool {
+            handles,
+            sender: Some(sender),
+        }
     }
 
     pub fn scope<'s, F>(&self, f: F)

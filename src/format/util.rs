@@ -39,5 +39,7 @@ pub fn validate_bus_configs(buses: &BusList, configs: &BusConfigList) {
         );
     }
 
-    configs.get_default().expect("must specify at least one bus config");
+    configs
+        .get_default()
+        .expect("must specify at least one bus config");
 }

@@ -195,7 +195,9 @@ impl Application {
     }
 
     pub fn stop(&self) {
-        self.inner.running.set(self.inner.running.get().saturating_sub(1));
+        self.inner
+            .running
+            .set(self.inner.running.get().saturating_sub(1));
     }
 
     pub fn poll(&self) {
@@ -392,7 +394,10 @@ impl Window {
                 Rc::into_raw(state.clone()) as *mut c_void,
             );
 
-            let window = crate::Window { window: Window { state }, phantom: PhantomData };
+            let window = crate::Window {
+                window: Window { state },
+                phantom: PhantomData,
+            };
             window.window.state.handler.create(&window);
 
             if let Some(ns_window) = window.window.state.ns_window {
@@ -604,7 +609,10 @@ impl Window {
             *runtime::Object::get_ivar::<*mut c_void>(&*ns_view, WINDOW_STATE) as *mut WindowState;
         let state = Rc::from_raw(state_ptr);
         let _ = Rc::into_raw(state.clone());
-        crate::Window { window: Window { state }, phantom: PhantomData }
+        crate::Window {
+            window: Window { state },
+            phantom: PhantomData,
+        }
     }
 }
 
@@ -653,7 +661,10 @@ extern "C" fn mouse_moved(this: &mut runtime::Object, _: runtime::Sel, event: ba
         let window = Window::from_ns_view(this);
         let point = appkit::NSEvent::locationInWindow(event);
         let point = appkit::NSView::convertPoint_fromView_(this as base::id, point, base::nil);
-        let point = Point { x: point.x, y: point.y };
+        let point = Point {
+            x: point.x,
+            y: point.y,
+        };
         window.window.state.handler.mouse_move(&window, point);
     }
 }
@@ -661,7 +672,11 @@ extern "C" fn mouse_moved(this: &mut runtime::Object, _: runtime::Sel, event: ba
 extern "C" fn mouse_down(this: &mut runtime::Object, _: runtime::Sel, event: base::id) {
     unsafe {
         let window = Window::from_ns_view(this);
-        let result = window.window.state.handler.mouse_down(&window, MouseButton::Left);
+        let result = window
+            .window
+            .state
+            .handler
+            .mouse_down(&window, MouseButton::Left);
 
         if !result {
             let superclass = msg_send![this, superclass];
@@ -673,7 +688,11 @@ extern "C" fn mouse_down(this: &mut runtime::Object, _: runtime::Sel, event: bas
 extern "C" fn mouse_up(this: &mut runtime::Object, _: runtime::Sel, event: base::id) {
     unsafe {
         let window = Window::from_ns_view(this);
-        let result = window.window.state.handler.mouse_up(&window, MouseButton::Left);
+        let result = window
+            .window
+            .state
+            .handler
+            .mouse_up(&window, MouseButton::Left);
 
         if !result {
             let superclass = msg_send![this, superclass];
@@ -685,7 +704,11 @@ extern "C" fn mouse_up(this: &mut runtime::Object, _: runtime::Sel, event: base:
 extern "C" fn right_mouse_down(this: &mut runtime::Object, _: runtime::Sel, event: base::id) {
     unsafe {
         let window = Window::from_ns_view(this);
-        let result = window.window.state.handler.mouse_down(&window, MouseButton::Right);
+        let result = window
+            .window
+            .state
+            .handler
+            .mouse_down(&window, MouseButton::Right);
 
         if !result {
             let superclass = msg_send![this, superclass];
@@ -697,7 +720,11 @@ extern "C" fn right_mouse_down(this: &mut runtime::Object, _: runtime::Sel, even
 extern "C" fn right_mouse_up(this: &mut runtime::Object, _: runtime::Sel, event: base::id) {
     unsafe {
         let window = Window::from_ns_view(this);
-        let result = window.window.state.handler.mouse_up(&window, MouseButton::Right);
+        let result = window
+            .window
+            .state
+            .handler
+            .mouse_up(&window, MouseButton::Right);
 
         if !result {
             let superclass = msg_send![this, superclass];
@@ -723,7 +750,11 @@ extern "C" fn other_mouse_down(this: &mut runtime::Object, _: runtime::Sel, even
         let result = if let Some(mouse_button) =
             mouse_button_from_number(appkit::NSEvent::buttonNumber(event))
         {
-            window.window.state.handler.mouse_down(&window, mouse_button)
+            window
+                .window
+                .state
+                .handler
+                .mouse_down(&window, mouse_button)
         } else {
             false
         };
@@ -741,7 +772,11 @@ extern "C" fn other_mouse_up(this: &mut runtime::Object, _: runtime::Sel, event:
         let result = if let Some(mouse_button) =
             mouse_button_from_number(appkit::NSEvent::buttonNumber(event))
         {
-            window.window.state.handler.mouse_down(&window, mouse_button)
+            window
+                .window
+                .state
+                .handler
+                .mouse_down(&window, mouse_button)
         } else {
             false
         };
@@ -798,7 +833,10 @@ extern "C" fn dealloc(this: &mut runtime::Object, _: runtime::Sel) {
             *runtime::Object::get_ivar::<*mut c_void>(this, WINDOW_STATE) as *mut WindowState;
         runtime::Object::set_ivar::<*mut c_void>(this, WINDOW_STATE, ptr::null_mut());
         let state = Rc::from_raw(state_ptr);
-        let window = crate::Window { window: Window { state }, phantom: PhantomData };
+        let window = crate::Window {
+            window: Window { state },
+            phantom: PhantomData,
+        };
 
         runloop::CFRunLoopTimerInvalidate(window.window.state.timer);
 

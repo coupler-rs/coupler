@@ -15,6 +15,10 @@ impl Font {
     }
 
     pub(crate) fn as_ref(&self) -> FontRef {
-        FontRef { data: &self.data, offset: self.offset, key: self.key }
+        FontRef {
+            data: &self.data,
+            offset: self.offset,
+            key: self.key,
+        }
     }
 }

@@ -24,9 +24,15 @@ impl WindowHandler for Handler {
         let mut path = Path::new();
         path.move_to(Vec2::new(200.0, 300.0))
             .quadratic_to(Vec2::new(300.0, 200.0), Vec2::new(200.0, 100.0))
-            .cubic_to(Vec2::new(150.0, 150.0), Vec2::new(-100.0, 250.0), Vec2::new(200.0, 300.0));
+            .cubic_to(
+                Vec2::new(150.0, 150.0),
+                Vec2::new(-100.0, 250.0),
+                Vec2::new(200.0, 300.0),
+            );
 
-        self.canvas.borrow_mut().fill_path(&path, Color::rgba(255, 255, 255, 255));
+        self.canvas
+            .borrow_mut()
+            .fill_path(&path, Color::rgba(255, 255, 255, 255));
 
         let time = std::time::Instant::now();
         self.canvas.borrow_mut().fill_text(
@@ -57,7 +63,12 @@ fn main() {
         &app,
         WindowOptions {
             title: "window".to_string(),
-            rect: Rect { x: 0.0, y: 0.0, width: 500.0, height: 500.0 },
+            rect: Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 500.0,
+                height: 500.0,
+            },
             handler: Box::new(Handler::new()),
             ..WindowOptions::default()
         },

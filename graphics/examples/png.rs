@@ -32,7 +32,14 @@ fn main() {
                                     + transform.apply(1.0 * Vec2::new(x as f32, y as f32)),
                             );
                         }
-                        usvg::PathSegment::CurveTo { x1, y1, x2, y2, x, y } => {
+                        usvg::PathSegment::CurveTo {
+                            x1,
+                            y1,
+                            x2,
+                            y2,
+                            x,
+                            y,
+                        } => {
                             path.cubic_to(
                                 Vec2::new(500.0, 0.0)
                                     + transform.apply(1.0 * Vec2::new(x1 as f32, y1 as f32)),
