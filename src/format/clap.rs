@@ -1,22 +1,44 @@
-use crate::{bus::*, plugin::*, process::*};
-
 use super::util::{self, copy_cstring};
+use crate::{bus::*, editor::*, param::*, plugin::*, process::*};
 
-use clap_sys::ext::{audio_ports::*, audio_ports_config::*, params::*};
+use clap_sys::ext::{audio_ports::*, audio_ports_config::*, gui::*, params::*};
 use clap_sys::{
     entry::*, events::*, host::*, id::*, plugin::*, plugin_factory::*, process::*, version::*,
 };
+
+use raw_window_handle::RawWindowHandle;
 
 use std::cell::UnsafeCell;
 use std::ffi::{c_void, CStr, CString};
 use std::marker::PhantomData;
 use std::os::raw::c_char;
 use std::ptr;
+use std::rc::Rc;
 use std::slice;
 
 fn bus_format_to_port_type(bus_format: &BusFormat) -> *const c_char {
     match bus_format {
         BusFormat::Stereo => CLAP_PORT_STEREO,
+    }
+}
+
+struct ClapEditorContext {}
+
+impl<P> EditorContextHandler<P> for ClapEditorContext {
+    fn begin_edit(&self, _id: ParamId) {
+        unimplemented!();
+    }
+
+    fn perform_edit(&self, _id: ParamId, _value: f64) {
+        unimplemented!();
+    }
+
+    fn end_edit(&self, _id: ParamId) {
+        unimplemented!();
+    }
+
+    fn poll_params(&self) -> PollParams<P> {
+        unimplemented!();
     }
 }
 
@@ -34,13 +56,19 @@ struct ProcessorState<P: Plugin> {
     processor: Option<P::Processor>,
 }
 
+struct EditorState<P: Plugin> {
+    editor: Option<P::Editor>,
+}
+
 struct Wrapper<P: Plugin> {
     #[allow(unused)]
     clap_plugin: clap_plugin,
+    has_editor: bool,
     bus_list: BusList,
     bus_config_list: BusConfigList,
     plugin: PluginHandle<P>,
     processor_state: UnsafeCell<ProcessorState<P>>,
+    editor_state: UnsafeCell<EditorState<P>>,
 }
 
 unsafe impl<P: Plugin> Sync for Wrapper<P> {}
@@ -57,6 +85,24 @@ impl<P: Plugin> Wrapper<P> {
         select: Self::audio_ports_config_select,
     };
 
+    const GUI: clap_plugin_gui = clap_plugin_gui {
+        is_api_supported: Self::gui_is_api_supported,
+        get_preferred_api: Self::gui_get_preferred_api,
+        create: Self::gui_create,
+        destroy: Self::gui_destroy,
+        set_scale: Self::gui_set_scale,
+        get_size: Self::gui_get_size,
+        can_resize: Self::gui_can_resize,
+        get_resize_hints: Self::gui_get_resize_hints,
+        adjust_size: Self::gui_adjust_size,
+        set_size: Self::gui_set_size,
+        set_parent: Self::gui_set_parent,
+        set_transient: Self::gui_set_transient,
+        suggest_title: Self::gui_suggest_title,
+        show: Self::gui_show,
+        hide: Self::gui_hide,
+    };
+
     const PARAMS: clap_plugin_params = clap_plugin_params {
         count: Self::params_count,
         get_info: Self::params_get_info,
@@ -66,7 +112,7 @@ impl<P: Plugin> Wrapper<P> {
         flush: Self::params_flush,
     };
 
-    pub fn create(desc: *const clap_plugin_descriptor) -> *mut Wrapper<P> {
+    pub fn create(info: &PluginInfo, desc: *const clap_plugin_descriptor) -> *mut Wrapper<P> {
         let bus_list = P::buses();
         let bus_config_list = P::bus_configs();
 
@@ -101,6 +147,7 @@ impl<P: Plugin> Wrapper<P> {
                 get_extension: Self::get_extension,
                 on_main_thread: Self::on_main_thread,
             },
+            has_editor: info.get_has_editor(),
             bus_list,
             bus_config_list,
             plugin: PluginHandle::new(),
@@ -110,6 +157,7 @@ impl<P: Plugin> Wrapper<P> {
                 bus_states,
                 processor: None,
             }),
+            editor_state: UnsafeCell::new(EditorState { editor: None }),
         }))
     }
 
@@ -180,21 +228,25 @@ impl<P: Plugin> Wrapper<P> {
     }
 
     unsafe extern "C" fn get_extension(
-        _plugin: *const clap_plugin,
+        plugin: *const clap_plugin,
         id: *const c_char,
     ) -> *const c_void {
-        let id = CStr::from_ptr(id);
+        let wrapper = &*(plugin as *mut Wrapper<P>);
 
-        if id == CStr::from_ptr(CLAP_EXT_AUDIO_PORTS) {
+        if CStr::from_ptr(id) == CStr::from_ptr(CLAP_EXT_AUDIO_PORTS) {
             return &Self::AUDIO_PORTS as *const clap_plugin_audio_ports as *const c_void;
         }
 
-        if id == CStr::from_ptr(CLAP_EXT_AUDIO_PORTS_CONFIG) {
+        if CStr::from_ptr(id) == CStr::from_ptr(CLAP_EXT_AUDIO_PORTS_CONFIG) {
             return &Self::AUDIO_PORTS_CONFIG as *const clap_plugin_audio_ports_config
                 as *const c_void;
         }
 
-        if id == CStr::from_ptr(CLAP_EXT_PARAMS) {
+        if CStr::from_ptr(id) == CStr::from_ptr(CLAP_EXT_GUI) && wrapper.has_editor {
+            return &Self::GUI as *const clap_plugin_gui as *const c_void;
+        }
+
+        if CStr::from_ptr(id) == CStr::from_ptr(CLAP_EXT_PARAMS) {
             return &Self::PARAMS as *const clap_plugin_params as *const c_void;
         }
 
@@ -330,6 +382,203 @@ impl<P: Plugin> Wrapper<P> {
             return true;
         }
 
+        false
+    }
+
+    unsafe extern "C" fn gui_is_api_supported(
+        _plugin: *const clap_plugin,
+        api: *const c_char,
+        is_floating: bool,
+    ) -> bool {
+        if is_floating {
+            return false;
+        }
+
+        #[cfg(target_os = "windows")]
+        if CStr::from_ptr(api) == CStr::from_ptr(CLAP_WINDOW_API_WIN32) {
+            return true;
+        }
+
+        #[cfg(target_os = "macos")]
+        if CStr::from_ptr(api) == CStr::from_ptr(CLAP_WINDOW_API_COCOA) {
+            return true;
+        }
+
+        #[cfg(target_os = "linux")]
+        if CStr::from_ptr(api) == CStr::from_ptr(CLAP_WINDOW_API_X11) {
+            return true;
+        }
+
+        false
+    }
+
+    unsafe extern "C" fn gui_get_preferred_api(
+        _plugin: *const clap_plugin,
+        api: *mut *const c_char,
+        is_floating: *mut bool,
+    ) -> bool {
+        *is_floating = false;
+
+        #[cfg(target_os = "windows")]
+        {
+            *api = CLAP_WINDOW_API_WIN32;
+            return true;
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            *api = CLAP_WINDOW_API_COCOA;
+            return true;
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            *api = CLAP_WINDOW_API_X11;
+            return true;
+        }
+
+        #[allow(unreachable_code)]
+        false
+    }
+
+    unsafe extern "C" fn gui_create(
+        plugin: *const clap_plugin,
+        api: *const c_char,
+        is_floating: bool,
+    ) -> bool {
+        if !Self::gui_is_api_supported(plugin, api, is_floating) {
+            return false;
+        }
+
+        true
+    }
+
+    unsafe extern "C" fn gui_destroy(plugin: *const clap_plugin) {
+        let wrapper = &*(plugin as *mut Wrapper<P>);
+        let editor_state = &mut *wrapper.editor_state.get();
+
+        if let Some(editor) = &mut editor_state.editor {
+            editor.close();
+        }
+
+        editor_state.editor = None;
+    }
+
+    unsafe extern "C" fn gui_set_scale(_plugin: *const clap_plugin, _scale: f64) -> bool {
+        false
+    }
+
+    unsafe extern "C" fn gui_get_size(
+        _plugin: *const clap_plugin,
+        width: *mut u32,
+        height: *mut u32,
+    ) -> bool {
+        let (editor_width, editor_height) = P::Editor::size();
+
+        *width = editor_width.round() as u32;
+        *height = editor_height.round() as u32;
+
+        true
+    }
+
+    unsafe extern "C" fn gui_can_resize(_plugin: *const clap_plugin) -> bool {
+        false
+    }
+
+    unsafe extern "C" fn gui_get_resize_hints(
+        _plugin: *const clap_plugin,
+        _hints: *mut clap_gui_resize_hints,
+    ) -> bool {
+        false
+    }
+
+    unsafe extern "C" fn gui_adjust_size(
+        _plugin: *const clap_plugin,
+        _width: *mut u32,
+        _height: *mut u32,
+    ) -> bool {
+        false
+    }
+
+    unsafe extern "C" fn gui_set_size(
+        _plugin: *const clap_plugin,
+        _width: u32,
+        _height: u32,
+    ) -> bool {
+        false
+    }
+
+    unsafe extern "C" fn gui_set_parent(
+        plugin: *const clap_plugin,
+        window: *const clap_window,
+    ) -> bool {
+        let wrapper = &*(plugin as *mut Wrapper<P>);
+        let editor_state = &mut *wrapper.editor_state.get();
+
+        let window = &*window;
+
+        #[cfg(target_os = "macos")]
+        let parent = {
+            if CStr::from_ptr(window.api) != CStr::from_ptr(CLAP_WINDOW_API_COCOA) {
+                return false;
+            }
+
+            use raw_window_handle::macos::MacOSHandle;
+            RawWindowHandle::MacOS(MacOSHandle {
+                ns_view: window.specific.cocoa,
+                ..MacOSHandle::empty()
+            })
+        };
+
+        #[cfg(target_os = "windows")]
+        let parent = {
+            if CStr::from_ptr(window.api) != CStr::from_ptr(CLAP_WINDOW_API_WIN32) {
+                return false;
+            }
+
+            use raw_window_handle::windows::WindowsHandle;
+            RawWindowHandle::Windows(WindowsHandle {
+                hwnd: window.specific.win32,
+                ..WindowsHandle::empty()
+            })
+        };
+
+        #[cfg(target_os = "linux")]
+        let parent = {
+            if CStr::from_ptr(window.api) != CStr::from_ptr(CLAP_WINDOW_API_X11) {
+                return false;
+            }
+
+            use raw_window_handle::unix::XcbHandle;
+            RawWindowHandle::Xcb(XcbHandle {
+                window: window.specific.x11 as u32,
+                ..XcbHandle::empty()
+            })
+        };
+
+        let context = EditorContext::<P>::new(Rc::new(ClapEditorContext {}));
+
+        let editor = P::Editor::open(wrapper.plugin.clone(), context, Some(&ParentWindow(parent)));
+
+        editor_state.editor = Some(editor);
+
+        true
+    }
+
+    unsafe extern "C" fn gui_set_transient(
+        _plugin: *const clap_plugin,
+        _window: *const clap_window,
+    ) -> bool {
+        false
+    }
+
+    unsafe extern "C" fn gui_suggest_title(_plugin: *const clap_plugin, _title: *const c_char) {}
+
+    unsafe extern "C" fn gui_show(_plugin: *const clap_plugin) -> bool {
+        false
+    }
+
+    unsafe extern "C" fn gui_hide(_plugin: *const clap_plugin) -> bool {
         false
     }
 
@@ -481,6 +730,7 @@ struct DescriptorBufs {
 pub struct Factory<P> {
     #[allow(unused)]
     factory: clap_plugin_factory,
+    info: PluginInfo,
     descriptor_bufs: DescriptorBufs,
     descriptor: clap_plugin_descriptor,
     phantom: PhantomData<P>,
@@ -530,6 +780,7 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
                 get_plugin_descriptor: Self::get_plugin_descriptor,
                 create_plugin: Self::create_plugin,
             },
+            info,
             descriptor_bufs,
             descriptor,
             phantom: PhantomData,
@@ -561,7 +812,7 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
         let factory = &*(factory as *const Self);
 
         if CStr::from_ptr(plugin_id) == factory.descriptor_bufs.id.as_c_str() {
-            return Wrapper::<P>::create(&factory.descriptor) as *const clap_plugin;
+            return Wrapper::<P>::create(&factory.info, &factory.descriptor) as *const clap_plugin;
         }
 
         ptr::null()
