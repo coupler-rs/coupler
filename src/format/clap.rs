@@ -57,6 +57,7 @@ struct ProcessorState<P: Plugin> {
 }
 
 struct EditorState<P: Plugin> {
+    #[cfg_attr(not(target_os = "linux"), allow(unused))]
     timer_id: Option<clap_id>,
     editor: Option<P::Editor>,
 }
@@ -121,11 +122,10 @@ impl<P: Plugin> Wrapper<P> {
         hide: Self::gui_hide,
     };
 
+    #[cfg(target_os = "linux")]
     const TIMER_SUPPORT: clap_plugin_timer_support = clap_plugin_timer_support {
         on_timer: Self::timer_support_on_timer,
     };
-
-    const TIMER_PERIOD_MS: u32 = 16;
 
     pub fn create(
         info: &PluginInfo,
@@ -290,7 +290,7 @@ impl<P: Plugin> Wrapper<P> {
             }
 
             #[cfg(target_os = "linux")]
-            if CStr::from_ptr(id) == CStr::from_ptr(CLAP_EXT_TIMER_SUPPORT) && wrapper.has_editor {
+            if CStr::from_ptr(id) == CStr::from_ptr(CLAP_EXT_TIMER_SUPPORT) {
                 return &Self::TIMER_SUPPORT as *const clap_plugin_timer_support as *const c_void;
             }
         }
@@ -740,6 +740,8 @@ impl<P: Plugin> Wrapper<P> {
 
         #[cfg(target_os = "linux")]
         {
+            const TIMER_PERIOD_MS: u32 = 16;
+
             let timer_support =
                 if let Some(timer_support) = (*wrapper.host_extensions.get()).timer_support {
                     timer_support
@@ -750,7 +752,7 @@ impl<P: Plugin> Wrapper<P> {
             let mut timer_id = CLAP_INVALID_ID;
             if !((*timer_support).register_timer)(
                 wrapper.clap_host,
-                Self::TIMER_PERIOD_MS,
+                TIMER_PERIOD_MS,
                 &mut timer_id,
             ) {
                 return false;
@@ -783,6 +785,7 @@ impl<P: Plugin> Wrapper<P> {
         false
     }
 
+    #[cfg(target_os = "linux")]
     unsafe extern "C" fn timer_support_on_timer(plugin: *const clap_plugin, timer_id: clap_id) {
         let wrapper = &*(plugin as *mut Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
