@@ -1,7 +1,7 @@
 use super::util::{self, copy_cstring};
 use crate::{bus::*, editor::*, param::*, plugin::*, process::*};
 
-use clap_sys::ext::{audio_ports::*, audio_ports_config::*, gui::*, params::*};
+use clap_sys::ext::{audio_ports::*, audio_ports_config::*, gui::*, params::*, timer_support::*};
 use clap_sys::{
     entry::*, events::*, host::*, id::*, plugin::*, plugin_factory::*, process::*, version::*,
 };
@@ -57,13 +57,21 @@ struct ProcessorState<P: Plugin> {
 }
 
 struct EditorState<P: Plugin> {
+    timer_id: Option<clap_id>,
     editor: Option<P::Editor>,
+}
+
+struct HostExtensions {
+    timer_support: Option<*const clap_host_timer_support>,
 }
 
 #[repr(C)]
 struct Wrapper<P: Plugin> {
     #[allow(unused)]
     clap_plugin: clap_plugin,
+    clap_host: *const clap_host,
+    // Safety: We only form an &mut in init(), which must be called before any other methods
+    host_extensions: UnsafeCell<HostExtensions>,
     has_editor: bool,
     bus_list: BusList,
     bus_config_list: BusConfigList,
@@ -113,7 +121,17 @@ impl<P: Plugin> Wrapper<P> {
         hide: Self::gui_hide,
     };
 
-    pub fn create(info: &PluginInfo, desc: *const clap_plugin_descriptor) -> *mut Wrapper<P> {
+    const TIMER_SUPPORT: clap_plugin_timer_support = clap_plugin_timer_support {
+        on_timer: Self::timer_support_on_timer,
+    };
+
+    const TIMER_PERIOD_MS: u32 = 16;
+
+    pub fn create(
+        info: &PluginInfo,
+        desc: *const clap_plugin_descriptor,
+        host: *const clap_host,
+    ) -> *mut Wrapper<P> {
         let bus_list = P::buses();
         let bus_config_list = P::bus_configs();
 
@@ -148,6 +166,10 @@ impl<P: Plugin> Wrapper<P> {
                 get_extension: Self::get_extension,
                 on_main_thread: Self::on_main_thread,
             },
+            clap_host: host,
+            host_extensions: UnsafeCell::new(HostExtensions {
+                timer_support: None,
+            }),
             has_editor: info.get_has_editor(),
             bus_list,
             bus_config_list,
@@ -158,11 +180,26 @@ impl<P: Plugin> Wrapper<P> {
                 bus_states,
                 processor: None,
             }),
-            editor_state: UnsafeCell::new(EditorState { editor: None }),
+            editor_state: UnsafeCell::new(EditorState {
+                timer_id: None,
+                editor: None,
+            }),
         }))
     }
 
-    unsafe extern "C" fn init(_plugin: *const clap_plugin) -> bool {
+    unsafe extern "C" fn init(plugin: *const clap_plugin) -> bool {
+        // Query for host extensions here since calls to clap_host methods are not allowed
+        // in create_plugin().
+
+        let wrapper = &*(plugin as *mut Wrapper<P>);
+        let host_extensions = &mut *wrapper.host_extensions.get();
+
+        let timer_support =
+            ((*wrapper.clap_host).get_extension)(wrapper.clap_host, CLAP_EXT_TIMER_SUPPORT);
+        if !timer_support.is_null() {
+            host_extensions.timer_support = Some(timer_support as *const clap_host_timer_support);
+        }
+
         true
     }
 
@@ -247,8 +284,15 @@ impl<P: Plugin> Wrapper<P> {
             return &Self::PARAMS as *const clap_plugin_params as *const c_void;
         }
 
-        if CStr::from_ptr(id) == CStr::from_ptr(CLAP_EXT_GUI) && wrapper.has_editor {
-            return &Self::GUI as *const clap_plugin_gui as *const c_void;
+        if wrapper.has_editor {
+            if CStr::from_ptr(id) == CStr::from_ptr(CLAP_EXT_GUI) {
+                return &Self::GUI as *const clap_plugin_gui as *const c_void;
+            }
+
+            #[cfg(target_os = "linux")]
+            if CStr::from_ptr(id) == CStr::from_ptr(CLAP_EXT_TIMER_SUPPORT) && wrapper.has_editor {
+                return &Self::TIMER_SUPPORT as *const clap_plugin_timer_support as *const c_void;
+            }
         }
 
         ptr::null()
@@ -586,6 +630,15 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(plugin as *mut Wrapper<P>);
         let editor_state = &mut *wrapper.editor_state.get();
 
+        #[cfg(target_os = "linux")]
+        {
+            if let Some(timer_support) = (*wrapper.host_extensions.get()).timer_support {
+                if let Some(timer_id) = editor_state.timer_id.take() {
+                    ((*timer_support).unregister_timer)(wrapper.clap_host, timer_id);
+                }
+            }
+        }
+
         if let Some(editor) = &mut editor_state.editor {
             editor.close();
         }
@@ -685,10 +738,29 @@ impl<P: Plugin> Wrapper<P> {
             })
         };
 
+        #[cfg(target_os = "linux")]
+        {
+            let timer_support =
+                if let Some(timer_support) = (*wrapper.host_extensions.get()).timer_support {
+                    timer_support
+                } else {
+                    return false;
+                };
+
+            let mut timer_id = CLAP_INVALID_ID;
+            if !((*timer_support).register_timer)(
+                wrapper.clap_host,
+                Self::TIMER_PERIOD_MS,
+                &mut timer_id,
+            ) {
+                return false;
+            }
+
+            editor_state.timer_id = Some(timer_id);
+        }
+
         let context = EditorContext::<P>::new(Rc::new(ClapEditorContext {}));
-
         let editor = P::Editor::open(wrapper.plugin.clone(), context, Some(&ParentWindow(parent)));
-
         editor_state.editor = Some(editor);
 
         true
@@ -709,6 +781,19 @@ impl<P: Plugin> Wrapper<P> {
 
     unsafe extern "C" fn gui_hide(_plugin: *const clap_plugin) -> bool {
         false
+    }
+
+    unsafe extern "C" fn timer_support_on_timer(plugin: *const clap_plugin, timer_id: clap_id) {
+        let wrapper = &*(plugin as *mut Wrapper<P>);
+        let editor_state = &mut *wrapper.editor_state.get();
+
+        if let Some(id) = editor_state.timer_id {
+            if let Some(editor) = &mut editor_state.editor {
+                if timer_id == id {
+                    editor.poll();
+                }
+            }
+        }
     }
 }
 
@@ -807,13 +892,14 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
 
     unsafe extern "C" fn create_plugin(
         factory: *const clap_plugin_factory,
-        _host: *const clap_host,
+        host: *const clap_host,
         plugin_id: *const c_char,
     ) -> *const clap_plugin {
         let factory = &*(factory as *const Self);
 
         if CStr::from_ptr(plugin_id) == factory.descriptor_bufs.id.as_c_str() {
-            return Wrapper::<P>::create(&factory.info, &factory.descriptor) as *const clap_plugin;
+            return Wrapper::<P>::create(&factory.info, &factory.descriptor, host)
+                as *const clap_plugin;
         }
 
         ptr::null()
