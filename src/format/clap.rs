@@ -51,7 +51,7 @@ struct ProcessorState<P: Plugin> {
     sample_rate: f64,
     max_buffer_size: usize,
     // This is safe to live in ProcessorState since all audio-ports and audio-ports-config
-    // methods can only be called from the main thread whlie the plugin is deactivated.
+    // methods can only be called from the main thread while the plugin is deactivated.
     bus_states: BusStates,
     processor: Option<P::Processor>,
 }
@@ -904,14 +904,8 @@ macro_rules! clap {
         #[allow(non_upper_case_globals)]
         #[no_mangle]
         static clap_entry: ::coupler::format::clap::EntryPoint<$plugin> = {
-            // Safety: The CLAP headers specify that init must be called before get_factory or
-            // deinit, init must not be called more than once, and none of the three may be called
-            // after deinit.
-            //
-            // This means that init and deinit can safely form exclusive &mut references to
-            // FACTORY, and that these will not overlap with any & references formed by
-            // get_factory.
-
+            // Safety: We only form an &mut in init() and deinit(), which can't be called
+            // concurrently with anything else according to the CLAP headers.
             static mut FACTORY: Option<::coupler::format::clap::Factory<$plugin>> = None;
 
             unsafe extern "C" fn init(plugin_path: *const ::std::os::raw::c_char) -> bool {
