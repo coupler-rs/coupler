@@ -11,7 +11,7 @@ clap-sys = { version = "0.1.0" }
 vst3-sys = { git = "https://github.com/coupler-rs/vst3-sys", rev = "2fe59f3a03dcdebd860f42c95f996ff891c4c93b" }
 raw-window-handle = "0.3.3"
 
-[target.'cfg(target_os="macos")'.dependencies]
+[target.'cfg(target_os = "macos")'.dependencies]
 auv2-sys = { git = "https://github.com/coupler-rs/auv2-sys", rev = "20e4ef70ac6a46b5efd33e13f3bf73cd73f24313" }
 
 [features]

@@ -9,11 +9,11 @@ publish = false
 keyboard-types = { version = "0.5.0", default-features = false }
 raw-window-handle = "0.3.3"
 
-[target.'cfg(target_os="windows")'.dependencies]
+[target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3.8", features = ["winuser", "windef", "minwindef", "errhandlingapi", "winnt", "ntdef", "wingdi", "windowsx"] }
 uuid = { version = "0.8", features = ["v4"] }
 
-[target.'cfg(target_os="macos")'.dependencies]
+[target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.24.0"
 core-foundation = "0.9.1"
 core-graphics = "0.22.2"
@@ -21,6 +21,6 @@ objc = "0.2.7"
 objc_exception = "0.1.2"
 uuid = { version = "0.8", features = ["v4"] }
 
-[target.'cfg(target_os="linux")'.dependencies]
+[target.'cfg(target_os = "linux")'.dependencies]
 xcb-sys = { version = "0.2.1", features = ["icccm", "shm", "cursor"] }
 libc = "0.2"
