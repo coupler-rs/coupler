@@ -19,5 +19,6 @@ graphics = { path = "../graphics" }
 raw-window-handle = "0.3.3"
 
 [features]
+auv2 = []
 clap = []
 vst3 = []

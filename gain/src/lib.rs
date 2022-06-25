@@ -325,6 +325,9 @@ impl WindowHandler for GainWindowHandler {
     }
 }
 
+#[cfg(feature = "auv2")]
+coupler::auv2!(Gain);
+
 #[cfg(feature = "clap")]
 coupler::clap!(Gain);
 
