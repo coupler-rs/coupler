@@ -750,11 +750,8 @@ impl<P: Plugin> Wrapper<P> {
                 };
 
             let mut timer_id = CLAP_INVALID_ID;
-            if !((*timer_support).register_timer)(
-                wrapper.clap_host,
-                TIMER_PERIOD_MS,
-                &mut timer_id,
-            ) {
+            if !((*timer_support).register_timer)(wrapper.clap_host, TIMER_PERIOD_MS, &mut timer_id)
+            {
                 return false;
             }
 
