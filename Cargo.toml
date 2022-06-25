@@ -22,6 +22,7 @@ members = [
     "cargo-coupler",
     "coupler-derive",
     "gain",
+    "gain/format/*",
     "graphics",
     "simd",
     "window",

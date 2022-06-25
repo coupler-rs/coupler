@@ -24,7 +24,7 @@ impl Access<Gain> for GainAccessor {
     }
 }
 
-struct Gain {
+pub struct Gain {
     gain: AtomicF64,
 }
 
@@ -95,7 +95,7 @@ impl Vst3Plugin for Gain {
     }
 }
 
-struct GainProcessor {
+pub struct GainProcessor {
     plugin: PluginHandle<Gain>,
     gain: f32,
     gain_target: f32,
@@ -149,7 +149,7 @@ impl Processor for GainProcessor {
     }
 }
 
-struct GainEditor {
+pub struct GainEditor {
     #[allow(unused)]
     application: Application,
     window: Window,
@@ -324,12 +324,3 @@ impl WindowHandler for GainWindowHandler {
         false
     }
 }
-
-#[cfg(feature = "auv2")]
-coupler::auv2!(Gain);
-
-#[cfg(feature = "clap")]
-coupler::clap!(Gain);
-
-#[cfg(feature = "vst3")]
-coupler::vst3!(Gain);

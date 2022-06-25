@@ -7,18 +7,10 @@ publish = false
 
 [package.metadata.coupler]
 name = "Gain"
-formats = ["vst3"]
-
-[lib]
-crate-type = ["cdylib"]
+formats = ["auv2", "clap", "vst3"]
 
 [dependencies]
 coupler = { path = ".." }
 window = { path = "../window" }
 graphics = { path = "../graphics" }
 raw-window-handle = "0.3.3"
-
-[features]
-auv2 = []
-clap = []
-vst3 = []

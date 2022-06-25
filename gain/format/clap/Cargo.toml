@@ -1,0 +1,13 @@
+[package]
+name = "gain-clap"
+version = "0.1.0"
+authors = ["Micah Johnston <micah@glowcoil.com>"]
+edition = "2018"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+coupler = { path = "../../.." }
+gain = { path = "../.." }
