@@ -34,7 +34,7 @@ impl Wrapper {
         noErr
     }
 
-    pub unsafe extern "C" fn Lookup(_selector: SInt16) -> AudioComponentMethod {
+    pub unsafe extern "C" fn Lookup(_selector: SInt16) -> Option<AudioComponentMethod> {
         None
     }
 }
