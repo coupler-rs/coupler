@@ -7,7 +7,7 @@ publish = false
 
 [dependencies]
 coupler-derive = { path = "coupler-derive", optional = true }
-clap-sys = { version = "0.1.0" }
+clap-sys = { version = "0.2.0" }
 vst3-sys = { git = "https://github.com/coupler-rs/vst3-sys", rev = "2fe59f3a03dcdebd860f42c95f996ff891c4c93b" }
 raw-window-handle = "0.3.3"
 
