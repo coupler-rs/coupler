@@ -16,7 +16,7 @@ use std::ptr;
 use std::rc::Rc;
 use std::slice;
 
-fn bus_format_to_port_type(bus_format: &BusFormat) -> *const c_char {
+fn bus_format_to_port_type(bus_format: &BusFormat) -> &'static CStr {
     match bus_format {
         BusFormat::Stereo => CLAP_PORT_STEREO,
     }
@@ -85,46 +85,46 @@ unsafe impl<P: Plugin> Sync for Wrapper<P> {}
 
 impl<P: Plugin> Wrapper<P> {
     const AUDIO_PORTS: clap_plugin_audio_ports = clap_plugin_audio_ports {
-        count: Self::audio_ports_count,
-        get: Self::audio_ports_get,
+        count: Some(Self::audio_ports_count),
+        get: Some(Self::audio_ports_get),
     };
 
     const AUDIO_PORTS_CONFIG: clap_plugin_audio_ports_config = clap_plugin_audio_ports_config {
-        count: Self::audio_ports_config_count,
-        get: Self::audio_ports_config_get,
-        select: Self::audio_ports_config_select,
+        count: Some(Self::audio_ports_config_count),
+        get: Some(Self::audio_ports_config_get),
+        select: Some(Self::audio_ports_config_select),
     };
 
     const PARAMS: clap_plugin_params = clap_plugin_params {
-        count: Self::params_count,
-        get_info: Self::params_get_info,
-        get_value: Self::params_get_value,
-        value_to_text: Self::params_value_to_text,
-        text_to_value: Self::params_text_to_value,
-        flush: Self::params_flush,
+        count: Some(Self::params_count),
+        get_info: Some(Self::params_get_info),
+        get_value: Some(Self::params_get_value),
+        value_to_text: Some(Self::params_value_to_text),
+        text_to_value: Some(Self::params_text_to_value),
+        flush: Some(Self::params_flush),
     };
 
     const GUI: clap_plugin_gui = clap_plugin_gui {
-        is_api_supported: Self::gui_is_api_supported,
-        get_preferred_api: Self::gui_get_preferred_api,
-        create: Self::gui_create,
-        destroy: Self::gui_destroy,
-        set_scale: Self::gui_set_scale,
-        get_size: Self::gui_get_size,
-        can_resize: Self::gui_can_resize,
-        get_resize_hints: Self::gui_get_resize_hints,
-        adjust_size: Self::gui_adjust_size,
-        set_size: Self::gui_set_size,
-        set_parent: Self::gui_set_parent,
-        set_transient: Self::gui_set_transient,
-        suggest_title: Self::gui_suggest_title,
-        show: Self::gui_show,
-        hide: Self::gui_hide,
+        is_api_supported: Some(Self::gui_is_api_supported),
+        get_preferred_api: Some(Self::gui_get_preferred_api),
+        create: Some(Self::gui_create),
+        destroy: Some(Self::gui_destroy),
+        set_scale: Some(Self::gui_set_scale),
+        get_size: Some(Self::gui_get_size),
+        can_resize: Some(Self::gui_can_resize),
+        get_resize_hints: Some(Self::gui_get_resize_hints),
+        adjust_size: Some(Self::gui_adjust_size),
+        set_size: Some(Self::gui_set_size),
+        set_parent: Some(Self::gui_set_parent),
+        set_transient: Some(Self::gui_set_transient),
+        suggest_title: Some(Self::gui_suggest_title),
+        show: Some(Self::gui_show),
+        hide: Some(Self::gui_hide),
     };
 
     #[cfg(target_os = "linux")]
     const TIMER_SUPPORT: clap_plugin_timer_support = clap_plugin_timer_support {
-        on_timer: Self::timer_support_on_timer,
+        on_timer: Some(Self::timer_support_on_timer),
     };
 
     pub fn create(
@@ -155,16 +155,16 @@ impl<P: Plugin> Wrapper<P> {
             clap_plugin: clap_plugin {
                 desc,
                 plugin_data: ptr::null_mut(),
-                init: Self::init,
-                destroy: Self::destroy,
-                activate: Self::activate,
-                deactivate: Self::deactivate,
-                start_processing: Self::start_processing,
-                stop_processing: Self::stop_processing,
-                reset: Self::reset,
-                process: Self::process,
-                get_extension: Self::get_extension,
-                on_main_thread: Self::on_main_thread,
+                init: Some(Self::init),
+                destroy: Some(Self::destroy),
+                activate: Some(Self::activate),
+                deactivate: Some(Self::deactivate),
+                start_processing: Some(Self::start_processing),
+                stop_processing: Some(Self::stop_processing),
+                reset: Some(Self::reset),
+                process: Some(Self::process),
+                get_extension: Some(Self::get_extension),
+                on_main_thread: Some(Self::on_main_thread),
             },
             clap_host: host,
             host_extensions: UnsafeCell::new(HostExtensions {
@@ -194,8 +194,10 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(plugin as *mut Wrapper<P>);
         let host_extensions = &mut *wrapper.host_extensions.get();
 
-        let timer_support =
-            ((*wrapper.clap_host).get_extension)(wrapper.clap_host, CLAP_EXT_TIMER_SUPPORT);
+        let timer_support = ((*wrapper.clap_host).get_extension.unwrap_unchecked())(
+            wrapper.clap_host,
+            CLAP_EXT_TIMER_SUPPORT.as_ptr(),
+        );
         if !timer_support.is_null() {
             host_extensions.timer_support = Some(timer_support as *const clap_host_timer_support);
         }
@@ -271,26 +273,28 @@ impl<P: Plugin> Wrapper<P> {
     ) -> *const c_void {
         let wrapper = &*(plugin as *mut Wrapper<P>);
 
-        if CStr::from_ptr(id) == CStr::from_ptr(CLAP_EXT_AUDIO_PORTS) {
+        let id = CStr::from_ptr(id);
+
+        if id == CLAP_EXT_AUDIO_PORTS {
             return &Self::AUDIO_PORTS as *const clap_plugin_audio_ports as *const c_void;
         }
 
-        if CStr::from_ptr(id) == CStr::from_ptr(CLAP_EXT_AUDIO_PORTS_CONFIG) {
+        if id == CLAP_EXT_AUDIO_PORTS_CONFIG {
             return &Self::AUDIO_PORTS_CONFIG as *const clap_plugin_audio_ports_config
                 as *const c_void;
         }
 
-        if CStr::from_ptr(id) == CStr::from_ptr(CLAP_EXT_PARAMS) {
+        if id == CLAP_EXT_PARAMS {
             return &Self::PARAMS as *const clap_plugin_params as *const c_void;
         }
 
         if wrapper.has_editor {
-            if CStr::from_ptr(id) == CStr::from_ptr(CLAP_EXT_GUI) {
+            if id == CLAP_EXT_GUI {
                 return &Self::GUI as *const clap_plugin_gui as *const c_void;
             }
 
             #[cfg(target_os = "linux")]
-            if CStr::from_ptr(id) == CStr::from_ptr(CLAP_EXT_TIMER_SUPPORT) {
+            if id == CLAP_EXT_TIMER_SUPPORT {
                 return &Self::TIMER_SUPPORT as *const clap_plugin_timer_support as *const c_void;
             }
         }
@@ -342,7 +346,7 @@ impl<P: Plugin> Wrapper<P> {
                 0
             };
             info.channel_count = bus_state.format().channels() as u32;
-            info.port_type = bus_format_to_port_type(bus_state.format());
+            info.port_type = bus_format_to_port_type(bus_state.format()).as_ptr();
             info.in_place_pair = CLAP_INVALID_ID;
 
             return true;
@@ -375,7 +379,7 @@ impl<P: Plugin> Wrapper<P> {
             config.has_main_input = !bus_config.get_inputs().is_empty();
             if let Some(bus_format) = bus_config.get_inputs().first() {
                 config.main_input_channel_count = bus_format.channels() as u32;
-                config.main_input_port_type = bus_format_to_port_type(bus_format);
+                config.main_input_port_type = bus_format_to_port_type(bus_format).as_ptr();
             } else {
                 config.main_input_channel_count = 0;
                 config.main_input_port_type = ptr::null();
@@ -384,7 +388,7 @@ impl<P: Plugin> Wrapper<P> {
             config.has_main_output = !bus_config.get_outputs().is_empty();
             if let Some(bus_format) = bus_config.get_outputs().first() {
                 config.main_output_channel_count = bus_format.channels() as u32;
-                config.main_output_port_type = bus_format_to_port_type(bus_format);
+                config.main_output_port_type = bus_format_to_port_type(bus_format).as_ptr();
             } else {
                 config.main_output_channel_count = 0;
                 config.main_output_port_type = ptr::null();
@@ -542,9 +546,9 @@ impl<P: Plugin> Wrapper<P> {
     ) {
         let wrapper = &*(plugin as *mut Wrapper<P>);
 
-        let size = ((*in_).size)(in_);
+        let size = ((*in_).size.unwrap_unchecked())(in_);
         for i in 0..size {
-            let event = ((*in_).get)(in_, i);
+            let event = ((*in_).get.unwrap_unchecked())(in_, i);
 
             if (*event).type_ == CLAP_EVENT_PARAM_VALUE {
                 let event = &*(event as *const clap_event_param_value);
@@ -568,17 +572,17 @@ impl<P: Plugin> Wrapper<P> {
         }
 
         #[cfg(target_os = "windows")]
-        if CStr::from_ptr(api) == CStr::from_ptr(CLAP_WINDOW_API_WIN32) {
+        if CStr::from_ptr(api) == CLAP_WINDOW_API_WIN32 {
             return true;
         }
 
         #[cfg(target_os = "macos")]
-        if CStr::from_ptr(api) == CStr::from_ptr(CLAP_WINDOW_API_COCOA) {
+        if CStr::from_ptr(api) == CLAP_WINDOW_API_COCOA {
             return true;
         }
 
         #[cfg(target_os = "linux")]
-        if CStr::from_ptr(api) == CStr::from_ptr(CLAP_WINDOW_API_X11) {
+        if CStr::from_ptr(api) == CLAP_WINDOW_API_X11 {
             return true;
         }
 
@@ -594,19 +598,19 @@ impl<P: Plugin> Wrapper<P> {
 
         #[cfg(target_os = "windows")]
         {
-            *api = CLAP_WINDOW_API_WIN32;
+            *api = CLAP_WINDOW_API_WIN32.as_ptr();
             return true;
         }
 
         #[cfg(target_os = "macos")]
         {
-            *api = CLAP_WINDOW_API_COCOA;
+            *api = CLAP_WINDOW_API_COCOA.as_ptr();
             return true;
         }
 
         #[cfg(target_os = "linux")]
         {
-            *api = CLAP_WINDOW_API_X11;
+            *api = CLAP_WINDOW_API_X11.as_ptr();
             return true;
         }
 
@@ -634,7 +638,10 @@ impl<P: Plugin> Wrapper<P> {
         {
             if let Some(timer_support) = (*wrapper.host_extensions.get()).timer_support {
                 if let Some(timer_id) = editor_state.timer_id.take() {
-                    ((*timer_support).unregister_timer)(wrapper.clap_host, timer_id);
+                    ((*timer_support).unregister_timer.unwrap_unchecked())(
+                        wrapper.clap_host,
+                        timer_id,
+                    );
                 }
             }
         }
@@ -701,7 +708,7 @@ impl<P: Plugin> Wrapper<P> {
 
         #[cfg(target_os = "macos")]
         let parent = {
-            if CStr::from_ptr(window.api) != CStr::from_ptr(CLAP_WINDOW_API_COCOA) {
+            if CStr::from_ptr(window.api) != CLAP_WINDOW_API_COCOA {
                 return false;
             }
 
@@ -714,7 +721,7 @@ impl<P: Plugin> Wrapper<P> {
 
         #[cfg(target_os = "windows")]
         let parent = {
-            if CStr::from_ptr(window.api) != CStr::from_ptr(CLAP_WINDOW_API_WIN32) {
+            if CStr::from_ptr(window.api) != CLAP_WINDOW_API_WIN32 {
                 return false;
             }
 
@@ -727,7 +734,7 @@ impl<P: Plugin> Wrapper<P> {
 
         #[cfg(target_os = "linux")]
         let parent = {
-            if CStr::from_ptr(window.api) != CStr::from_ptr(CLAP_WINDOW_API_X11) {
+            if CStr::from_ptr(window.api) != CLAP_WINDOW_API_X11 {
                 return false;
             }
 
@@ -750,8 +757,11 @@ impl<P: Plugin> Wrapper<P> {
                 };
 
             let mut timer_id = CLAP_INVALID_ID;
-            if !((*timer_support).register_timer)(wrapper.clap_host, TIMER_PERIOD_MS, &mut timer_id)
-            {
+            if !((*timer_support).register_timer.unwrap_unchecked())(
+                wrapper.clap_host,
+                TIMER_PERIOD_MS,
+                &mut timer_id,
+            ) {
                 return false;
             }
 
@@ -862,9 +872,9 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
 
         Factory {
             factory: clap_plugin_factory {
-                get_plugin_count: Self::get_plugin_count,
-                get_plugin_descriptor: Self::get_plugin_descriptor,
-                create_plugin: Self::create_plugin,
+                get_plugin_count: Some(Self::get_plugin_count),
+                get_plugin_descriptor: Some(Self::get_plugin_descriptor),
+                create_plugin: Some(Self::create_plugin),
             },
             info,
             descriptor_bufs,
@@ -923,9 +933,9 @@ impl<P: Plugin + ClapPlugin> EntryPoint<P> {
         EntryPoint {
             entry_point: clap_plugin_entry {
                 clap_version: CLAP_VERSION,
-                init,
-                deinit,
-                get_factory,
+                init: Some(init),
+                deinit: Some(deinit),
+                get_factory: Some(get_factory),
             },
             phantom: PhantomData,
         }
@@ -948,7 +958,7 @@ impl<P: Plugin + ClapPlugin> EntryPoint<P> {
         factory_id: *const c_char,
         factory: &Option<Factory<P>>,
     ) -> *const c_void {
-        if CStr::from_ptr(factory_id) == CStr::from_ptr(CLAP_PLUGIN_FACTORY_ID) {
+        if CStr::from_ptr(factory_id) == CLAP_PLUGIN_FACTORY_ID {
             if let Some(factory) = factory {
                 return factory as *const Factory<P> as *const c_void;
             }
