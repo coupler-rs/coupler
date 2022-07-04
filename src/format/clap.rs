@@ -194,7 +194,7 @@ impl<P: Plugin> Wrapper<P> {
         let wrapper = &*(plugin as *mut Wrapper<P>);
         let host_extensions = &mut *wrapper.host_extensions.get();
 
-        let timer_support = ((*wrapper.clap_host).get_extension.unwrap_unchecked())(
+        let timer_support = (*wrapper.clap_host).get_extension.unwrap_unchecked()(
             wrapper.clap_host,
             CLAP_EXT_TIMER_SUPPORT.as_ptr(),
         );
@@ -546,9 +546,9 @@ impl<P: Plugin> Wrapper<P> {
     ) {
         let wrapper = &*(plugin as *mut Wrapper<P>);
 
-        let size = ((*in_).size.unwrap_unchecked())(in_);
+        let size = (*in_).size.unwrap_unchecked()(in_);
         for i in 0..size {
-            let event = ((*in_).get.unwrap_unchecked())(in_, i);
+            let event = (*in_).get.unwrap_unchecked()(in_, i);
 
             if (*event).type_ == CLAP_EVENT_PARAM_VALUE {
                 let event = &*(event as *const clap_event_param_value);
@@ -638,7 +638,7 @@ impl<P: Plugin> Wrapper<P> {
         {
             if let Some(timer_support) = (*wrapper.host_extensions.get()).timer_support {
                 if let Some(timer_id) = editor_state.timer_id.take() {
-                    ((*timer_support).unregister_timer.unwrap_unchecked())(
+                    (*timer_support).unregister_timer.unwrap_unchecked()(
                         wrapper.clap_host,
                         timer_id,
                     );
@@ -757,7 +757,7 @@ impl<P: Plugin> Wrapper<P> {
                 };
 
             let mut timer_id = CLAP_INVALID_ID;
-            if !((*timer_support).register_timer.unwrap_unchecked())(
+            if !(*timer_support).register_timer.unwrap_unchecked()(
                 wrapper.clap_host,
                 TIMER_PERIOD_MS,
                 &mut timer_id,
