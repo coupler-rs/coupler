@@ -2,7 +2,8 @@ use super::util::{self, copy_cstring};
 use crate::{bus::*, editor::*, param::*, plugin::*, process::*};
 
 use clap_sys::ext::{
-    audio_ports::*, audio_ports_config::*, gui::*, params::*, state::*, timer_support::*,
+    audio_ports::*, audio_ports_config::*, gui::*, params::*, posix_fd_support::*, state::*,
+    timer_support::*,
 };
 use clap_sys::{
     entry::*, events::*, host::*, id::*, plugin::*, plugin_factory::*, process::*, stream::*,
@@ -14,7 +15,7 @@ use raw_window_handle::RawWindowHandle;
 use std::cell::UnsafeCell;
 use std::ffi::{c_void, CStr, CString};
 use std::marker::PhantomData;
-use std::os::raw::c_char;
+use std::os::raw::{c_char, c_int};
 use std::rc::Rc;
 use std::{io, ptr, slice};
 
@@ -61,11 +62,14 @@ struct ProcessorState<P: Plugin> {
 struct EditorState<P: Plugin> {
     #[cfg_attr(not(target_os = "linux"), allow(unused))]
     timer_id: Option<clap_id>,
+    #[cfg_attr(not(target_os = "linux"), allow(unused))]
+    fd: Option<c_int>,
     editor: Option<P::Editor>,
 }
 
 struct HostExtensions {
     timer_support: Option<*const clap_host_timer_support>,
+    posix_fd_support: Option<*const clap_host_posix_fd_support>,
 }
 
 #[repr(C)]
@@ -134,6 +138,11 @@ impl<P: Plugin> Wrapper<P> {
         on_timer: Some(Self::timer_support_on_timer),
     };
 
+    #[cfg(target_os = "linux")]
+    const POSIX_FD_SUPPORT: clap_plugin_posix_fd_support = clap_plugin_posix_fd_support {
+        on_fd: Some(Self::posix_fd_support_on_fd),
+    };
+
     pub fn create(
         info: &PluginInfo,
         desc: *const clap_plugin_descriptor,
@@ -176,6 +185,7 @@ impl<P: Plugin> Wrapper<P> {
             clap_host: host,
             host_extensions: UnsafeCell::new(HostExtensions {
                 timer_support: None,
+                posix_fd_support: None,
             }),
             has_editor: info.get_has_editor(),
             bus_list,
@@ -189,6 +199,7 @@ impl<P: Plugin> Wrapper<P> {
             }),
             editor_state: UnsafeCell::new(EditorState {
                 timer_id: None,
+                fd: None,
                 editor: None,
             }),
         }))
@@ -207,6 +218,15 @@ impl<P: Plugin> Wrapper<P> {
         );
         if !timer_support.is_null() {
             host_extensions.timer_support = Some(timer_support as *const clap_host_timer_support);
+        }
+
+        let posix_fd_support = (*wrapper.clap_host).get_extension.unwrap_unchecked()(
+            wrapper.clap_host,
+            CLAP_EXT_POSIX_FD_SUPPORT.as_ptr(),
+        );
+        if !posix_fd_support.is_null() {
+            host_extensions.posix_fd_support =
+                Some(posix_fd_support as *const clap_host_posix_fd_support);
         }
 
         true
@@ -307,6 +327,12 @@ impl<P: Plugin> Wrapper<P> {
             #[cfg(target_os = "linux")]
             if id == CLAP_EXT_TIMER_SUPPORT {
                 return &Self::TIMER_SUPPORT as *const clap_plugin_timer_support as *const c_void;
+            }
+
+            #[cfg(target_os = "linux")]
+            if id == CLAP_EXT_POSIX_FD_SUPPORT {
+                return &Self::POSIX_FD_SUPPORT as *const clap_plugin_posix_fd_support
+                    as *const c_void;
             }
         }
 
@@ -715,16 +741,23 @@ impl<P: Plugin> Wrapper<P> {
 
     unsafe extern "C" fn gui_destroy(plugin: *const clap_plugin) {
         let wrapper = &*(plugin as *mut Wrapper<P>);
+        let host_extensions = &*wrapper.host_extensions.get();
         let editor_state = &mut *wrapper.editor_state.get();
 
         #[cfg(target_os = "linux")]
         {
-            if let Some(timer_support) = (*wrapper.host_extensions.get()).timer_support {
+            if let Some(timer_support) = host_extensions.timer_support {
                 if let Some(timer_id) = editor_state.timer_id.take() {
                     (*timer_support).unregister_timer.unwrap_unchecked()(
                         wrapper.clap_host,
                         timer_id,
                     );
+                }
+            }
+
+            if let Some(posix_fd_support) = host_extensions.posix_fd_support {
+                if let Some(fd) = editor_state.fd.take() {
+                    (*posix_fd_support).unregister_fd.unwrap_unchecked()(wrapper.clap_host, fd);
                 }
             }
         }
@@ -785,6 +818,7 @@ impl<P: Plugin> Wrapper<P> {
         window: *const clap_window,
     ) -> bool {
         let wrapper = &*(plugin as *mut Wrapper<P>);
+        let host_extensions = &*wrapper.host_extensions.get();
         let editor_state = &mut *wrapper.editor_state.get();
 
         let window = &*window;
@@ -828,17 +862,19 @@ impl<P: Plugin> Wrapper<P> {
             })
         };
 
+        let context = EditorContext::<P>::new(Rc::new(ClapEditorContext {}));
+        let editor = P::Editor::open(wrapper.plugin.clone(), context, Some(&ParentWindow(parent)));
+
         #[cfg(target_os = "linux")]
         {
+            if host_extensions.timer_support.is_none() || host_extensions.posix_fd_support.is_none()
+            {
+                return false;
+            }
+            let timer_support = host_extensions.timer_support.unwrap();
+            let posix_fd_support = host_extensions.posix_fd_support.unwrap();
+
             const TIMER_PERIOD_MS: u32 = 16;
-
-            let timer_support =
-                if let Some(timer_support) = (*wrapper.host_extensions.get()).timer_support {
-                    timer_support
-                } else {
-                    return false;
-                };
-
             let mut timer_id = CLAP_INVALID_ID;
             if !(*timer_support).register_timer.unwrap_unchecked()(
                 wrapper.clap_host,
@@ -847,12 +883,20 @@ impl<P: Plugin> Wrapper<P> {
             ) {
                 return false;
             }
-
             editor_state.timer_id = Some(timer_id);
+
+            if let Some(fd) = editor.file_descriptor() {
+                if !(*posix_fd_support).register_fd.unwrap_unchecked()(
+                    wrapper.clap_host,
+                    fd,
+                    CLAP_POSIX_FD_READ,
+                ) {
+                    return false;
+                }
+                editor_state.fd = Some(fd);
+            }
         }
 
-        let context = EditorContext::<P>::new(Rc::new(ClapEditorContext {}));
-        let editor = P::Editor::open(wrapper.plugin.clone(), context, Some(&ParentWindow(parent)));
         editor_state.editor = Some(editor);
 
         true
@@ -883,6 +927,24 @@ impl<P: Plugin> Wrapper<P> {
         if let Some(id) = editor_state.timer_id {
             if let Some(editor) = &mut editor_state.editor {
                 if timer_id == id {
+                    editor.poll();
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    pub unsafe extern "C" fn posix_fd_support_on_fd(
+        plugin: *const clap_plugin,
+        fd: i32,
+        _flags: clap_posix_fd_flags,
+    ) {
+        let wrapper = &*(plugin as *mut Wrapper<P>);
+        let editor_state = &mut *wrapper.editor_state.get();
+
+        if let Some(editor_fd) = editor_state.fd {
+            if let Some(editor) = &mut editor_state.editor {
+                if fd == editor_fd {
                     editor.poll();
                 }
             }
