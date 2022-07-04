@@ -1546,18 +1546,29 @@ impl<P: Plugin> Wrapper<P> {
         let editor = P::Editor::open(wrapper.plugin.clone(), context, Some(&ParentWindow(parent)));
 
         #[cfg(target_os = "linux")]
-        if let Some(file_descriptor) = editor.file_descriptor() {
-            if let Some(frame) = editor_state.context.plug_frame.get() {
-                let mut obj = ptr::null_mut();
-                let result = ((*(*frame)).unknown.query_interface)(
-                    frame as *mut c_void,
-                    &IRunLoop::IID,
-                    &mut obj,
-                );
+        {
+            let frame = editor_state.context.plug_frame.get();
+            if frame.is_none() {
+                return result::NOT_INITIALIZED;
+            }
+            let frame = frame.unwrap();
 
-                if result == result::OK {
-                    let run_loop = obj as *mut *const IRunLoop;
+            let mut obj = ptr::null_mut();
+            let result = ((*(*frame)).unknown.query_interface)(
+                frame as *mut c_void,
+                &IRunLoop::IID,
+                &mut obj,
+            );
 
+            if result == result::OK {
+                let run_loop = obj as *mut *const IRunLoop;
+
+                let timer_handler = this
+                    .offset(-offset_of!(Self, plug_view) + offset_of!(Self, timer_handler))
+                    as *mut *const ITimerHandler;
+                ((*(*run_loop)).register_timer)(run_loop as *mut c_void, timer_handler, 16);
+
+                if let Some(file_descriptor) = editor.file_descriptor() {
                     let event_handler = this
                         .offset(-offset_of!(Self, plug_view) + offset_of!(Self, event_handler))
                         as *mut *const IEventHandler;
@@ -1566,14 +1577,9 @@ impl<P: Plugin> Wrapper<P> {
                         event_handler,
                         file_descriptor,
                     );
-
-                    let timer_handler = this
-                        .offset(-offset_of!(Self, plug_view) + offset_of!(Self, timer_handler))
-                        as *mut *const ITimerHandler;
-                    ((*(*run_loop)).register_timer)(run_loop as *mut c_void, timer_handler, 16);
-
-                    ((*(*run_loop)).unknown.release)(run_loop as *mut c_void);
                 }
+
+                ((*(*run_loop)).unknown.release)(run_loop as *mut c_void);
             }
         }
 
