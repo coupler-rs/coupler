@@ -1,9 +1,12 @@
 use super::util::{self, copy_cstring};
 use crate::{bus::*, editor::*, param::*, plugin::*, process::*};
 
-use clap_sys::ext::{audio_ports::*, audio_ports_config::*, gui::*, params::*, timer_support::*};
+use clap_sys::ext::{
+    audio_ports::*, audio_ports_config::*, gui::*, params::*, state::*, timer_support::*,
+};
 use clap_sys::{
-    entry::*, events::*, host::*, id::*, plugin::*, plugin_factory::*, process::*, version::*,
+    entry::*, events::*, host::*, id::*, plugin::*, plugin_factory::*, process::*, stream::*,
+    version::*,
 };
 
 use raw_window_handle::RawWindowHandle;
@@ -12,9 +15,8 @@ use std::cell::UnsafeCell;
 use std::ffi::{c_void, CStr, CString};
 use std::marker::PhantomData;
 use std::os::raw::c_char;
-use std::ptr;
 use std::rc::Rc;
-use std::slice;
+use std::{io, ptr, slice};
 
 fn bus_format_to_port_type(bus_format: &BusFormat) -> &'static CStr {
     match bus_format {
@@ -102,6 +104,11 @@ impl<P: Plugin> Wrapper<P> {
         value_to_text: Some(Self::params_value_to_text),
         text_to_value: Some(Self::params_text_to_value),
         flush: Some(Self::params_flush),
+    };
+
+    const STATE: clap_plugin_state = clap_plugin_state {
+        save: Some(Self::state_save),
+        load: Some(Self::state_load),
     };
 
     const GUI: clap_plugin_gui = clap_plugin_gui {
@@ -286,6 +293,10 @@ impl<P: Plugin> Wrapper<P> {
 
         if id == CLAP_EXT_PARAMS {
             return &Self::PARAMS as *const clap_plugin_params as *const c_void;
+        }
+
+        if id == CLAP_EXT_STATE {
+            return &Self::STATE as *const clap_plugin_state as *const c_void;
         }
 
         if wrapper.has_editor {
@@ -560,6 +571,78 @@ impl<P: Plugin> Wrapper<P> {
                 }
             }
         }
+    }
+
+    unsafe extern "C" fn state_save(
+        plugin: *const clap_plugin,
+        stream: *const clap_ostream,
+    ) -> bool {
+        struct StreamWriter(*const clap_ostream);
+
+        impl io::Write for StreamWriter {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                let result = unsafe {
+                    (*self.0).write.unwrap_unchecked()(
+                        self.0,
+                        buf.as_ptr() as *const c_void,
+                        buf.len() as u64,
+                    )
+                };
+
+                if result == -1 {
+                    Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Failed to write to stream",
+                    ))
+                } else {
+                    io::Result::Ok(result as usize)
+                }
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let wrapper = &*(plugin as *mut Wrapper<P>);
+
+        let result = wrapper.plugin.serialize(&mut StreamWriter(stream));
+
+        result.is_ok()
+    }
+
+    unsafe extern "C" fn state_load(
+        plugin: *const clap_plugin,
+        stream: *const clap_istream,
+    ) -> bool {
+        struct StreamReader(*const clap_istream);
+
+        impl io::Read for StreamReader {
+            fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+                let result = unsafe {
+                    (*self.0).read.unwrap_unchecked()(
+                        self.0,
+                        buf.as_mut_ptr() as *mut c_void,
+                        buf.len() as u64,
+                    )
+                };
+
+                if result == -1 {
+                    Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Failed to read from stream",
+                    ))
+                } else {
+                    io::Result::Ok(result as usize)
+                }
+            }
+        }
+
+        let wrapper = &*(plugin as *mut Wrapper<P>);
+
+        let result = wrapper.plugin.deserialize(&mut StreamReader(stream));
+
+        result.is_ok()
     }
 
     unsafe extern "C" fn gui_is_api_supported(
