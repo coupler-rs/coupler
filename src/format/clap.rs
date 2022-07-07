@@ -741,11 +741,12 @@ impl<P: Plugin> Wrapper<P> {
 
     unsafe extern "C" fn gui_destroy(plugin: *const clap_plugin) {
         let wrapper = &*(plugin as *mut Wrapper<P>);
-        let host_extensions = &*wrapper.host_extensions.get();
         let editor_state = &mut *wrapper.editor_state.get();
 
         #[cfg(target_os = "linux")]
         {
+            let host_extensions = &*wrapper.host_extensions.get();
+
             if let Some(timer_support) = host_extensions.timer_support {
                 if let Some(timer_id) = editor_state.timer_id.take() {
                     (*timer_support).unregister_timer.unwrap_unchecked()(
@@ -818,7 +819,6 @@ impl<P: Plugin> Wrapper<P> {
         window: *const clap_window,
     ) -> bool {
         let wrapper = &*(plugin as *mut Wrapper<P>);
-        let host_extensions = &*wrapper.host_extensions.get();
         let editor_state = &mut *wrapper.editor_state.get();
 
         let window = &*window;
@@ -867,6 +867,8 @@ impl<P: Plugin> Wrapper<P> {
 
         #[cfg(target_os = "linux")]
         {
+            let host_extensions = &*wrapper.host_extensions.get();
+
             if host_extensions.timer_support.is_none() || host_extensions.posix_fd_support.is_none()
             {
                 return false;
