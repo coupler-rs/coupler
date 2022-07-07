@@ -13,5 +13,5 @@ crossbeam-channel = "0.5.2"
 
 [dev-dependencies]
 png = "0.11"
-window = { path = "../window" }
+portlight = { git = "https://github.com/coupler-rs/portlight", rev = "b2a925745733445adae8c6442ac66224527adea8" }
 usvg = "0.13.0"

@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
 use graphics::{Canvas, Color, Font, Path, Vec2};
-use window::{Application, Rect, Window, WindowHandler, WindowOptions};
+use portlight::{Application, Rect, Window, WindowHandler, WindowOptions};
 
 struct Handler {
     canvas: RefCell<Canvas>,
