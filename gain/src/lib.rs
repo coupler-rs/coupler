@@ -3,7 +3,7 @@ use std::cell::{Cell, RefCell};
 use coupler::atomic::AtomicF64;
 use coupler::format::{clap::*, vst3::*};
 use coupler::{buffer::*, bus::*, editor::*, param::*, plugin::*, process::*};
-use graphics::{Canvas, Color, Path, Vec2};
+use flicker::{Canvas, Color, Path, Vec2};
 use portlight::{
     Application, Cursor, MouseButton, Parent, Point, Rect, Window, WindowHandler, WindowOptions,
 };

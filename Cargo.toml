@@ -23,6 +23,4 @@ members = [
     "coupler-derive",
     "gain",
     "gain/format/*",
-    "graphics",
-    "simd",
 ]

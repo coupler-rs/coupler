@@ -12,5 +12,5 @@ formats = ["auv2", "clap", "vst3"]
 [dependencies]
 coupler = { path = ".." }
 portlight = { git = "https://github.com/coupler-rs/portlight", rev = "b2a925745733445adae8c6442ac66224527adea8" }
-graphics = { path = "../graphics" }
+flicker = { git = "https://github.com/coupler-rs/flicker", rev = "81202ff098b661e117da96f0556531986871e596" }
 raw-window-handle = "0.3.3"
