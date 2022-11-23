@@ -2,8 +2,7 @@ use crate::bus::BusState;
 use crate::process::Event;
 
 use std::marker::PhantomData;
-use std::mem::MaybeUninit;
-use std::slice;
+use std::{slice, array};
 
 pub struct Buffers<'a, 'b, 'c> {
     offset: usize,
@@ -197,21 +196,17 @@ impl<'a, 'b> Buses<'a, 'b> {
             return None;
         }
 
-        let buses: MaybeUninit<[Bus; N]> = MaybeUninit::uninit();
-        for (index, (start, end)) in self.indices.iter().enumerate() {
-            unsafe {
-                let bus_ptr = (buses.as_ptr() as *mut Bus).add(index);
-                bus_ptr.write(Bus {
-                    offset: self.offset,
-                    len: self.len,
-                    state: &self.states[index],
-                    ptrs: &self.ptrs[*start..*end],
-                    phantom: PhantomData,
-                });
-            }
-        }
+        Some(array::from_fn(|i| {
+            let (start, end) = self.indices[i];
 
-        Some(unsafe { buses.assume_init() })
+            Bus {
+                offset: self.offset,
+                len: self.len,
+                state: &self.states[i],
+                ptrs: &self.ptrs[start..end],
+                phantom: PhantomData,
+            }
+        }))
     }
 }
 
@@ -256,21 +251,17 @@ impl<'a, 'b> BusesMut<'a, 'b> {
             return None;
         }
 
-        let buses: MaybeUninit<[BusMut; N]> = MaybeUninit::uninit();
-        for (index, (start, end)) in self.indices.iter().enumerate() {
-            unsafe {
-                let bus_ptr = (buses.as_ptr() as *mut BusMut).add(index);
-                bus_ptr.write(BusMut {
-                    offset: self.offset,
-                    len: self.len,
-                    state: &self.states[index],
-                    ptrs: &self.ptrs[*start..*end],
-                    phantom: PhantomData,
-                });
-            }
-        }
+        Some(array::from_fn(|i| {
+            let (start, end) = self.indices[i];
 
-        Some(unsafe { buses.assume_init() })
+            BusMut {
+                offset: self.offset,
+                len: self.len,
+                state: &self.states[i],
+                ptrs: &self.ptrs[start..end],
+                phantom: PhantomData,
+            }
+        }))
     }
 }
 
@@ -317,15 +308,9 @@ impl<'a, 'b> Bus<'a, 'b> {
             return None;
         }
 
-        let channels: MaybeUninit<[&[f32]; N]> = MaybeUninit::uninit();
-        for (index, ptr) in self.ptrs.iter().enumerate() {
-            unsafe {
-                let channel_ptr = (channels.as_ptr() as *mut &[f32]).add(index);
-                channel_ptr.write(slice::from_raw_parts(ptr.add(self.offset), self.len));
-            }
-        }
-
-        Some(unsafe { channels.assume_init() })
+        Some(array::from_fn(|i| {
+            unsafe { slice::from_raw_parts(self.ptrs[i].add(self.offset), self.len) }
+        }))
     }
 }
 
@@ -372,15 +357,9 @@ impl<'a, 'b> BusMut<'a, 'b> {
             return None;
         }
 
-        let channels: MaybeUninit<[&mut [f32]; N]> = MaybeUninit::uninit();
-        for (index, ptr) in self.ptrs.iter().enumerate() {
-            unsafe {
-                let channel_ptr = (channels.as_ptr() as *mut &mut [f32]).add(index);
-                channel_ptr.write(slice::from_raw_parts_mut(ptr.add(self.offset), self.len));
-            }
-        }
-
-        Some(unsafe { channels.assume_init() })
+        Some(array::from_fn(|i| {
+            unsafe { slice::from_raw_parts_mut(self.ptrs[i].add(self.offset), self.len) }
+        }))
     }
 }
 
