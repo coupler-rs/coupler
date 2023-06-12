@@ -101,9 +101,7 @@ pub struct GainProcessor {
     gain_target: f32,
 }
 
-impl Processor for GainProcessor {
-    type Plugin = Gain;
-
+impl Processor<Gain> for GainProcessor {
     fn create(plugin: PluginHandle<Gain>, _context: &ProcessContext) -> Self {
         GainProcessor {
             plugin: plugin.clone(),
@@ -155,9 +153,7 @@ pub struct GainEditor {
     window: Window,
 }
 
-impl Editor for GainEditor {
-    type Plugin = Gain;
-
+impl Editor<Gain> for GainEditor {
     fn open(
         plugin: PluginHandle<Gain>,
         context: EditorContext<Gain>,

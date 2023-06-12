@@ -3,7 +3,6 @@ use crate::{param::*, plugin::*};
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
-use std::marker::PhantomData;
 use std::rc::Rc;
 
 pub struct EditorContext<P> {
@@ -64,12 +63,10 @@ unsafe impl HasRawWindowHandle for ParentWindow {
     }
 }
 
-pub trait Editor: Sized {
-    type Plugin: Plugin;
-
+pub trait Editor<P>: Sized {
     fn open(
-        plugin: PluginHandle<Self::Plugin>,
-        context: EditorContext<Self::Plugin>,
+        plugin: PluginHandle<P>,
+        context: EditorContext<P>,
         parent: Option<&ParentWindow>,
     ) -> Self;
     fn close(&mut self);
@@ -82,21 +79,15 @@ pub trait Editor: Sized {
     fn poll(&mut self);
 }
 
-pub struct NoEditor<P> {
-    phantom: PhantomData<P>,
-}
+pub struct NoEditor;
 
-impl<P: Plugin> Editor for NoEditor<P> {
-    type Plugin = P;
-
+impl<P: Plugin> Editor<P> for NoEditor {
     fn open(
-        _plugin: PluginHandle<Self::Plugin>,
-        _context: EditorContext<Self::Plugin>,
+        _plugin: PluginHandle<P>,
+        _context: EditorContext<P>,
         _parent: Option<&ParentWindow>,
     ) -> Self {
-        NoEditor {
-            phantom: PhantomData,
-        }
+        NoEditor
     }
 
     fn close(&mut self) {}

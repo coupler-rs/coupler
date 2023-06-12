@@ -88,8 +88,8 @@ impl PluginInfo {
 }
 
 pub trait Plugin: Send + Sync + Sized + 'static {
-    type Processor: Processor<Plugin = Self>;
-    type Editor: Editor<Plugin = Self>;
+    type Processor: Processor<Self>;
+    type Editor: Editor<Self>;
 
     fn info() -> PluginInfo;
     fn buses() -> BusList;
