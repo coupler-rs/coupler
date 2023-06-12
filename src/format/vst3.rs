@@ -10,7 +10,7 @@ use std::ffi::{c_void, CStr};
 use std::marker::PhantomData;
 use std::os::raw::{c_char, c_int};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::{io, ptr, slice};
 
@@ -107,11 +107,7 @@ impl<P> EditorContextHandler<P> for Vst3EditorContext<P> {
             .expect("Invalid parameter id");
         let param_info = &PluginHandle::params(&self.plugin).params()[param_index];
 
-        // If currently active, param changes will be delivered via process(), but if not,
-        // we have to apply them ourselves.
-        if !self.param_states.active.load(Ordering::Relaxed) {
-            param_info.get_accessor().set(&self.plugin, value);
-        }
+        param_info.get_accessor().set(&self.plugin, value);
 
         let value_normalized = param_info.get_mapping().unmap(value);
 
@@ -159,7 +155,6 @@ struct BusStates {
 }
 
 struct ParamStates {
-    active: AtomicBool,
     dirty_processor: AtomicBitset,
     dirty_editor: AtomicBitset,
 }
@@ -357,7 +352,6 @@ impl<P: Plugin> Wrapper<P> {
         let dirty_processor = AtomicBitset::with_len(param_count);
         let dirty_editor = AtomicBitset::with_len(param_count);
         let param_states = Arc::new(ParamStates {
-            active: AtomicBool::new(false),
             dirty_processor,
             dirty_editor,
         });
@@ -641,12 +635,9 @@ impl<P: Plugin> Wrapper<P> {
 
         match state {
             0 => {
-                wrapper.param_states.active.store(false, Ordering::Relaxed);
                 processor_state.processor = None;
             }
             _ => {
-                wrapper.param_states.active.store(true, Ordering::Relaxed);
-
                 let context = ProcessContext::new(
                     processor_state.sample_rate,
                     processor_state.max_buffer_size,
@@ -1398,12 +1389,6 @@ impl<P: Plugin> Wrapper<P> {
         value: f64,
     ) -> TResult {
         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
-
-        // If currently active, param changes will also be delivered via
-        // process(), so don't apply them here.
-        if wrapper.param_states.active.load(Ordering::Relaxed) {
-            return result::OK;
-        }
 
         if let Some(param_index) = PluginHandle::params(&wrapper.plugin).index_of(id) {
             let param_info = &PluginHandle::params(&wrapper.plugin).params()[param_index];
