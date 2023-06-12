@@ -2,7 +2,7 @@ use crate::bus::BusState;
 use crate::process::Event;
 
 use std::marker::PhantomData;
-use std::{slice, array};
+use std::{array, slice};
 
 pub struct Buffers<'a, 'b, 'c> {
     offset: usize,
@@ -308,8 +308,8 @@ impl<'a, 'b> Bus<'a, 'b> {
             return None;
         }
 
-        Some(array::from_fn(|i| {
-            unsafe { slice::from_raw_parts(self.ptrs[i].add(self.offset), self.len) }
+        Some(array::from_fn(|i| unsafe {
+            slice::from_raw_parts(self.ptrs[i].add(self.offset), self.len)
         }))
     }
 }
@@ -357,8 +357,8 @@ impl<'a, 'b> BusMut<'a, 'b> {
             return None;
         }
 
-        Some(array::from_fn(|i| {
-            unsafe { slice::from_raw_parts_mut(self.ptrs[i].add(self.offset), self.len) }
+        Some(array::from_fn(|i| unsafe {
+            slice::from_raw_parts_mut(self.ptrs[i].add(self.offset), self.len)
         }))
     }
 }
