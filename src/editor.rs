@@ -63,7 +63,7 @@ unsafe impl HasRawWindowHandle for ParentWindow {
     }
 }
 
-pub trait Editor<P>: Sized {
+pub trait Editor<P>: Sized + 'static {
     fn open(
         plugin: PluginHandle<P>,
         context: EditorContext<P>,

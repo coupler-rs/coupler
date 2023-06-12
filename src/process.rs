@@ -56,7 +56,7 @@ pub struct ParamChange {
     pub value: f64,
 }
 
-pub trait Processor<P>: Send + Sized {
+pub trait Processor<P>: Send + Sized + 'static {
     fn create(plugin: PluginHandle<P>, context: &ProcessContext) -> Self;
     fn reset(&mut self, context: &ProcessContext);
     fn process(&mut self, context: &ProcessContext, buffers: Buffers, events: &[Event]);
