@@ -129,8 +129,8 @@ impl<P: Plugin> PluginHandle<P> {
 }
 
 impl<P> PluginHandle<P> {
-    pub fn params(&self) -> &ParamList<P> {
-        &self.state.params
+    pub fn params(handle: &PluginHandle<P>) -> &ParamList<P> {
+        &handle.state.params
     }
 }
 
