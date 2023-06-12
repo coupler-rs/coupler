@@ -9,5 +9,5 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-coupler = { path = "../../.." }
+coupler = { workspace = true }
 gain = { path = "../.." }
