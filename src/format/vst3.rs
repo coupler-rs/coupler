@@ -1,3 +1,5 @@
+#![allow(non_snake_case)]
+
 // use crate::atomic::AtomicBitset;
 // use crate::process::{Event, ProcessContext, *};
 // use crate::{buffer::*, bus::*, editor::*, param::*, plugin::*};
@@ -13,10 +15,17 @@
 // use std::sync::atomic::Ordering;
 // use std::sync::Arc;
 // use std::{io, ptr, slice};
+use std::ffi::{c_void, CStr};
+use std::marker::PhantomData;
+use std::ptr;
 
 // use raw_window_handle::RawWindowHandle;
 
 // use vst3_sys::{BusInfo, *};
+use vst3_bindgen::{uid, Class, ComWrapper, Steinberg::Vst::*, Steinberg::*};
+
+use super::util::copy_cstring;
+use crate::plugin::{Plugin, PluginHandle, PluginInfo};
 
 // macro_rules! offset_of {
 //     ($struct:ty, $field:ident) => {{
@@ -183,346 +192,307 @@ fn copy_wstring(src: &str, dst: &mut [TChar]) {
 //     editor: Option<P::Editor>,
 // }
 
-// #[repr(C)]
-// struct Wrapper<P: Plugin> {
-//     component: *const IComponent,
-//     audio_processor: *const IAudioProcessor,
-//     process_context_requirements: *const IProcessContextRequirements,
-//     edit_controller: *const IEditController,
-//     plug_view: *const IPlugView,
-//     event_handler: *const IEventHandler,
-//     timer_handler: *const ITimerHandler,
-//     has_editor: bool,
-//     bus_list: BusList,
-//     bus_config_list: BusConfigList,
-//     bus_config_set: HashSet<BusConfig>,
-//     // We only form an &mut to bus_states in set_bus_arrangements and
-//     // activate_bus, which aren't called concurrently with any other methods on
-//     // IComponent or IAudioProcessor per the spec.
-//     bus_states: UnsafeCell<BusStates>,
-//     param_states: Arc<ParamStates>,
-//     plugin: PluginHandle<P>,
-//     processor_state: UnsafeCell<ProcessorState<P>>,
-//     editor_state: UnsafeCell<EditorState<P>>,
-// }
+struct Wrapper<P: Plugin> {
+    // has_editor: bool,
+    // bus_list: BusList,
+    // bus_config_list: BusConfigList,
+    // bus_config_set: HashSet<BusConfig>,
+    // // We only form an &mut to bus_states in set_bus_arrangements and
+    // // activate_bus, which aren't called concurrently with any other methods on
+    // // IComponent or IAudioProcessor per the spec.
+    // bus_states: UnsafeCell<BusStates>,
+    // param_states: Arc<ParamStates>,
+    plugin: PluginHandle<P>,
+    // processor_state: UnsafeCell<ProcessorState<P>>,
+    // editor_state: UnsafeCell<EditorState<P>>,
+}
 
-// unsafe impl<P: Plugin> Sync for Wrapper<P> {}
+impl<P: Plugin> Wrapper<P> {
+    pub fn new(info: &PluginInfo) -> Wrapper<P> {
+        //         let bus_list = P::buses();
+        //         let bus_config_list = P::bus_configs();
 
-// impl<P: Plugin> Wrapper<P> {
-//     const COMPONENT_VTABLE: IComponent = IComponent {
-//         plugin_base: IPluginBase {
-//             unknown: FUnknown {
-//                 query_interface: Self::component_query_interface,
-//                 add_ref: Self::component_add_ref,
-//                 release: Self::component_release,
-//             },
-//             initialize: Self::component_initialize,
-//             terminate: Self::component_terminate,
-//         },
-//         get_controller_class_id: Self::get_controller_class_id,
-//         set_io_mode: Self::set_io_mode,
-//         get_bus_count: Self::get_bus_count,
-//         get_bus_info: Self::get_bus_info,
-//         get_routing_info: Self::get_routing_info,
-//         activate_bus: Self::activate_bus,
-//         set_active: Self::set_active,
-//         set_state: Self::component_set_state,
-//         get_state: Self::component_get_state,
-//     };
+        //         util::validate_bus_configs(&bus_list, &bus_config_list);
 
-//     const AUDIO_PROCESSOR_VTABLE: IAudioProcessor = IAudioProcessor {
-//         unknown: FUnknown {
-//             query_interface: Self::audio_processor_query_interface,
-//             add_ref: Self::audio_processor_add_ref,
-//             release: Self::audio_processor_release,
-//         },
-//         set_bus_arrangements: Self::set_bus_arrangements,
-//         get_bus_arrangement: Self::get_bus_arrangement,
-//         can_process_sample_size: Self::can_process_sample_size,
-//         get_latency_samples: Self::get_latency_samples,
-//         setup_processing: Self::setup_processing,
-//         set_processing: Self::set_processing,
-//         process: Self::process,
-//         get_tail_samples: Self::get_tail_samples,
-//     };
+        //         let bus_config_set = bus_config_list
+        //             .get_configs()
+        //             .iter()
+        //             .cloned()
+        //             .collect::<HashSet<BusConfig>>();
 
-//     const PROCESS_CONTEXT_REQUIREMENTS_VTABLE: IProcessContextRequirements =
-//         IProcessContextRequirements {
-//             unknown: FUnknown {
-//                 query_interface: Self::process_context_requirements_query_interface,
-//                 add_ref: Self::process_context_requirements_add_ref,
-//                 release: Self::process_context_requirements_release,
-//             },
-//             get_process_context_requirements: Self::get_process_context_requirements,
-//         };
+        //         let default_config = bus_config_list.get_default().unwrap();
 
-//     const EDIT_CONTROLLER_VTABLE: IEditController = IEditController {
-//         plugin_base: IPluginBase {
-//             unknown: FUnknown {
-//                 query_interface: Self::edit_controller_query_interface,
-//                 add_ref: Self::edit_controller_add_ref,
-//                 release: Self::edit_controller_release,
-//             },
-//             initialize: Self::edit_controller_initialize,
-//             terminate: Self::edit_controller_terminate,
-//         },
-//         set_component_state: Self::set_component_state,
-//         set_state: Self::edit_controller_set_state,
-//         get_state: Self::edit_controller_get_state,
-//         get_parameter_count: Self::get_parameter_count,
-//         get_parameter_info: Self::get_parameter_info,
-//         get_param_string_by_value: Self::get_param_string_by_value,
-//         get_param_value_by_string: Self::get_param_value_by_string,
-//         normalized_param_to_plain: Self::normalized_param_to_plain,
-//         plain_param_to_normalized: Self::plain_param_to_normalized,
-//         get_param_normalized: Self::get_param_normalized,
-//         set_param_normalized: Self::set_param_normalized,
-//         set_component_handler: Self::set_component_handler,
-//         create_view: Self::create_view,
-//     };
+        //         let mut inputs = Vec::with_capacity(bus_list.get_inputs().len());
+        //         for format in default_config.get_inputs() {
+        //             inputs.push(BusState::new(format.clone(), true));
+        //         }
 
-//     const PLUG_VIEW_VTABLE: IPlugView = IPlugView {
-//         unknown: FUnknown {
-//             query_interface: Self::plug_view_query_interface,
-//             add_ref: Self::plug_view_add_ref,
-//             release: Self::plug_view_release,
-//         },
-//         is_platform_type_supported: Self::is_platform_type_supported,
-//         attached: Self::attached,
-//         removed: Self::removed,
-//         on_wheel: Self::on_wheel,
-//         on_key_down: Self::on_key_down,
-//         on_key_up: Self::on_key_up,
-//         get_size: Self::get_size,
-//         on_size: Self::on_size,
-//         on_focus: Self::on_focus,
-//         set_frame: Self::set_frame,
-//         can_resize: Self::can_resize,
-//         check_size_constraint: Self::check_size_constraint,
-//     };
+        //         let mut outputs = Vec::with_capacity(bus_list.get_outputs().len());
+        //         for format in default_config.get_outputs() {
+        //             outputs.push(BusState::new(format.clone(), true));
+        //         }
 
-//     const EVENT_HANDLER_VTABLE: IEventHandler = IEventHandler {
-//         unknown: FUnknown {
-//             query_interface: Self::event_handler_query_interface,
-//             add_ref: Self::event_handler_add_ref,
-//             release: Self::event_handler_release,
-//         },
-//         on_fd_is_set: Self::on_fd_is_set,
-//     };
+        //         let bus_states = UnsafeCell::new(BusStates { inputs, outputs });
 
-//     const TIMER_HANDLER_VTABLE: ITimerHandler = ITimerHandler {
-//         unknown: FUnknown {
-//             query_interface: Self::timer_handler_query_interface,
-//             add_ref: Self::timer_handler_add_ref,
-//             release: Self::timer_handler_release,
-//         },
-//         on_timer: Self::on_timer,
-//     };
+        let plugin = PluginHandle::<P>::new();
 
-//     pub fn create(info: &PluginInfo) -> *mut Wrapper<P> {
-//         let bus_list = P::buses();
-//         let bus_config_list = P::bus_configs();
+        //         let param_count = PluginHandle::params(&plugin).params().len();
 
-//         util::validate_bus_configs(&bus_list, &bus_config_list);
+        //         let dirty_processor = AtomicBitset::with_len(param_count);
+        //         let dirty_editor = AtomicBitset::with_len(param_count);
+        //         let param_states = Arc::new(ParamStates {
+        //             dirty_processor,
+        //             dirty_editor,
+        //         });
 
-//         let bus_config_set = bus_config_list
-//             .get_configs()
-//             .iter()
-//             .cloned()
-//             .collect::<HashSet<BusConfig>>();
+        //         let input_indices = Vec::with_capacity(bus_list.get_inputs().len());
+        //         let input_ptrs = Vec::new();
 
-//         let default_config = bus_config_list.get_default().unwrap();
+        //         let output_indices = Vec::with_capacity(bus_list.get_outputs().len());
+        //         let output_ptrs = Vec::new();
 
-//         let mut inputs = Vec::with_capacity(bus_list.get_inputs().len());
-//         for format in default_config.get_inputs() {
-//             inputs.push(BusState::new(format.clone(), true));
-//         }
+        //         let processor_state = UnsafeCell::new(ProcessorState {
+        //             sample_rate: 0.0,
+        //             max_buffer_size: 0,
+        //             needs_reset: false,
+        //             input_channels: 0,
+        //             input_indices,
+        //             input_ptrs,
+        //             output_channels: 0,
+        //             output_indices,
+        //             output_ptrs,
+        //             scratch_buffers: Vec::new(),
+        //             output_ptr_set: Vec::new(),
+        //             aliased_inputs: Vec::new(),
+        //             // We can't know the maximum number of param changes in a
+        //             // block, so make a reasonable guess and hope we don't have to
+        //             // allocate more
+        //             events: Vec::with_capacity(1024 + 4 * param_count),
+        //             processor: None,
+        //         });
 
-//         let mut outputs = Vec::with_capacity(bus_list.get_outputs().len());
-//         for format in default_config.get_outputs() {
-//             outputs.push(BusState::new(format.clone(), true));
-//         }
+        //         let editor_context = Rc::new(Vst3EditorContext {
+        //             component_handler: Cell::new(None),
+        //             plug_frame: Cell::new(None),
+        //             plugin: plugin.clone(),
+        //             param_states: param_states.clone(),
+        //         });
 
-//         let bus_states = UnsafeCell::new(BusStates { inputs, outputs });
+        //         let editor_state = UnsafeCell::new(EditorState {
+        //             context: editor_context,
+        //             editor: None,
+        //         });
 
-//         let plugin = PluginHandle::<P>::new();
+        Wrapper {
+            // has_editor: info.get_has_editor(),
+            // bus_list,
+            // bus_config_list,
+            // bus_config_set,
+            // bus_states,
+            // param_states,
+            plugin,
+            // processor_state,
+            // editor_state,
+        }
+    }
+}
 
-//         let param_count = PluginHandle::params(&plugin).params().len();
+impl<P: Plugin> Class for Wrapper<P> {
+    type Interfaces = (
+        IPluginBase,
+        IComponent,
+        IAudioProcessor,
+        IProcessContextRequirements,
+        IEditController,
+    );
+}
 
-//         let dirty_processor = AtomicBitset::with_len(param_count);
-//         let dirty_editor = AtomicBitset::with_len(param_count);
-//         let param_states = Arc::new(ParamStates {
-//             dirty_processor,
-//             dirty_editor,
-//         });
+impl<P: Plugin> IPluginBaseTrait for Wrapper<P> {
+    unsafe fn initialize(&self, _context: *mut FUnknown) -> tresult {
+        kResultOk
+    }
 
-//         let input_indices = Vec::with_capacity(bus_list.get_inputs().len());
-//         let input_ptrs = Vec::new();
+    unsafe fn terminate(&self) -> tresult {
+        kResultOk
+    }
+}
 
-//         let output_indices = Vec::with_capacity(bus_list.get_outputs().len());
-//         let output_ptrs = Vec::new();
+impl<P: Plugin> IComponentTrait for Wrapper<P> {
+    unsafe fn getControllerClassId(&self, classId: *mut TUID) -> tresult {
+        kNotImplemented
+    }
 
-//         let processor_state = UnsafeCell::new(ProcessorState {
-//             sample_rate: 0.0,
-//             max_buffer_size: 0,
-//             needs_reset: false,
-//             input_channels: 0,
-//             input_indices,
-//             input_ptrs,
-//             output_channels: 0,
-//             output_indices,
-//             output_ptrs,
-//             scratch_buffers: Vec::new(),
-//             output_ptr_set: Vec::new(),
-//             aliased_inputs: Vec::new(),
-//             // We can't know the maximum number of param changes in a
-//             // block, so make a reasonable guess and hope we don't have to
-//             // allocate more
-//             events: Vec::with_capacity(1024 + 4 * param_count),
-//             processor: None,
-//         });
+    unsafe fn setIoMode(&self, mode: IoMode) -> tresult {
+        kResultOk
+    }
 
-//         let editor_context = Rc::new(Vst3EditorContext {
-//             component_handler: Cell::new(None),
-//             plug_frame: Cell::new(None),
-//             plugin: plugin.clone(),
-//             param_states: param_states.clone(),
-//         });
+    unsafe fn getBusCount(&self, type_: MediaType, dir: BusDirection) -> int32 {
+        0
+    }
 
-//         let editor_state = UnsafeCell::new(EditorState {
-//             context: editor_context,
-//             editor: None,
-//         });
+    unsafe fn getBusInfo(
+        &self,
+        type_: MediaType,
+        dir: BusDirection,
+        index: int32,
+        bus: *mut BusInfo,
+    ) -> tresult {
+        kResultOk
+    }
 
-//         Arc::into_raw(Arc::new(Wrapper {
-//             component: &Wrapper::<P>::COMPONENT_VTABLE as *const _,
-//             audio_processor: &Wrapper::<P>::AUDIO_PROCESSOR_VTABLE as *const _,
-//             process_context_requirements: &Wrapper::<P>::PROCESS_CONTEXT_REQUIREMENTS_VTABLE
-//                 as *const _,
-//             edit_controller: &Wrapper::<P>::EDIT_CONTROLLER_VTABLE as *const _,
-//             plug_view: &Wrapper::<P>::PLUG_VIEW_VTABLE as *const _,
-//             event_handler: &Wrapper::<P>::EVENT_HANDLER_VTABLE as *const _,
-//             timer_handler: &Wrapper::<P>::TIMER_HANDLER_VTABLE as *const _,
-//             has_editor: info.get_has_editor(),
-//             bus_list,
-//             bus_config_list,
-//             bus_config_set,
-//             bus_states,
-//             param_states,
-//             plugin,
-//             processor_state,
-//             editor_state,
-//         })) as *mut Wrapper<P>
-//     }
+    unsafe fn getRoutingInfo(
+        &self,
+        inInfo: *mut RoutingInfo,
+        outInfo: *mut RoutingInfo,
+    ) -> tresult {
+        kNotImplemented
+    }
 
-//     unsafe fn query_interface(
-//         this: *mut c_void,
-//         iid: *const TUID,
-//         obj: *mut *mut c_void,
-//     ) -> TResult {
-//         let wrapper = &*(this as *const Wrapper<P>);
+    unsafe fn activateBus(
+        &self,
+        type_: MediaType,
+        dir: BusDirection,
+        index: int32,
+        state: TBool,
+    ) -> tresult {
+        kResultOk
+    }
 
-//         let iid = *iid;
+    unsafe fn setActive(&self, state: TBool) -> tresult {
+        kResultOk
+    }
 
-//         if iid == FUnknown::IID || iid == IComponent::IID {
-//             Self::add_ref(this);
-//             *obj = this.offset(offset_of!(Self, component));
-//             return result::OK;
-//         }
+    unsafe fn setState(&self, state: *mut IBStream) -> tresult {
+        kResultOk
+    }
 
-//         if iid == IAudioProcessor::IID {
-//             Self::add_ref(this);
-//             *obj = this.offset(offset_of!(Self, audio_processor));
-//             return result::OK;
-//         }
+    unsafe fn getState(&self, state: *mut IBStream) -> tresult {
+        kResultOk
+    }
+}
 
-//         if iid == IProcessContextRequirements::IID {
-//             Self::add_ref(this);
-//             *obj = this.offset(offset_of!(Self, process_context_requirements));
-//             return result::OK;
-//         }
+impl<P: Plugin> IAudioProcessorTrait for Wrapper<P> {
+    unsafe fn setBusArrangements(
+        &self,
+        inputs: *mut SpeakerArrangement,
+        numIns: int32,
+        outputs: *mut SpeakerArrangement,
+        numOuts: int32,
+    ) -> tresult {
+        kResultOk
+    }
 
-//         if iid == IEditController::IID {
-//             Self::add_ref(this);
-//             *obj = this.offset(offset_of!(Self, edit_controller));
-//             return result::OK;
-//         }
+    unsafe fn getBusArrangement(
+        &self,
+        dir: BusDirection,
+        index: int32,
+        arr: *mut SpeakerArrangement,
+    ) -> tresult {
+        kResultOk
+    }
 
-//         if iid == IPlugView::IID && wrapper.has_editor {
-//             Self::add_ref(this);
-//             *obj = this.offset(offset_of!(Self, plug_view));
-//             return result::OK;
-//         }
+    unsafe fn canProcessSampleSize(&self, symbolicSampleSize: int32) -> tresult {
+        match symbolicSampleSize as SymbolicSampleSizes {
+            SymbolicSampleSizes_::kSample32 => kResultTrue,
+            SymbolicSampleSizes_::kSample64 => kResultFalse,
+            _ => kInvalidArgument,
+        }
+    }
 
-//         if iid == IEventHandler::IID {
-//             Self::add_ref(this);
-//             *obj = this.offset(offset_of!(Self, event_handler));
-//             return result::OK;
-//         }
+    unsafe fn getLatencySamples(&self) -> uint32 {
+        0
+    }
 
-//         if iid == ITimerHandler::IID {
-//             Self::add_ref(this);
-//             *obj = this.offset(offset_of!(Self, timer_handler));
-//             return result::OK;
-//         }
+    unsafe fn setupProcessing(&self, setup: *mut ProcessSetup) -> tresult {
+        kResultOk
+    }
 
-//         result::NO_INTERFACE
-//     }
+    unsafe fn setProcessing(&self, state: TBool) -> tresult {
+        kResultOk
+    }
 
-//     unsafe fn add_ref(this: *mut c_void) -> u32 {
-//         let wrapper = Arc::from_raw(this as *const Wrapper<P>);
-//         let _ = Arc::into_raw(wrapper.clone());
-//         let count = Arc::strong_count(&wrapper);
-//         let _ = Arc::into_raw(wrapper);
+    unsafe fn process(&self, data: *mut ProcessData) -> tresult {
+        kResultOk
+    }
 
-//         count as u32
-//     }
+    unsafe fn getTailSamples(&self) -> uint32 {
+        kInfiniteTail
+    }
+}
 
-//     unsafe fn release(this: *mut c_void) -> u32 {
-//         let wrapper = Arc::from_raw(this as *const Wrapper<P>);
-//         let count = Arc::strong_count(&wrapper) - 1;
-//         drop(wrapper);
+impl<P: Plugin> IProcessContextRequirementsTrait for Wrapper<P> {
+    unsafe fn getProcessContextRequirements(&self) -> uint32 {
+        0
+    }
+}
 
-//         count as u32
-//     }
+impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
+    unsafe fn setComponentState(&self, state: *mut IBStream) -> tresult {
+        kResultOk
+    }
 
-//     unsafe extern "system" fn component_query_interface(
-//         this: *mut c_void,
-//         iid: *const TUID,
-//         obj: *mut *mut c_void,
-//     ) -> TResult {
-//         Self::query_interface(this.offset(-offset_of!(Self, component)), iid, obj)
-//     }
+    unsafe fn setState(&self, state: *mut IBStream) -> tresult {
+        kResultOk
+    }
 
-//     unsafe extern "system" fn component_add_ref(this: *mut c_void) -> u32 {
-//         Self::add_ref(this.offset(-offset_of!(Self, component)))
-//     }
+    unsafe fn getState(&self, state: *mut IBStream) -> tresult {
+        kResultOk
+    }
 
-//     unsafe extern "system" fn component_release(this: *mut c_void) -> u32 {
-//         Self::release(this.offset(-offset_of!(Self, component)))
-//     }
+    unsafe fn getParameterCount(&self) -> int32 {
+        0
+    }
 
-//     unsafe extern "system" fn component_initialize(
-//         _this: *mut c_void,
-//         _context: *mut FUnknown,
-//     ) -> TResult {
-//         result::OK
-//     }
+    unsafe fn getParameterInfo(&self, paramIndex: int32, info: *mut ParameterInfo) -> tresult {
+        kNotImplemented
+    }
 
-//     unsafe extern "system" fn component_terminate(_this: *mut c_void) -> TResult {
-//         result::OK
-//     }
+    unsafe fn getParamStringByValue(
+        &self,
+        id: ParamID,
+        valueNormalized: ParamValue,
+        string: *mut String128,
+    ) -> tresult {
+        kNotImplemented
+    }
 
-//     unsafe extern "system" fn get_controller_class_id(
-//         _this: *mut c_void,
-//         _class_id: *mut TUID,
-//     ) -> TResult {
-//         result::NOT_IMPLEMENTED
-//     }
+    unsafe fn getParamValueByString(
+        &self,
+        id: ParamID,
+        string: *mut TChar,
+        valueNormalized: *mut ParamValue,
+    ) -> tresult {
+        kNotImplemented
+    }
 
-//     unsafe extern "system" fn set_io_mode(_this: *mut c_void, _mode: IoMode) -> TResult {
-//         result::OK
-//     }
+    unsafe fn normalizedParamToPlain(
+        &self,
+        id: ParamID,
+        valueNormalized: ParamValue,
+    ) -> ParamValue {
+        0.0
+    }
+
+    unsafe fn plainParamToNormalized(&self, id: ParamID, plainValue: ParamValue) -> ParamValue {
+        0.0
+    }
+
+    unsafe fn getParamNormalized(&self, id: ParamID) -> ParamValue {
+        0.0
+    }
+
+    unsafe fn setParamNormalized(&self, id: ParamID, value: ParamValue) -> tresult {
+        kNotImplemented
+    }
+
+    unsafe fn setComponentHandler(&self, handler: *mut IComponentHandler) -> tresult {
+        kResultOk
+    }
+
+    unsafe fn createView(&self, name: FIDString) -> *mut IPlugView {
+        ptr::null_mut()
+    }
+}
 
 //     unsafe extern "system" fn get_bus_count(
 //         this: *mut c_void,
@@ -588,14 +558,6 @@ fn copy_wstring(src: &str, dst: &mut [TChar]) {
 //         }
 
 //         result::INVALID_ARGUMENT
-//     }
-
-//     unsafe extern "system" fn get_routing_info(
-//         _this: *mut c_void,
-//         _in_info: *mut RoutingInfo,
-//         _out_info: *mut RoutingInfo,
-//     ) -> TResult {
-//         result::NOT_IMPLEMENTED
 //     }
 
 //     unsafe extern "system" fn activate_bus(
@@ -809,22 +771,6 @@ fn copy_wstring(src: &str, dst: &mut [TChar]) {
 //         }
 //     }
 
-//     unsafe extern "system" fn audio_processor_query_interface(
-//         this: *mut c_void,
-//         iid: *const TUID,
-//         obj: *mut *mut c_void,
-//     ) -> TResult {
-//         Self::query_interface(this.offset(-offset_of!(Self, audio_processor)), iid, obj)
-//     }
-
-//     unsafe extern "system" fn audio_processor_add_ref(this: *mut c_void) -> u32 {
-//         Self::add_ref(this.offset(-offset_of!(Self, audio_processor)))
-//     }
-
-//     unsafe extern "system" fn audio_processor_release(this: *mut c_void) -> u32 {
-//         Self::release(this.offset(-offset_of!(Self, audio_processor)))
-//     }
-
 //     unsafe extern "system" fn set_bus_arrangements(
 //         this: *mut c_void,
 //         inputs: *const SpeakerArrangement,
@@ -917,21 +863,6 @@ fn copy_wstring(src: &str, dst: &mut [TChar]) {
 //         }
 
 //         result::INVALID_ARGUMENT
-//     }
-
-//     unsafe extern "system" fn can_process_sample_size(
-//         _this: *mut c_void,
-//         symbolic_sample_size: i32,
-//     ) -> TResult {
-//         match symbolic_sample_size {
-//             symbolic_sample_sizes::SAMPLE_32 => result::OK,
-//             symbolic_sample_sizes::SAMPLE_64 => result::NOT_IMPLEMENTED,
-//             _ => result::INVALID_ARGUMENT,
-//         }
-//     }
-
-//     unsafe extern "system" fn get_latency_samples(_this: *mut c_void) -> u32 {
-//         0
 //     }
 
 //     unsafe extern "system" fn setup_processing(
@@ -1187,61 +1118,6 @@ fn copy_wstring(src: &str, dst: &mut [TChar]) {
 //         result::OK
 //     }
 
-//     unsafe extern "system" fn get_tail_samples(_this: *mut c_void) -> u32 {
-//         0
-//     }
-
-//     unsafe extern "system" fn process_context_requirements_query_interface(
-//         this: *mut c_void,
-//         iid: *const TUID,
-//         obj: *mut *mut c_void,
-//     ) -> TResult {
-//         Self::query_interface(
-//             this.offset(-offset_of!(Self, process_context_requirements)),
-//             iid,
-//             obj,
-//         )
-//     }
-
-//     unsafe extern "system" fn process_context_requirements_add_ref(this: *mut c_void) -> u32 {
-//         Self::add_ref(this.offset(-offset_of!(Self, process_context_requirements)))
-//     }
-
-//     unsafe extern "system" fn process_context_requirements_release(this: *mut c_void) -> u32 {
-//         Self::release(this.offset(-offset_of!(Self, process_context_requirements)))
-//     }
-
-//     unsafe extern "system" fn get_process_context_requirements(_this: *mut c_void) -> u32 {
-//         0
-//     }
-
-//     unsafe extern "system" fn edit_controller_query_interface(
-//         this: *mut c_void,
-//         iid: *const TUID,
-//         obj: *mut *mut c_void,
-//     ) -> TResult {
-//         Self::query_interface(this.offset(-offset_of!(Self, edit_controller)), iid, obj)
-//     }
-
-//     unsafe extern "system" fn edit_controller_add_ref(this: *mut c_void) -> u32 {
-//         Self::add_ref(this.offset(-offset_of!(Self, edit_controller)))
-//     }
-
-//     unsafe extern "system" fn edit_controller_release(this: *mut c_void) -> u32 {
-//         Self::release(this.offset(-offset_of!(Self, edit_controller)))
-//     }
-
-//     unsafe extern "system" fn edit_controller_initialize(
-//         _this: *mut c_void,
-//         _context: *mut FUnknown,
-//     ) -> TResult {
-//         result::OK
-//     }
-
-//     unsafe extern "system" fn edit_controller_terminate(_this: *mut c_void) -> TResult {
-//         result::OK
-//     }
-
 //     unsafe extern "system" fn set_component_state(
 //         _this: *mut c_void,
 //         _state: *mut *const IBStream,
@@ -1447,22 +1323,6 @@ fn copy_wstring(src: &str, dst: &mut [TChar]) {
 //         }
 
 //         ptr::null_mut()
-//     }
-
-//     unsafe extern "system" fn plug_view_query_interface(
-//         this: *mut c_void,
-//         iid: *const TUID,
-//         obj: *mut *mut c_void,
-//     ) -> TResult {
-//         Self::query_interface(this.offset(-offset_of!(Self, plug_view)), iid, obj)
-//     }
-
-//     unsafe extern "system" fn plug_view_add_ref(this: *mut c_void) -> u32 {
-//         Self::add_ref(this.offset(-offset_of!(Self, plug_view)))
-//     }
-
-//     unsafe extern "system" fn plug_view_release(this: *mut c_void) -> u32 {
-//         Self::release(this.offset(-offset_of!(Self, plug_view)))
 //     }
 
 //     unsafe extern "system" fn is_platform_type_supported(
@@ -1687,22 +1547,6 @@ fn copy_wstring(src: &str, dst: &mut [TChar]) {
 //         result::NOT_IMPLEMENTED
 //     }
 
-//     unsafe extern "system" fn event_handler_query_interface(
-//         this: *mut c_void,
-//         iid: *const TUID,
-//         obj: *mut *mut c_void,
-//     ) -> TResult {
-//         Self::query_interface(this.offset(-offset_of!(Self, event_handler)), iid, obj)
-//     }
-
-//     unsafe extern "system" fn event_handler_add_ref(this: *mut c_void) -> u32 {
-//         Self::add_ref(this.offset(-offset_of!(Self, event_handler)))
-//     }
-
-//     unsafe extern "system" fn event_handler_release(this: *mut c_void) -> u32 {
-//         Self::release(this.offset(-offset_of!(Self, event_handler)))
-//     }
-
 //     #[cfg(target_os = "linux")]
 //     unsafe extern "system" fn on_fd_is_set(this: *mut c_void, _fd: c_int) {
 //         let wrapper = &*(this.offset(-offset_of!(Self, event_handler)) as *const Wrapper<P>);
@@ -1715,22 +1559,6 @@ fn copy_wstring(src: &str, dst: &mut [TChar]) {
 
 //     #[cfg(not(target_os = "linux"))]
 //     unsafe extern "system" fn on_fd_is_set(_this: *mut c_void, _fd: c_int) {}
-
-//     unsafe extern "system" fn timer_handler_query_interface(
-//         this: *mut c_void,
-//         iid: *const TUID,
-//         obj: *mut *mut c_void,
-//     ) -> TResult {
-//         Self::query_interface(this.offset(-offset_of!(Self, timer_handler)), iid, obj)
-//     }
-
-//     unsafe extern "system" fn timer_handler_add_ref(this: *mut c_void) -> u32 {
-//         Self::add_ref(this.offset(-offset_of!(Self, timer_handler)))
-//     }
-
-//     unsafe extern "system" fn timer_handler_release(this: *mut c_void) -> u32 {
-//         Self::release(this.offset(-offset_of!(Self, timer_handler)))
-//     }
 
 //     #[cfg(target_os = "linux")]
 //     unsafe extern "system" fn on_timer(this: *mut c_void) {
@@ -1745,14 +1573,6 @@ fn copy_wstring(src: &str, dst: &mut [TChar]) {
 //     #[cfg(not(target_os = "linux"))]
 //     unsafe extern "system" fn on_timer(_this: *mut c_void) {}
 // }
-
-use std::ffi::{c_void, CStr};
-use std::marker::PhantomData;
-
-use vst3_bindgen::{uid, Class, ComWrapper, Steinberg::Vst::*, Steinberg::*};
-
-use super::util::copy_cstring;
-use crate::plugin::{Plugin, PluginInfo};
 
 struct Factory<P> {
     vst3_info: Vst3Info,
@@ -1811,17 +1631,15 @@ impl<P: Plugin + Vst3Plugin> IPluginFactoryTrait for Factory<P> {
         iid: FIDString,
         obj: *mut *mut c_void,
     ) -> tresult {
-        // let cid = *(cid as *const TUID);
-        // let iid = *(iid as *const TUID);
-        // if cid != self.vst3_info.get_class_id().0 || iid != IComponent::IID {
-        //     return kInvalidArgument;
-        // }
+        let cid = &*(cid as *const TUID);
+        if cid != &self.vst3_info.get_class_id().0 {
+            return kInvalidArgument;
+        }
 
-        // *obj = Wrapper::<P>::create(&self.info) as *mut c_void;
-
-        // kResultOk
-
-        kNotImplemented
+        let wrapper = ComWrapper::new(Wrapper::<P>::new(&self.info));
+        let unknown = wrapper.to_com_ptr::<FUnknown>().unwrap();
+        let ptr = unknown.as_ptr();
+        ((*(*ptr).vtbl).queryInterface)(ptr, iid as *const TUID, obj)
     }
 }
 
