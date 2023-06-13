@@ -28,19 +28,19 @@
 //     }};
 // }
 
-// fn copy_wstring(src: &str, dst: &mut [i16]) {
-//     let mut len = 0;
-//     for (src, dst) in src.encode_utf16().zip(dst.iter_mut()) {
-//         *dst = src as i16;
-//         len += 1;
-//     }
+fn copy_wstring(src: &str, dst: &mut [TChar]) {
+    let mut len = 0;
+    for (src, dst) in src.encode_utf16().zip(dst.iter_mut()) {
+        *dst = src as TChar;
+        len += 1;
+    }
 
-//     if len < dst.len() {
-//         dst[len] = 0;
-//     } else if let Some(last) = dst.last_mut() {
-//         *last = 0;
-//     }
-// }
+    if len < dst.len() {
+        dst[len] = 0;
+    } else if let Some(last) = dst.last_mut() {
+        *last = 0;
+    }
+}
 
 // unsafe fn len_wstring(string: *const i16) -> usize {
 //     let mut len = 0;
@@ -1746,206 +1746,134 @@
 //     unsafe extern "system" fn on_timer(_this: *mut c_void) {}
 // }
 
-// #[repr(C)]
-// struct Factory<P> {
-//     plugin_factory_3: *const IPluginFactory3,
-//     vst3_info: Vst3Info,
-//     info: PluginInfo,
-//     phantom: PhantomData<P>,
-// }
+use std::ffi::{c_void, CStr};
+use std::marker::PhantomData;
 
-// impl<P: Plugin + Vst3Plugin> Factory<P> {
-//     const PLUGIN_FACTORY_3_VTABLE: IPluginFactory3 = IPluginFactory3 {
-//         plugin_factory_2: IPluginFactory2 {
-//             plugin_factory: IPluginFactory {
-//                 unknown: FUnknown {
-//                     query_interface: Self::query_interface,
-//                     add_ref: Self::add_ref,
-//                     release: Self::release,
-//                 },
-//                 get_factory_info: Self::get_factory_info,
-//                 count_classes: Self::count_classes,
-//                 get_class_info: Self::get_class_info,
-//                 create_instance: Self::create_instance,
-//             },
-//             get_class_info_2: Self::get_class_info_2,
-//         },
-//         get_class_info_unicode: Self::get_class_info_unicode,
-//         set_host_context: Self::set_host_context,
-//     };
+use vst3_bindgen::{uid, Class, ComWrapper, Steinberg::Vst::*, Steinberg::*};
 
-//     pub fn create() -> *mut Factory<P> {
-//         Arc::into_raw(Arc::new(Factory::<P> {
-//             plugin_factory_3: &Self::PLUGIN_FACTORY_3_VTABLE as *const _,
-//             vst3_info: P::vst3_info(),
-//             info: P::info(),
-//             phantom: PhantomData,
-//         })) as *mut Factory<P>
-//     }
+use super::util::copy_cstring;
+use crate::plugin::{Plugin, PluginInfo};
 
-//     unsafe extern "system" fn query_interface(
-//         this: *mut c_void,
-//         iid: *const TUID,
-//         obj: *mut *mut c_void,
-//     ) -> TResult {
-//         let iid = *iid;
+struct Factory<P> {
+    vst3_info: Vst3Info,
+    info: PluginInfo,
+    _marker: PhantomData<P>,
+}
 
-//         if iid == FUnknown::IID
-//             || iid == IPluginFactory::IID
-//             || iid == IPluginFactory2::IID
-//             || iid == IPluginFactory3::IID
-//         {
-//             Self::add_ref(this);
-//             *obj = this;
-//             return result::OK;
-//         }
+impl<P: Plugin + Vst3Plugin> Factory<P> {
+    pub fn new() -> Factory<P> {
+        Factory {
+            vst3_info: P::vst3_info(),
+            info: P::info(),
+            _marker: PhantomData,
+        }
+    }
+}
 
-//         result::NO_INTERFACE
-//     }
+impl<P: Plugin + Vst3Plugin> Class for Factory<P> {
+    type Interfaces = (IPluginFactory3,);
+}
 
-//     unsafe extern "system" fn add_ref(this: *mut c_void) -> u32 {
-//         let factory = Arc::from_raw(this as *const Factory<P>);
-//         let _ = Arc::into_raw(factory.clone());
-//         let count = Arc::strong_count(&factory);
-//         let _ = Arc::into_raw(factory);
+impl<P: Plugin + Vst3Plugin> IPluginFactoryTrait for Factory<P> {
+    unsafe fn getFactoryInfo(&self, info: *mut PFactoryInfo) -> tresult {
+        let info = &mut *info;
 
-//         count as u32
-//     }
+        copy_cstring(&self.info.get_vendor(), &mut info.vendor);
+        copy_cstring(&self.info.get_url(), &mut info.url);
+        copy_cstring(&self.info.get_email(), &mut info.email);
+        info.flags = PFactoryInfo_::FactoryFlags_::kUnicode;
 
-//     unsafe extern "system" fn release(this: *mut c_void) -> u32 {
-//         let factory = Arc::from_raw(this as *const Factory<P>);
-//         let count = Arc::strong_count(&factory) - 1;
-//         drop(factory);
+        kResultOk
+    }
 
-//         count as u32
-//     }
+    unsafe fn countClasses(&self) -> int32 {
+        1
+    }
 
-//     unsafe extern "system" fn get_factory_info(
-//         this: *mut c_void,
-//         info: *mut PFactoryInfo,
-//     ) -> TResult {
-//         let factory = &*(this.offset(-offset_of!(Self, plugin_factory_3)) as *const Factory<P>);
+    unsafe fn getClassInfo(&self, index: int32, info: *mut PClassInfo) -> tresult {
+        if index != 0 {
+            return kInvalidArgument;
+        }
 
-//         let info = &mut *info;
+        let info = &mut *info;
 
-//         copy_cstring(&factory.info.get_vendor(), &mut info.vendor);
-//         copy_cstring(&factory.info.get_url(), &mut info.url);
-//         copy_cstring(&factory.info.get_email(), &mut info.email);
-//         info.flags = PFactoryInfo::UNICODE;
+        info.cid = self.vst3_info.get_class_id().0;
+        info.cardinality = PClassInfo_::ClassCardinality_::kManyInstances;
+        copy_cstring("Audio Module Class", &mut info.category);
+        copy_cstring(&self.info.get_name(), &mut info.name);
 
-//         result::OK
-//     }
+        kResultOk
+    }
 
-//     unsafe extern "system" fn count_classes(_this: *mut c_void) -> i32 {
-//         1
-//     }
+    unsafe fn createInstance(
+        &self,
+        cid: FIDString,
+        iid: FIDString,
+        obj: *mut *mut c_void,
+    ) -> tresult {
+        // let cid = *(cid as *const TUID);
+        // let iid = *(iid as *const TUID);
+        // if cid != self.vst3_info.get_class_id().0 || iid != IComponent::IID {
+        //     return kInvalidArgument;
+        // }
 
-//     unsafe extern "system" fn get_class_info(
-//         this: *mut c_void,
-//         index: i32,
-//         info: *mut PClassInfo,
-//     ) -> TResult {
-//         let factory = &*(this.offset(-offset_of!(Self, plugin_factory_3)) as *const Factory<P>);
+        // *obj = Wrapper::<P>::create(&self.info) as *mut c_void;
 
-//         if index != 0 {
-//             return result::INVALID_ARGUMENT;
-//         }
+        // kResultOk
 
-//         let info = &mut *info;
+        kNotImplemented
+    }
+}
 
-//         info.cid = factory.vst3_info.get_class_id().0;
-//         info.cardinality = PClassInfo::MANY_INSTANCES;
-//         copy_cstring("Audio Module Class", &mut info.category);
-//         copy_cstring(&factory.info.get_name(), &mut info.name);
+impl<P: Plugin + Vst3Plugin> IPluginFactory2Trait for Factory<P> {
+    unsafe fn getClassInfo2(&self, index: int32, info: *mut PClassInfo2) -> tresult {
+        if index != 0 {
+            return kInvalidArgument;
+        }
 
-//         result::OK
-//     }
+        let info = &mut *info;
 
-//     unsafe extern "system" fn create_instance(
-//         this: *mut c_void,
-//         cid: *const c_char,
-//         iid: *const c_char,
-//         obj: *mut *mut c_void,
-//     ) -> TResult {
-//         let factory = &*(this.offset(-offset_of!(Self, plugin_factory_3)) as *const Factory<P>);
+        info.cid = self.vst3_info.get_class_id().0;
+        info.cardinality = PClassInfo_::ClassCardinality_::kManyInstances;
+        copy_cstring("Audio Module Class", &mut info.category);
+        copy_cstring(&self.info.get_name(), &mut info.name);
+        info.classFlags = 0;
+        copy_cstring("Fx", &mut info.subCategories);
+        copy_cstring(&self.info.get_vendor(), &mut info.vendor);
+        copy_cstring("", &mut info.version);
+        let version_str = CStr::from_ptr(SDKVersionString).to_str().unwrap();
+        copy_cstring(version_str, &mut info.sdkVersion);
 
-//         let cid = *(cid as *const TUID);
-//         let iid = *(iid as *const TUID);
-//         if cid != factory.vst3_info.get_class_id().0 || iid != IComponent::IID {
-//             return result::INVALID_ARGUMENT;
-//         }
+        kResultOk
+    }
+}
 
-//         *obj = Wrapper::<P>::create(&factory.info) as *mut c_void;
+impl<P: Plugin + Vst3Plugin> IPluginFactory3Trait for Factory<P> {
+    unsafe fn getClassInfoUnicode(&self, index: int32, info: *mut PClassInfoW) -> tresult {
+        if index != 0 {
+            return kInvalidArgument;
+        }
 
-//         result::OK
-//     }
+        let info = &mut *info;
 
-//     unsafe extern "system" fn get_class_info_2(
-//         this: *mut c_void,
-//         index: i32,
-//         info: *mut PClassInfo2,
-//     ) -> TResult {
-//         let factory = &*(this.offset(-offset_of!(Self, plugin_factory_3)) as *const Factory<P>);
+        info.cid = self.vst3_info.get_class_id().0;
+        info.cardinality = PClassInfo_::ClassCardinality_::kManyInstances;
+        copy_cstring("Audio Module Class", &mut info.category);
+        copy_wstring(&self.info.get_name(), &mut info.name);
+        info.classFlags = 0;
+        copy_cstring("Fx", &mut info.subCategories);
+        copy_wstring(&self.info.get_vendor(), &mut info.vendor);
+        copy_wstring("", &mut info.version);
+        let version_str = CStr::from_ptr(SDKVersionString).to_str().unwrap();
+        copy_wstring(version_str, &mut info.sdkVersion);
 
-//         if index != 0 {
-//             return result::INVALID_ARGUMENT;
-//         }
+        kResultOk
+    }
 
-//         let info = &mut *info;
-
-//         info.cid = factory.vst3_info.get_class_id().0;
-//         info.cardinality = PClassInfo::MANY_INSTANCES;
-//         copy_cstring("Audio Module Class", &mut info.category);
-//         copy_cstring(&factory.info.get_name(), &mut info.name);
-//         info.class_flags = 0;
-//         copy_cstring("Fx", &mut info.sub_categories);
-//         copy_cstring(&factory.info.get_vendor(), &mut info.vendor);
-//         copy_cstring("", &mut info.version);
-//         copy_cstring("VST 3.7", &mut info.sdk_version);
-
-//         result::OK
-//     }
-
-//     unsafe extern "system" fn get_class_info_unicode(
-//         this: *mut c_void,
-//         index: i32,
-//         info: *mut PClassInfoW,
-//     ) -> TResult {
-//         let factory = &*(this.offset(-offset_of!(Self, plugin_factory_3)) as *const Factory<P>);
-
-//         if index != 0 {
-//             return result::INVALID_ARGUMENT;
-//         }
-
-//         let info = &mut *info;
-
-//         info.cid = factory.vst3_info.get_class_id().0;
-//         info.cardinality = PClassInfo::MANY_INSTANCES;
-//         copy_cstring("Audio Module Class", &mut info.category);
-//         copy_wstring(&factory.info.get_name(), &mut info.name);
-//         info.class_flags = 0;
-//         copy_cstring("Fx", &mut info.sub_categories);
-//         copy_wstring(&factory.info.get_vendor(), &mut info.vendor);
-//         copy_wstring("", &mut info.version);
-//         copy_wstring("VST 3.7", &mut info.sdk_version);
-
-//         result::OK
-//     }
-
-//     unsafe extern "system" fn set_host_context(
-//         _this: *mut c_void,
-//         _context: *mut *const FUnknown,
-//     ) -> TResult {
-//         result::NOT_IMPLEMENTED
-//     }
-// }
-
-use std::ffi::c_void;
-use std::ptr;
-
-use vst3_bindgen::{uid, Steinberg::TUID};
-
-use crate::plugin::Plugin;
+    unsafe fn setHostContext(&self, _context: *mut FUnknown) -> tresult {
+        kNotImplemented
+    }
+}
 
 #[derive(Copy, Clone)]
 pub struct Uid(TUID);
@@ -1984,9 +1912,10 @@ pub trait Vst3Plugin {
 
 #[doc(hidden)]
 pub fn get_plugin_factory<P: Plugin + Vst3Plugin>() -> *mut c_void {
-    // Factory::<P>::create() as *const Factory<P> as *mut c_void
-
-    ptr::null_mut()
+    ComWrapper::new(Factory::<P>::new())
+        .to_com_ptr::<IPluginFactory>()
+        .unwrap()
+        .into_raw() as *mut c_void
 }
 
 #[macro_export]
