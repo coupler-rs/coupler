@@ -1601,7 +1601,7 @@ impl<P: Plugin + Vst3Plugin> IPluginFactoryTrait for Factory<P> {
         copy_cstring(&self.info.get_vendor(), &mut info.vendor);
         copy_cstring(&self.info.get_url(), &mut info.url);
         copy_cstring(&self.info.get_email(), &mut info.email);
-        info.flags = PFactoryInfo_::FactoryFlags_::kUnicode;
+        info.flags = PFactoryInfo_::FactoryFlags_::kUnicode as int32;
 
         kResultOk
     }
@@ -1618,7 +1618,7 @@ impl<P: Plugin + Vst3Plugin> IPluginFactoryTrait for Factory<P> {
         let info = &mut *info;
 
         info.cid = self.vst3_info.get_class_id().0;
-        info.cardinality = PClassInfo_::ClassCardinality_::kManyInstances;
+        info.cardinality = PClassInfo_::ClassCardinality_::kManyInstances as int32;
         copy_cstring("Audio Module Class", &mut info.category);
         copy_cstring(&self.info.get_name(), &mut info.name);
 
@@ -1652,7 +1652,7 @@ impl<P: Plugin + Vst3Plugin> IPluginFactory2Trait for Factory<P> {
         let info = &mut *info;
 
         info.cid = self.vst3_info.get_class_id().0;
-        info.cardinality = PClassInfo_::ClassCardinality_::kManyInstances;
+        info.cardinality = PClassInfo_::ClassCardinality_::kManyInstances as int32;
         copy_cstring("Audio Module Class", &mut info.category);
         copy_cstring(&self.info.get_name(), &mut info.name);
         info.classFlags = 0;
@@ -1675,7 +1675,7 @@ impl<P: Plugin + Vst3Plugin> IPluginFactory3Trait for Factory<P> {
         let info = &mut *info;
 
         info.cid = self.vst3_info.get_class_id().0;
-        info.cardinality = PClassInfo_::ClassCardinality_::kManyInstances;
+        info.cardinality = PClassInfo_::ClassCardinality_::kManyInstances as int32;
         copy_cstring("Audio Module Class", &mut info.category);
         copy_wstring(&self.info.get_name(), &mut info.name);
         info.classFlags = 0;
