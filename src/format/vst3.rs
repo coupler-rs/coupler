@@ -16,7 +16,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::{io, ptr, slice};
 
-// use raw_window_handle::RawWindowHandle;
+use raw_window_handle::RawWindowHandle;
 
 // use vst3_sys::{BusInfo, *};
 use vst3_bindgen::{uid, Class, ComRef, ComWrapper, Steinberg::Vst::*, Steinberg::*};
@@ -25,6 +25,7 @@ use super::util::{self, copy_cstring};
 use crate::atomic::AtomicBitset;
 use crate::buffer::Buffers;
 use crate::bus::{BusConfig, BusConfigList, BusFormat, BusList, BusState};
+use crate::editor::Editor;
 use crate::plugin::{Plugin, PluginHandle, PluginInfo};
 use crate::process::{Event, EventType, ParamChange, ProcessContext, Processor};
 
@@ -194,7 +195,7 @@ struct ProcessorState<P: Plugin> {
 // }
 
 struct Wrapper<P: Plugin> {
-    // has_editor: bool,
+    has_editor: bool,
     bus_list: BusList,
     bus_config_list: BusConfigList,
     bus_config_set: HashSet<BusConfig>,
@@ -285,7 +286,7 @@ impl<P: Plugin> Wrapper<P> {
         //         });
 
         Wrapper {
-            // has_editor: info.get_has_editor(),
+            has_editor: info.get_has_editor(),
             bus_list,
             bus_config_list,
             bus_config_set,
@@ -1076,7 +1077,232 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
     }
 
     unsafe fn createView(&self, name: FIDString) -> *mut IPlugView {
+        if !self.has_editor {
+            return ptr::null_mut();
+        }
+
+        if CStr::from_ptr(name) == CStr::from_ptr(ViewType::kEditor) {
+            let view = ComWrapper::new(View::<P>::new());
+            return view.to_com_ptr::<IPlugView>().unwrap().into_raw();
+        }
+
         ptr::null_mut()
+    }
+}
+
+struct View<P: Plugin> {
+    _marker: PhantomData<P>,
+    // editor: UnsafeCell<Option<P::Editor>>,
+}
+
+impl<P: Plugin> View<P> {
+    pub fn new() -> View<P> {
+        View {
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<P: Plugin> Class for View<P> {
+    type Interfaces = (IPlugView,);
+}
+
+impl<P: Plugin> IPlugViewTrait for View<P> {
+    unsafe fn isPlatformTypeSupported(&self, type_: FIDString) -> tresult {
+        #[cfg(target_os = "windows")]
+        if CStr::from_ptr(type_) == CStr::from_ptr(kPlatformTypeHWND) {
+            return kResultTrue;
+        }
+
+        #[cfg(target_os = "macos")]
+        if CStr::from_ptr(type_) == CStr::from_ptr(kPlatformTypeNSView) {
+            return kResultTrue;
+        }
+
+        #[cfg(target_os = "linux")]
+        if CStr::from_ptr(type_) == CStr::from_ptr(kPlatformTypeX11EmbedWindowID) {
+            return kResultTrue;
+        }
+
+        kResultFalse
+    }
+
+    unsafe fn attached(&self, parent: *mut c_void, type_: FIDString) -> tresult {
+        if self.isPlatformTypeSupported(type_) != kResultTrue {
+            return kNotImplemented;
+        }
+
+        // let editor_state = &mut *self.editor_state.get();
+
+        #[cfg(target_os = "macos")]
+        let parent = {
+            use raw_window_handle::macos::MacOSHandle;
+            RawWindowHandle::MacOS(MacOSHandle {
+                ns_view: parent,
+                ..MacOSHandle::empty()
+            })
+        };
+
+        #[cfg(target_os = "windows")]
+        let parent = {
+            use raw_window_handle::windows::WindowsHandle;
+            RawWindowHandle::Windows(WindowsHandle {
+                hwnd: parent,
+                ..WindowsHandle::empty()
+            })
+        };
+
+        #[cfg(target_os = "linux")]
+        let parent = {
+            use raw_window_handle::unix::XcbHandle;
+            RawWindowHandle::Xcb(XcbHandle {
+                window: parent as u32,
+                ..XcbHandle::empty()
+            })
+        };
+
+        // let context = EditorContext::new(editor_state.context.clone());
+
+        // let editor = P::Editor::open(self.plugin.clone(), context, Some(&ParentWindow(parent)));
+
+        // #[cfg(target_os = "linux")]
+        // {
+        //     let frame = editor_state.context.plug_frame.get();
+        //     if frame.is_none() {
+        //         return kNotInitialized;
+        //     }
+        //     let frame = frame.unwrap();
+
+        //     let mut obj = ptr::null_mut();
+        //     let result = ((*(*frame)).unknown.query_interface)(
+        //         frame as *mut c_void,
+        //         &IRunLoop::IID,
+        //         &mut obj,
+        //     );
+
+        //     if result == kResultOk {
+        //         let run_loop = obj as *mut *const IRunLoop;
+
+        //         let timer_handler = this
+        //             .offset(-offset_of!(Self, plug_view) + offset_of!(Self, timer_handler))
+        //             as *mut *const ITimerHandler;
+        //         ((*(*run_loop)).register_timer)(run_loop as *mut c_void, timer_handler, 16);
+
+        //         if let Some(file_descriptor) = editor.file_descriptor() {
+        //             let event_handler = this
+        //                 .offset(-offset_of!(Self, plug_view) + offset_of!(Self, event_handler))
+        //                 as *mut *const IEventHandler;
+        //             ((*(*run_loop)).register_event_handler)(
+        //                 run_loop as *mut c_void,
+        //                 event_handler,
+        //                 file_descriptor,
+        //             );
+        //         }
+
+        //         ((*(*run_loop)).unknown.release)(run_loop as *mut c_void);
+        //     }
+        // }
+
+        // editor_state.editor = Some(editor);
+
+        kResultOk
+    }
+
+    unsafe fn removed(&self) -> tresult {
+        // let editor_state = &mut *self.editor_state.get();
+
+        // if let Some(mut editor) = editor_state.editor.take() {
+        //     editor.close();
+        // }
+
+        // #[cfg(target_os = "linux")]
+        // {
+        //     if let Some(frame) = editor_state.context.plug_frame.get() {
+        //         let mut obj = ptr::null_mut();
+        //         let result = ((*(*frame)).unknown.query_interface)(
+        //             frame as *mut c_void,
+        //             &IRunLoop::IID,
+        //             &mut obj,
+        //         );
+
+        //         if result == kResultOk {
+        //             let run_loop = obj as *mut *const IRunLoop;
+
+        //             let event_handler = this
+        //                 .offset(-offset_of!(Self, plug_view) + offset_of!(Self, event_handler))
+        //                 as *mut *const IEventHandler;
+        //             ((*(*run_loop)).unregister_event_handler)(
+        //                 run_loop as *mut c_void,
+        //                 event_handler,
+        //             );
+
+        //             let timer_handler = this
+        //                 .offset(-offset_of!(Self, plug_view) + offset_of!(Self, timer_handler))
+        //                 as *mut *const ITimerHandler;
+        //             ((*(*run_loop)).unregister_timer)(run_loop as *mut c_void, timer_handler);
+
+        //             ((*(*run_loop)).unknown.release)(run_loop as *mut c_void);
+        //         }
+        //     }
+        // }
+
+        kResultOk
+    }
+
+    unsafe fn onWheel(&self, _distance: f32) -> tresult {
+        kNotImplemented
+    }
+
+    unsafe fn onKeyDown(&self, _key: char16, _keyCode: int16, _modifiers: int16) -> tresult {
+        kNotImplemented
+    }
+
+    unsafe fn onKeyUp(&self, _key: char16, _keyCode: int16, _modifiers: int16) -> tresult {
+        kNotImplemented
+    }
+
+    unsafe fn getSize(&self, size: *mut ViewRect) -> tresult {
+        let (width, height) = P::Editor::size();
+
+        let size = &mut *size;
+        size.top = 0;
+        size.left = 0;
+        size.right = width.round() as int32;
+        size.bottom = height.round() as int32;
+
+        kResultOk
+    }
+
+    unsafe fn onSize(&self, _newSize: *mut ViewRect) -> tresult {
+        kNotImplemented
+    }
+
+    unsafe fn onFocus(&self, _state: TBool) -> tresult {
+        kNotImplemented
+    }
+
+    unsafe fn setFrame(&self, frame: *mut IPlugFrame) -> tresult {
+        // let wrapper = &*(this.offset(-offset_of!(Self, plug_view)) as *const Wrapper<P>);
+        // let editor_state = &*wrapper.editor_state.get();
+
+        // if let Some(prev_frame) = editor_state.context.plug_frame.take() {
+        //     ((*(*prev_frame)).unknown.release)(prev_frame as *mut c_void);
+        // }
+
+        // if !frame.is_null() {
+        //     ((*(*frame)).unknown.add_ref)(frame as *mut c_void);
+        //     editor_state.context.plug_frame.set(Some(frame));
+        // }
+
+        kResultOk
+    }
+
+    unsafe fn canResize(&self) -> tresult {
+        kResultFalse
+    }
+
+    unsafe fn checkSizeConstraint(&self, _rect: *mut ViewRect) -> tresult {
+        kNotImplemented
     }
 }
 
@@ -1096,248 +1322,7 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
 //             editor_state.context.component_handler.set(Some(handler));
 //         }
 
-//         result::OK
-//     }
-
-//     unsafe extern "system" fn create_view(
-//         this: *mut c_void,
-//         name: *const c_char,
-//     ) -> *mut *const IPlugView {
-//         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
-
-//         if !wrapper.has_editor {
-//             return ptr::null_mut();
-//         }
-
-//         if CStr::from_ptr(name) == CStr::from_ptr(view_types::EDITOR) {
-//             Self::add_ref(this.offset(-offset_of!(Self, edit_controller)));
-//             return this.offset(-offset_of!(Self, edit_controller) + offset_of!(Self, plug_view))
-//                 as *mut *const IPlugView;
-//         }
-
-//         ptr::null_mut()
-//     }
-
-//     unsafe extern "system" fn is_platform_type_supported(
-//         _this: *mut c_void,
-//         platform_type: *const c_char,
-//     ) -> TResult {
-//         #[cfg(target_os = "windows")]
-//         if CStr::from_ptr(platform_type) == CStr::from_ptr(platform_types::HWND) {
-//             return result::TRUE;
-//         }
-
-//         #[cfg(target_os = "macos")]
-//         if CStr::from_ptr(platform_type) == CStr::from_ptr(platform_types::NS_VIEW) {
-//             return result::TRUE;
-//         }
-
-//         #[cfg(target_os = "linux")]
-//         if CStr::from_ptr(platform_type) == CStr::from_ptr(platform_types::X11_EMBED_WINDOW_ID) {
-//             return result::TRUE;
-//         }
-
-//         result::FALSE
-//     }
-
-//     unsafe extern "system" fn attached(
-//         this: *mut c_void,
-//         parent: *mut c_void,
-//         platform_type: *const c_char,
-//     ) -> TResult {
-//         if Self::is_platform_type_supported(this, platform_type) != result::TRUE {
-//             return result::NOT_IMPLEMENTED;
-//         }
-
-//         let wrapper = &*(this.offset(-offset_of!(Self, plug_view)) as *const Wrapper<P>);
-//         let editor_state = &mut *wrapper.editor_state.get();
-
-//         #[cfg(target_os = "macos")]
-//         let parent = {
-//             use raw_window_handle::macos::MacOSHandle;
-//             RawWindowHandle::MacOS(MacOSHandle {
-//                 ns_view: parent,
-//                 ..MacOSHandle::empty()
-//             })
-//         };
-
-//         #[cfg(target_os = "windows")]
-//         let parent = {
-//             use raw_window_handle::windows::WindowsHandle;
-//             RawWindowHandle::Windows(WindowsHandle {
-//                 hwnd: parent,
-//                 ..WindowsHandle::empty()
-//             })
-//         };
-
-//         #[cfg(target_os = "linux")]
-//         let parent = {
-//             use raw_window_handle::unix::XcbHandle;
-//             RawWindowHandle::Xcb(XcbHandle {
-//                 window: parent as u32,
-//                 ..XcbHandle::empty()
-//             })
-//         };
-
-//         let context = EditorContext::new(editor_state.context.clone());
-
-//         let editor = P::Editor::open(wrapper.plugin.clone(), context, Some(&ParentWindow(parent)));
-
-//         #[cfg(target_os = "linux")]
-//         {
-//             let frame = editor_state.context.plug_frame.get();
-//             if frame.is_none() {
-//                 return result::NOT_INITIALIZED;
-//             }
-//             let frame = frame.unwrap();
-
-//             let mut obj = ptr::null_mut();
-//             let result = ((*(*frame)).unknown.query_interface)(
-//                 frame as *mut c_void,
-//                 &IRunLoop::IID,
-//                 &mut obj,
-//             );
-
-//             if result == result::OK {
-//                 let run_loop = obj as *mut *const IRunLoop;
-
-//                 let timer_handler = this
-//                     .offset(-offset_of!(Self, plug_view) + offset_of!(Self, timer_handler))
-//                     as *mut *const ITimerHandler;
-//                 ((*(*run_loop)).register_timer)(run_loop as *mut c_void, timer_handler, 16);
-
-//                 if let Some(file_descriptor) = editor.file_descriptor() {
-//                     let event_handler = this
-//                         .offset(-offset_of!(Self, plug_view) + offset_of!(Self, event_handler))
-//                         as *mut *const IEventHandler;
-//                     ((*(*run_loop)).register_event_handler)(
-//                         run_loop as *mut c_void,
-//                         event_handler,
-//                         file_descriptor,
-//                     );
-//                 }
-
-//                 ((*(*run_loop)).unknown.release)(run_loop as *mut c_void);
-//             }
-//         }
-
-//         editor_state.editor = Some(editor);
-
-//         result::OK
-//     }
-
-//     unsafe extern "system" fn removed(this: *mut c_void) -> TResult {
-//         let wrapper = &*(this.offset(-offset_of!(Self, plug_view)) as *const Wrapper<P>);
-//         let editor_state = &mut *wrapper.editor_state.get();
-
-//         if let Some(mut editor) = editor_state.editor.take() {
-//             editor.close();
-//         }
-
-//         #[cfg(target_os = "linux")]
-//         {
-//             if let Some(frame) = editor_state.context.plug_frame.get() {
-//                 let mut obj = ptr::null_mut();
-//                 let result = ((*(*frame)).unknown.query_interface)(
-//                     frame as *mut c_void,
-//                     &IRunLoop::IID,
-//                     &mut obj,
-//                 );
-
-//                 if result == result::OK {
-//                     let run_loop = obj as *mut *const IRunLoop;
-
-//                     let event_handler = this
-//                         .offset(-offset_of!(Self, plug_view) + offset_of!(Self, event_handler))
-//                         as *mut *const IEventHandler;
-//                     ((*(*run_loop)).unregister_event_handler)(
-//                         run_loop as *mut c_void,
-//                         event_handler,
-//                     );
-
-//                     let timer_handler = this
-//                         .offset(-offset_of!(Self, plug_view) + offset_of!(Self, timer_handler))
-//                         as *mut *const ITimerHandler;
-//                     ((*(*run_loop)).unregister_timer)(run_loop as *mut c_void, timer_handler);
-
-//                     ((*(*run_loop)).unknown.release)(run_loop as *mut c_void);
-//                 }
-//             }
-//         }
-
-//         result::OK
-//     }
-
-//     unsafe extern "system" fn on_wheel(_this: *mut c_void, _distance: f32) -> TResult {
-//         result::NOT_IMPLEMENTED
-//     }
-
-//     unsafe extern "system" fn on_key_down(
-//         _this: *mut c_void,
-//         _key: i16,
-//         _key_code: i16,
-//         _modifiers: i16,
-//     ) -> TResult {
-//         result::NOT_IMPLEMENTED
-//     }
-
-//     unsafe extern "system" fn on_key_up(
-//         _this: *mut c_void,
-//         _key: i16,
-//         _key_code: i16,
-//         _modifiers: i16,
-//     ) -> TResult {
-//         result::NOT_IMPLEMENTED
-//     }
-
-//     unsafe extern "system" fn get_size(_this: *mut c_void, size: *mut ViewRect) -> TResult {
-//         let (width, height) = P::Editor::size();
-
-//         let size = &mut *size;
-//         size.top = 0;
-//         size.left = 0;
-//         size.right = width.round() as i32;
-//         size.bottom = height.round() as i32;
-
-//         result::OK
-//     }
-
-//     unsafe extern "system" fn on_size(_this: *mut c_void, _new_size: *const ViewRect) -> TResult {
-//         result::NOT_IMPLEMENTED
-//     }
-
-//     unsafe extern "system" fn on_focus(_this: *mut c_void, _state: TBool) -> TResult {
-//         result::NOT_IMPLEMENTED
-//     }
-
-//     unsafe extern "system" fn set_frame(
-//         this: *mut c_void,
-//         frame: *mut *const IPlugFrame,
-//     ) -> TResult {
-//         let wrapper = &*(this.offset(-offset_of!(Self, plug_view)) as *const Wrapper<P>);
-//         let editor_state = &*wrapper.editor_state.get();
-
-//         if let Some(prev_frame) = editor_state.context.plug_frame.take() {
-//             ((*(*prev_frame)).unknown.release)(prev_frame as *mut c_void);
-//         }
-
-//         if !frame.is_null() {
-//             ((*(*frame)).unknown.add_ref)(frame as *mut c_void);
-//             editor_state.context.plug_frame.set(Some(frame));
-//         }
-
-//         result::OK
-//     }
-
-//     unsafe extern "system" fn can_resize(_this: *mut c_void) -> TResult {
-//         result::FALSE
-//     }
-
-//     unsafe extern "system" fn check_size_constraint(
-//         _this: *mut c_void,
-//         _rect: *mut ViewRect,
-//     ) -> TResult {
-//         result::NOT_IMPLEMENTED
+//         kResultOk
 //     }
 
 //     #[cfg(target_os = "linux")]
