@@ -9,18 +9,17 @@ use std::collections::HashSet;
 // use std::marker::PhantomData;
 // use std::os::raw::{c_char, c_int};
 // use std::rc::Rc;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-// use std::{io, ptr, slice};
 use std::cell::UnsafeCell;
 use std::ffi::{c_void, CStr};
 use std::marker::PhantomData;
-use std::{ptr, slice};
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::{io, ptr, slice};
 
 // use raw_window_handle::RawWindowHandle;
 
 // use vst3_sys::{BusInfo, *};
-use vst3_bindgen::{uid, Class, ComWrapper, Steinberg::Vst::*, Steinberg::*};
+use vst3_bindgen::{uid, Class, ComRef, ComWrapper, Steinberg::Vst::*, Steinberg::*};
 
 use super::util::{self, copy_cstring};
 use crate::atomic::AtomicBitset;
@@ -427,11 +426,78 @@ impl<P: Plugin> IComponentTrait for Wrapper<P> {
     }
 
     unsafe fn setState(&self, state: *mut IBStream) -> tresult {
-        kResultOk
+        struct StreamReader<'a>(ComRef<'a, IBStream>);
+
+        impl<'a> io::Read for StreamReader<'a> {
+            fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+                let mut bytes: int32 = 0;
+                let result = unsafe {
+                    self.0.read(
+                        buf.as_mut_ptr() as *mut c_void,
+                        buf.len() as int32,
+                        &mut bytes,
+                    )
+                };
+
+                if result == kResultOk {
+                    Ok(bytes as usize)
+                } else {
+                    Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Failed to read from stream",
+                    ))
+                }
+            }
+        }
+
+        if let Some(state) = ComRef::from_raw(state) {
+            if let Ok(_) = self.plugin.deserialize(&mut StreamReader(state)) {
+                self.param_states.dirty_processor.set_all(Ordering::Release);
+                self.param_states.dirty_editor.set_all(Ordering::Release);
+
+                return kResultOk;
+            }
+        }
+
+        kResultFalse
     }
 
     unsafe fn getState(&self, state: *mut IBStream) -> tresult {
-        kResultOk
+        struct StreamWriter<'a>(ComRef<'a, IBStream>);
+
+        impl<'a> io::Write for StreamWriter<'a> {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                let mut bytes: int32 = 0;
+                let result = unsafe {
+                    self.0
+                        .write(buf.as_ptr() as *mut c_void, buf.len() as int32, &mut bytes)
+                };
+
+                if result == kResultOk {
+                    Ok(bytes as usize)
+                } else {
+                    Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Failed to write to stream",
+                    ))
+                }
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        if let Some(state) = ComRef::from_raw(state) {
+            if let Ok(_) = self.plugin.serialize(&mut StreamWriter(state)) {
+                self.param_states.dirty_processor.set_all(Ordering::Release);
+                self.param_states.dirty_editor.set_all(Ordering::Release);
+
+                return kResultOk;
+            }
+        }
+
+        kResultFalse
     }
 }
 
@@ -564,15 +630,15 @@ impl<P: Plugin> IProcessContextRequirementsTrait for Wrapper<P> {
 }
 
 impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
-    unsafe fn setComponentState(&self, state: *mut IBStream) -> tresult {
+    unsafe fn setComponentState(&self, _state: *mut IBStream) -> tresult {
         kResultOk
     }
 
-    unsafe fn setState(&self, state: *mut IBStream) -> tresult {
+    unsafe fn setState(&self, _state: *mut IBStream) -> tresult {
         kResultOk
     }
 
-    unsafe fn getState(&self, state: *mut IBStream) -> tresult {
+    unsafe fn getState(&self, _state: *mut IBStream) -> tresult {
         kResultOk
     }
 
@@ -793,92 +859,6 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
 //         }
 
 //         result::OK
-//     }
-
-//     unsafe extern "system" fn component_set_state(
-//         this: *mut c_void,
-//         state: *mut *const IBStream,
-//     ) -> TResult {
-//         struct StreamReader(*mut *const IBStream);
-
-//         impl io::Read for StreamReader {
-//             fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-//                 let mut bytes: i32 = 0;
-//                 let result = unsafe {
-//                     ((*(*self.0)).read)(
-//                         self.0 as *mut c_void,
-//                         buf.as_mut_ptr() as *mut c_void,
-//                         buf.len() as i32,
-//                         &mut bytes,
-//                     )
-//                 };
-
-//                 if result == result::OK {
-//                     Ok(bytes as usize)
-//                 } else {
-//                     Err(io::Error::new(
-//                         io::ErrorKind::Other,
-//                         "Failed to read from stream",
-//                     ))
-//                 }
-//             }
-//         }
-
-//         let wrapper = &*(this.offset(-offset_of!(Self, component)) as *const Wrapper<P>);
-
-//         match wrapper.plugin.deserialize(&mut StreamReader(state)) {
-//             Ok(_) => {
-//                 wrapper
-//                     .param_states
-//                     .dirty_processor
-//                     .set_all(Ordering::Release);
-//                 wrapper.param_states.dirty_editor.set_all(Ordering::Release);
-
-//                 result::OK
-//             }
-//             Err(_) => result::FALSE,
-//         }
-//     }
-
-//     unsafe extern "system" fn component_get_state(
-//         this: *mut c_void,
-//         state: *mut *const IBStream,
-//     ) -> TResult {
-//         struct StreamWriter(*mut *const IBStream);
-
-//         impl io::Write for StreamWriter {
-//             fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-//                 let mut bytes: i32 = 0;
-//                 let result = unsafe {
-//                     ((*(*self.0)).write)(
-//                         self.0 as *mut c_void,
-//                         buf.as_ptr() as *mut c_void,
-//                         buf.len() as i32,
-//                         &mut bytes,
-//                     )
-//                 };
-
-//                 if result == result::OK {
-//                     Ok(bytes as usize)
-//                 } else {
-//                     Err(io::Error::new(
-//                         io::ErrorKind::Other,
-//                         "Failed to write to stream",
-//                     ))
-//                 }
-//             }
-
-//             fn flush(&mut self) -> io::Result<()> {
-//                 Ok(())
-//             }
-//         }
-
-//         let wrapper = &*(this.offset(-offset_of!(Self, component)) as *const Wrapper<P>);
-
-//         match wrapper.plugin.serialize(&mut StreamWriter(state)) {
-//             Ok(_) => result::OK,
-//             Err(_) => result::FALSE,
-//         }
 //     }
 
 //     unsafe extern "system" fn setup_processing(
@@ -1131,27 +1111,6 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
 
 //         processor_state.events.clear();
 
-//         result::OK
-//     }
-
-//     unsafe extern "system" fn set_component_state(
-//         _this: *mut c_void,
-//         _state: *mut *const IBStream,
-//     ) -> TResult {
-//         result::OK
-//     }
-
-//     unsafe extern "system" fn edit_controller_set_state(
-//         _this: *mut c_void,
-//         _state: *mut *const IBStream,
-//     ) -> TResult {
-//         result::OK
-//     }
-
-//     unsafe extern "system" fn edit_controller_get_state(
-//         _this: *mut c_void,
-//         _state: *mut *const IBStream,
-//     ) -> TResult {
 //         result::OK
 //     }
 
