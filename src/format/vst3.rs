@@ -161,6 +161,7 @@ struct ProcessorState<P: Plugin> {
 
 struct EditorState<P: Plugin> {
     context: Rc<Vst3EditorContext<P>>,
+    editor: RefCell<Option<P::Editor>>,
 }
 
 struct Wrapper<P: Plugin> {
@@ -174,7 +175,7 @@ struct Wrapper<P: Plugin> {
     param_states: Arc<ParamStates>,
     plugin: PluginHandle<P>,
     processor_state: UnsafeCell<ProcessorState<P>>,
-    editor_state: UnsafeCell<EditorState<P>>,
+    editor_state: UnsafeCell<Rc<EditorState<P>>>,
 }
 
 impl<P: Plugin> Wrapper<P> {
@@ -248,9 +249,10 @@ impl<P: Plugin> Wrapper<P> {
             param_states: param_states.clone(),
         });
 
-        let editor_state = UnsafeCell::new(EditorState {
+        let editor_state = UnsafeCell::new(Rc::new(EditorState {
             context: editor_context,
-        });
+            editor: RefCell::new(None),
+        }));
 
         Wrapper {
             has_editor: info.get_has_editor(),
@@ -1059,7 +1061,7 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
         let editor_state = &*self.editor_state.get();
 
         if CStr::from_ptr(name) == CStr::from_ptr(ViewType::kEditor) {
-            let view = ComWrapper::new(View::<P>::new(&self.plugin, &editor_state.context));
+            let view = ComWrapper::new(View::<P>::new(&editor_state));
             return view.to_com_ptr::<IPlugView>().unwrap().into_raw();
         }
 
@@ -1068,17 +1070,17 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
 }
 
 struct View<P: Plugin> {
-    plugin: PluginHandle<P>,
-    context: Rc<Vst3EditorContext<P>>,
-    editor: RefCell<Option<P::Editor>>,
+    state: Rc<EditorState<P>>,
+    #[cfg(target_os = "linux")]
+    handler: ComWrapper<linux::EventHandler<P>>,
 }
 
 impl<P: Plugin> View<P> {
-    pub fn new(plugin: &PluginHandle<P>, context: &Rc<Vst3EditorContext<P>>) -> View<P> {
+    pub fn new(state: &Rc<EditorState<P>>) -> View<P> {
         View {
-            plugin: plugin.clone(),
-            context: context.clone(),
-            editor: RefCell::new(None),
+            state: state.clone(),
+            #[cfg(target_os = "linux")]
+            handler: ComWrapper::new(linux::EventHandler::new(state)),
         }
     }
 }
@@ -1139,88 +1141,59 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
             })
         };
 
-        let context = EditorContext::new(self.context.clone());
+        let context = EditorContext::new(self.state.context.clone());
 
-        let editor = P::Editor::open(self.plugin.clone(), context, Some(&ParentWindow(parent)));
+        let editor = P::Editor::open(
+            self.state.context.plugin.clone(),
+            context,
+            Some(&ParentWindow(parent)),
+        );
 
-        // #[cfg(target_os = "linux")]
-        // {
-        //     let frame = editor_state.context.plug_frame.get();
-        //     if frame.is_none() {
-        //         return kNotInitialized;
-        //     }
-        //     let frame = frame.unwrap();
+        #[cfg(target_os = "linux")]
+        {
+            use vst3_bindgen::Steinberg::Linux::*;
 
-        //     let mut obj = ptr::null_mut();
-        //     let result = ((*(*frame)).unknown.query_interface)(
-        //         frame as *mut c_void,
-        //         &IRunLoop::IID,
-        //         &mut obj,
-        //     );
+            let Some(frame) = self.state.context.plug_frame.borrow().clone() else {
+                return kNotInitialized;
+            };
 
-        //     if result == kResultOk {
-        //         let run_loop = obj as *mut *const IRunLoop;
+            if let Some(run_loop) = frame.cast::<IRunLoop>() {
+                let timer_handler = self.handler.as_com_ref::<ITimerHandler>().unwrap();
+                run_loop.registerTimer(timer_handler.as_ptr(), 16);
 
-        //         let timer_handler = this
-        //             .offset(-offset_of!(Self, plug_view) + offset_of!(Self, timer_handler))
-        //             as *mut *const ITimerHandler;
-        //         ((*(*run_loop)).register_timer)(run_loop as *mut c_void, timer_handler, 16);
+                if let Some(fd) = editor.file_descriptor() {
+                    let event_handler = self.handler.as_com_ref::<IEventHandler>().unwrap();
+                    run_loop.registerEventHandler(event_handler.as_ptr(), fd);
+                }
+            }
+        }
 
-        //         if let Some(file_descriptor) = editor.file_descriptor() {
-        //             let event_handler = this
-        //                 .offset(-offset_of!(Self, plug_view) + offset_of!(Self, event_handler))
-        //                 as *mut *const IEventHandler;
-        //             ((*(*run_loop)).register_event_handler)(
-        //                 run_loop as *mut c_void,
-        //                 event_handler,
-        //                 file_descriptor,
-        //             );
-        //         }
-
-        //         ((*(*run_loop)).unknown.release)(run_loop as *mut c_void);
-        //     }
-        // }
-
-        self.editor.replace(Some(editor));
+        self.state.editor.replace(Some(editor));
 
         kResultOk
     }
 
     unsafe fn removed(&self) -> tresult {
-        if let Some(mut editor) = self.editor.take() {
+        if let Some(mut editor) = self.state.editor.take() {
             editor.close();
         }
 
-        // #[cfg(target_os = "linux")]
-        // {
-        //     if let Some(frame) = editor_state.context.plug_frame.get() {
-        //         let mut obj = ptr::null_mut();
-        //         let result = ((*(*frame)).unknown.query_interface)(
-        //             frame as *mut c_void,
-        //             &IRunLoop::IID,
-        //             &mut obj,
-        //         );
+        #[cfg(target_os = "linux")]
+        {
+            use vst3_bindgen::Steinberg::Linux::*;
 
-        //         if result == kResultOk {
-        //             let run_loop = obj as *mut *const IRunLoop;
+            let Some(frame) = self.state.context.plug_frame.borrow().clone() else {
+                return kNotInitialized;
+            };
 
-        //             let event_handler = this
-        //                 .offset(-offset_of!(Self, plug_view) + offset_of!(Self, event_handler))
-        //                 as *mut *const IEventHandler;
-        //             ((*(*run_loop)).unregister_event_handler)(
-        //                 run_loop as *mut c_void,
-        //                 event_handler,
-        //             );
+            if let Some(run_loop) = frame.cast::<IRunLoop>() {
+                let timer_handler = self.handler.as_com_ref::<ITimerHandler>().unwrap();
+                run_loop.unregisterTimer(timer_handler.as_ptr());
 
-        //             let timer_handler = this
-        //                 .offset(-offset_of!(Self, plug_view) + offset_of!(Self, timer_handler))
-        //                 as *mut *const ITimerHandler;
-        //             ((*(*run_loop)).unregister_timer)(run_loop as *mut c_void, timer_handler);
-
-        //             ((*(*run_loop)).unknown.release)(run_loop as *mut c_void);
-        //         }
-        //     }
-        // }
+                let event_handler = self.handler.as_com_ref::<IEventHandler>().unwrap();
+                run_loop.unregisterEventHandler(event_handler.as_ptr());
+            }
+        }
 
         kResultOk
     }
@@ -1259,7 +1232,10 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
 
     unsafe fn setFrame(&self, frame: *mut IPlugFrame) -> tresult {
         if let Some(frame) = ComRef::from_raw(frame) {
-            self.context.plug_frame.replace(Some(frame.to_com_ptr()));
+            self.state
+                .context
+                .plug_frame
+                .replace(Some(frame.to_com_ptr()));
         }
 
         kResultOk
@@ -1274,32 +1250,47 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
     }
 }
 
-//     #[cfg(target_os = "linux")]
-//     unsafe extern "system" fn on_fd_is_set(this: *mut c_void, _fd: c_int) {
-//         let wrapper = &*(this.offset(-offset_of!(Self, event_handler)) as *const Wrapper<P>);
-//         let editor_state = &mut *wrapper.editor_state.get();
+#[cfg(target_os = "linux")]
+mod linux {
+    use super::*;
+    use vst3_bindgen::Steinberg::Linux::*;
 
-//         if let Some(editor) = &mut editor_state.editor {
-//             editor.poll();
-//         }
-//     }
+    pub(super) struct EventHandler<P: Plugin> {
+        state: Rc<EditorState<P>>,
+    }
 
-//     #[cfg(not(target_os = "linux"))]
-//     unsafe extern "system" fn on_fd_is_set(_this: *mut c_void, _fd: c_int) {}
+    impl<P: Plugin> EventHandler<P> {
+        pub fn new(state: &Rc<EditorState<P>>) -> EventHandler<P> {
+            EventHandler {
+                state: state.clone(),
+            }
+        }
+    }
 
-//     #[cfg(target_os = "linux")]
-//     unsafe extern "system" fn on_timer(this: *mut c_void) {
-//         let wrapper = &*(this.offset(-offset_of!(Self, timer_handler)) as *const Wrapper<P>);
-//         let editor_state = &mut *wrapper.editor_state.get();
+    impl<P: Plugin> Class for EventHandler<P> {
+        type Interfaces = (IEventHandler, ITimerHandler);
+    }
 
-//         if let Some(editor) = &mut editor_state.editor {
-//             editor.poll();
-//         }
-//     }
+    impl<P: Plugin> IEventHandlerTrait for EventHandler<P> {
+        unsafe fn onFDIsSet(&self, _fd: FileDescriptor) {
+            if let Ok(mut editor) = self.state.editor.try_borrow_mut() {
+                if let Some(editor) = &mut *editor {
+                    editor.poll();
+                }
+            }
+        }
+    }
 
-//     #[cfg(not(target_os = "linux"))]
-//     unsafe extern "system" fn on_timer(_this: *mut c_void) {}
-// }
+    impl<P: Plugin> ITimerHandlerTrait for EventHandler<P> {
+        unsafe fn onTimer(&self) {
+            if let Ok(mut editor) = self.state.editor.try_borrow_mut() {
+                if let Some(editor) = &mut *editor {
+                    editor.poll();
+                }
+            }
+        }
+    }
+}
 
 struct Factory<P> {
     vst3_info: Vst3Info,
