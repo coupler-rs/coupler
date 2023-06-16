@@ -4,10 +4,8 @@
 // use crate::process::{Event, ProcessContext, *};
 // use crate::{buffer::*, bus::*, editor::*, param::*, plugin::*};
 
-// use super::util::{self, copy_cstring};
-
 // use std::cell::{Cell, UnsafeCell};
-// use std::collections::HashSet;
+use std::collections::HashSet;
 // use std::ffi::{c_void, CStr};
 // use std::marker::PhantomData;
 // use std::os::raw::{c_char, c_int};
@@ -15,16 +13,18 @@
 // use std::sync::atomic::Ordering;
 // use std::sync::Arc;
 // use std::{io, ptr, slice};
+use std::cell::UnsafeCell;
 use std::ffi::{c_void, CStr};
 use std::marker::PhantomData;
-use std::ptr;
+use std::{ptr, slice};
 
 // use raw_window_handle::RawWindowHandle;
 
 // use vst3_sys::{BusInfo, *};
 use vst3_bindgen::{uid, Class, ComWrapper, Steinberg::Vst::*, Steinberg::*};
 
-use super::util::copy_cstring;
+use super::util::{self, copy_cstring};
+use crate::bus::{BusConfig, BusConfigList, BusList, BusState, BusFormat};
 use crate::plugin::{Plugin, PluginHandle, PluginInfo};
 
 // macro_rules! offset_of {
@@ -61,18 +61,18 @@ fn copy_wstring(src: &str, dst: &mut [TChar]) {
 //     len as usize
 // }
 
-// fn bus_format_to_speaker_arrangement(bus_format: &BusFormat) -> SpeakerArrangement {
-//     match bus_format {
-//         BusFormat::Stereo => speaker_arrangements::STEREO,
-//     }
-// }
+fn bus_format_to_speaker_arrangement(bus_format: &BusFormat) -> SpeakerArrangement {
+    match bus_format {
+        BusFormat::Stereo => SpeakerArr::kStereo,
+    }
+}
 
-// fn speaker_arrangement_to_bus_format(speaker_arrangement: SpeakerArrangement) -> Option<BusFormat> {
-//     match speaker_arrangement {
-//         speaker_arrangements::STEREO => Some(BusFormat::Stereo),
-//         _ => None,
-//     }
-// }
+fn speaker_arrangement_to_bus_format(speaker_arrangement: SpeakerArrangement) -> Option<BusFormat> {
+    match speaker_arrangement {
+        SpeakerArr::kStereo => Some(BusFormat::Stereo),
+        _ => None,
+    }
+}
 
 // struct Vst3EditorContext<P> {
 //     component_handler: Cell<Option<*mut *const IComponentHandler>>,
@@ -158,10 +158,10 @@ fn copy_wstring(src: &str, dst: &mut [TChar]) {
 //     }
 // }
 
-// struct BusStates {
-//     inputs: Vec<BusState>,
-//     outputs: Vec<BusState>,
-// }
+struct BusStates {
+    inputs: Vec<BusState>,
+    outputs: Vec<BusState>,
+}
 
 // struct ParamStates {
 //     dirty_processor: AtomicBitset,
@@ -194,13 +194,13 @@ fn copy_wstring(src: &str, dst: &mut [TChar]) {
 
 struct Wrapper<P: Plugin> {
     // has_editor: bool,
-    // bus_list: BusList,
-    // bus_config_list: BusConfigList,
-    // bus_config_set: HashSet<BusConfig>,
-    // // We only form an &mut to bus_states in set_bus_arrangements and
-    // // activate_bus, which aren't called concurrently with any other methods on
-    // // IComponent or IAudioProcessor per the spec.
-    // bus_states: UnsafeCell<BusStates>,
+    bus_list: BusList,
+    bus_config_list: BusConfigList,
+    bus_config_set: HashSet<BusConfig>,
+    // We only form an &mut to bus_states in set_bus_arrangements and
+    // activate_bus, which aren't called concurrently with any other methods on
+    // IComponent or IAudioProcessor per the spec.
+    bus_states: UnsafeCell<BusStates>,
     // param_states: Arc<ParamStates>,
     plugin: PluginHandle<P>,
     // processor_state: UnsafeCell<ProcessorState<P>>,
@@ -209,30 +209,30 @@ struct Wrapper<P: Plugin> {
 
 impl<P: Plugin> Wrapper<P> {
     pub fn new(info: &PluginInfo) -> Wrapper<P> {
-        //         let bus_list = P::buses();
-        //         let bus_config_list = P::bus_configs();
+        let bus_list = P::buses();
+        let bus_config_list = P::bus_configs();
 
-        //         util::validate_bus_configs(&bus_list, &bus_config_list);
+        util::validate_bus_configs(&bus_list, &bus_config_list);
 
-        //         let bus_config_set = bus_config_list
-        //             .get_configs()
-        //             .iter()
-        //             .cloned()
-        //             .collect::<HashSet<BusConfig>>();
+        let bus_config_set = bus_config_list
+            .get_configs()
+            .iter()
+            .cloned()
+            .collect::<HashSet<BusConfig>>();
 
-        //         let default_config = bus_config_list.get_default().unwrap();
+        let default_config = bus_config_list.get_default().unwrap();
 
-        //         let mut inputs = Vec::with_capacity(bus_list.get_inputs().len());
-        //         for format in default_config.get_inputs() {
-        //             inputs.push(BusState::new(format.clone(), true));
-        //         }
+        let mut inputs = Vec::with_capacity(bus_list.get_inputs().len());
+        for format in default_config.get_inputs() {
+            inputs.push(BusState::new(format.clone(), true));
+        }
 
-        //         let mut outputs = Vec::with_capacity(bus_list.get_outputs().len());
-        //         for format in default_config.get_outputs() {
-        //             outputs.push(BusState::new(format.clone(), true));
-        //         }
+        let mut outputs = Vec::with_capacity(bus_list.get_outputs().len());
+        for format in default_config.get_outputs() {
+            outputs.push(BusState::new(format.clone(), true));
+        }
 
-        //         let bus_states = UnsafeCell::new(BusStates { inputs, outputs });
+        let bus_states = UnsafeCell::new(BusStates { inputs, outputs });
 
         let plugin = PluginHandle::<P>::new();
 
@@ -285,10 +285,10 @@ impl<P: Plugin> Wrapper<P> {
 
         Wrapper {
             // has_editor: info.get_has_editor(),
-            // bus_list,
-            // bus_config_list,
-            // bus_config_set,
-            // bus_states,
+            bus_list,
+            bus_config_list,
+            bus_config_set,
+            bus_states,
             // param_states,
             plugin,
             // processor_state,
@@ -327,7 +327,15 @@ impl<P: Plugin> IComponentTrait for Wrapper<P> {
     }
 
     unsafe fn getBusCount(&self, type_: MediaType, dir: BusDirection) -> int32 {
-        0
+        match type_ as MediaTypes {
+            MediaTypes_::kAudio => match dir as BusDirections {
+                BusDirections_::kInput => self.bus_list.get_inputs().len() as int32,
+                BusDirections_::kOutput => self.bus_list.get_outputs().len() as int32,
+                _ => 0,
+            },
+            MediaTypes_::kEvent => 0,
+            _ => 0,
+        }
     }
 
     unsafe fn getBusInfo(
@@ -337,7 +345,44 @@ impl<P: Plugin> IComponentTrait for Wrapper<P> {
         index: int32,
         bus: *mut BusInfo,
     ) -> tresult {
-        kResultOk
+        let bus_states = &*self.bus_states.get();
+
+        match type_ as MediaTypes {
+            MediaTypes_::kAudio => {
+                let bus_info = match dir as BusDirections {
+                    BusDirections_::kInput => self.bus_list.get_inputs().get(index as usize),
+                    BusDirections_::kOutput => self.bus_list.get_outputs().get(index as usize),
+                    _ => None,
+                };
+
+                let bus_state = match dir {
+                    BusDirections_::kInput => bus_states.inputs.get(index as usize),
+                    BusDirections_::kOutput => bus_states.outputs.get(index as usize),
+                    _ => None,
+                };
+
+                if let (Some(bus_info), Some(bus_state)) = (bus_info, bus_state) {
+                    let bus = &mut *bus;
+
+                    bus.mediaType = MediaTypes_::kAudio as MediaType;
+                    bus.direction = dir;
+                    bus.channelCount = bus_state.format().channels() as int32;
+                    copy_wstring(bus_info.get_name(), &mut bus.name);
+                    bus.busType = if index == 0 {
+                        BusTypes_::kMain as BusType
+                    } else {
+                        BusTypes_::kAux as BusType
+                    };
+                    bus.flags = BusInfo_::BusFlags_::kDefaultActive as uint32;
+
+                    return kResultOk;
+                }
+            }
+            MediaTypes_::kEvent => {}
+            _ => {}
+        }
+
+        kInvalidArgument
     }
 
     unsafe fn getRoutingInfo(
@@ -355,7 +400,26 @@ impl<P: Plugin> IComponentTrait for Wrapper<P> {
         index: int32,
         state: TBool,
     ) -> tresult {
-        kResultOk
+        let bus_states = &mut *self.bus_states.get();
+
+        match type_ as MediaTypes {
+            MediaTypes_::kAudio => {
+                let bus_state = match dir as BusDirections {
+                    BusDirections_::kInput => bus_states.inputs.get_mut(index as usize),
+                    BusDirections_::kOutput => bus_states.outputs.get_mut(index as usize),
+                    _ => None,
+                };
+
+                if let Some(bus_state) = bus_state {
+                    bus_state.set_enabled(if state == 0 { false } else { true });
+                    return kResultOk;
+                }
+            }
+            MediaTypes_::kEvent => {}
+            _ => {}
+        }
+
+        kInvalidArgument
     }
 
     unsafe fn setActive(&self, state: TBool) -> tresult {
@@ -379,7 +443,67 @@ impl<P: Plugin> IAudioProcessorTrait for Wrapper<P> {
         outputs: *mut SpeakerArrangement,
         numOuts: int32,
     ) -> tresult {
-        kResultOk
+        let bus_states = &mut *self.bus_states.get();
+
+        if numIns as usize != self.bus_list.get_inputs().len()
+            || numOuts as usize != self.bus_list.get_outputs().len()
+        {
+            return kResultFalse;
+        }
+
+        let mut candidate = BusConfig::new();
+
+        // Don't use from_raw_parts for zero-length inputs, since the pointer
+        // may be null or unaligned
+        let inputs = if numIns > 0 {
+            slice::from_raw_parts(inputs, numIns as usize)
+        } else {
+            &[]
+        };
+        for input in inputs {
+            if let Some(bus_format) = speaker_arrangement_to_bus_format(*input) {
+                candidate = candidate.input(bus_format);
+            } else {
+                return kResultFalse;
+            }
+        }
+
+        // Don't use from_raw_parts for zero-length inputs, since the pointer
+        // may be null or unaligned
+        let outputs = if numOuts > 0 {
+            slice::from_raw_parts(outputs, numOuts as usize)
+        } else {
+            &[]
+        };
+        for output in outputs {
+            if let Some(bus_format) = speaker_arrangement_to_bus_format(*output) {
+                candidate = candidate.output(bus_format);
+            } else {
+                return kResultFalse;
+            }
+        }
+
+        if self.bus_config_set.contains(&candidate) {
+            for (input, bus_state) in candidate
+                .get_inputs()
+                .iter()
+                .zip(bus_states.inputs.iter_mut())
+            {
+                bus_state.set_format(input.clone());
+            }
+
+            for (output, bus_state) in candidate
+                .get_outputs()
+                .iter()
+                .zip(bus_states.outputs.iter_mut())
+            {
+                bus_state.set_format(output.clone());
+            }
+
+            return kResultTrue;
+        }
+
+        kResultFalse
     }
 
     unsafe fn getBusArrangement(
@@ -388,7 +512,20 @@ impl<P: Plugin> IAudioProcessorTrait for Wrapper<P> {
         index: int32,
         arr: *mut SpeakerArrangement,
     ) -> tresult {
-        kResultOk
+        let bus_states = &*self.bus_states.get();
+
+        let bus_state = match dir as BusDirections {
+            BusDirections_::kInput => bus_states.inputs.get(index as usize),
+            BusDirections_::kOutput => bus_states.outputs.get(index as usize),
+            _ => None,
+        };
+
+        if let Some(bus_state) = bus_state {
+            *arr = bus_format_to_speaker_arrangement(bus_state.format());
+            return kResultOk;
+        }
+
+        kInvalidArgument
     }
 
     unsafe fn canProcessSampleSize(&self, symbolicSampleSize: int32) -> tresult {
@@ -493,102 +630,6 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
         ptr::null_mut()
     }
 }
-
-//     unsafe extern "system" fn get_bus_count(
-//         this: *mut c_void,
-//         media_type: MediaType,
-//         dir: BusDirection,
-//     ) -> i32 {
-//         let wrapper = &*(this.offset(-offset_of!(Self, component)) as *const Wrapper<P>);
-
-//         match media_type {
-//             media_types::AUDIO => match dir {
-//                 bus_directions::INPUT => wrapper.bus_list.get_inputs().len() as i32,
-//                 bus_directions::OUTPUT => wrapper.bus_list.get_outputs().len() as i32,
-//                 _ => 0,
-//             },
-//             media_types::EVENT => 0,
-//             _ => 0,
-//         }
-//     }
-
-//     unsafe extern "system" fn get_bus_info(
-//         this: *mut c_void,
-//         media_type: MediaType,
-//         dir: BusDirection,
-//         index: i32,
-//         bus: *mut BusInfo,
-//     ) -> TResult {
-//         let wrapper = &*(this.offset(-offset_of!(Self, component)) as *const Wrapper<P>);
-//         let bus_states = &*wrapper.bus_states.get();
-
-//         match media_type {
-//             media_types::AUDIO => {
-//                 let bus_info = match dir {
-//                     bus_directions::INPUT => wrapper.bus_list.get_inputs().get(index as usize),
-//                     bus_directions::OUTPUT => wrapper.bus_list.get_outputs().get(index as usize),
-//                     _ => None,
-//                 };
-
-//                 let bus_state = match dir {
-//                     bus_directions::INPUT => bus_states.inputs.get(index as usize),
-//                     bus_directions::OUTPUT => bus_states.outputs.get(index as usize),
-//                     _ => None,
-//                 };
-
-//                 if let (Some(bus_info), Some(bus_state)) = (bus_info, bus_state) {
-//                     let bus = &mut *bus;
-
-//                     bus.media_type = media_types::AUDIO;
-//                     bus.direction = dir;
-//                     bus.channel_count = bus_state.format().channels() as i32;
-//                     copy_wstring(bus_info.get_name(), &mut bus.name);
-//                     bus.bus_type = if index == 0 {
-//                         bus_types::MAIN
-//                     } else {
-//                         bus_types::AUX
-//                     };
-//                     bus.flags = BusInfo::DEFAULT_ACTIVE;
-
-//                     return result::OK;
-//                 }
-//             }
-//             media_types::EVENT => {}
-//             _ => {}
-//         }
-
-//         result::INVALID_ARGUMENT
-//     }
-
-//     unsafe extern "system" fn activate_bus(
-//         this: *mut c_void,
-//         media_type: MediaType,
-//         dir: BusDirection,
-//         index: i32,
-//         state: TBool,
-//     ) -> TResult {
-//         let wrapper = &*(this.offset(-offset_of!(Self, component)) as *const Wrapper<P>);
-//         let bus_states = &mut *wrapper.bus_states.get();
-
-//         match media_type {
-//             media_types::AUDIO => {
-//                 let bus_state = match dir {
-//                     bus_directions::INPUT => bus_states.inputs.get_mut(index as usize),
-//                     bus_directions::OUTPUT => bus_states.outputs.get_mut(index as usize),
-//                     _ => None,
-//                 };
-
-//                 if let Some(bus_state) = bus_state {
-//                     bus_state.set_enabled(if state == 0 { false } else { true });
-//                     return result::OK;
-//                 }
-//             }
-//             media_types::EVENT => {}
-//             _ => {}
-//         }
-
-//         result::INVALID_ARGUMENT
-//     }
 
 //     unsafe extern "system" fn set_active(this: *mut c_void, state: TBool) -> TResult {
 //         let wrapper = &*(this.offset(-offset_of!(Self, component)) as *const Wrapper<P>);
@@ -769,100 +810,6 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
 //             Ok(_) => result::OK,
 //             Err(_) => result::FALSE,
 //         }
-//     }
-
-//     unsafe extern "system" fn set_bus_arrangements(
-//         this: *mut c_void,
-//         inputs: *const SpeakerArrangement,
-//         num_ins: i32,
-//         outputs: *const SpeakerArrangement,
-//         num_outs: i32,
-//     ) -> TResult {
-//         let wrapper = &*(this.offset(-offset_of!(Self, audio_processor)) as *const Wrapper<P>);
-//         let bus_states = &mut *wrapper.bus_states.get();
-
-//         if num_ins as usize != wrapper.bus_list.get_inputs().len()
-//             || num_outs as usize != wrapper.bus_list.get_outputs().len()
-//         {
-//             return result::FALSE;
-//         }
-
-//         let mut candidate = BusConfig::new();
-
-//         // Don't use from_raw_parts for zero-length inputs, since the pointer
-//         // may be null or unaligned
-//         let inputs = if num_ins > 0 {
-//             slice::from_raw_parts(inputs, num_ins as usize)
-//         } else {
-//             &[]
-//         };
-//         for input in inputs {
-//             if let Some(bus_format) = speaker_arrangement_to_bus_format(*input) {
-//                 candidate = candidate.input(bus_format);
-//             } else {
-//                 return result::FALSE;
-//             }
-//         }
-
-//         // Don't use from_raw_parts for zero-length inputs, since the pointer
-//         // may be null or unaligned
-//         let outputs = if num_outs > 0 {
-//             slice::from_raw_parts(outputs, num_outs as usize)
-//         } else {
-//             &[]
-//         };
-//         for output in outputs {
-//             if let Some(bus_format) = speaker_arrangement_to_bus_format(*output) {
-//                 candidate = candidate.output(bus_format);
-//             } else {
-//                 return result::FALSE;
-//             }
-//         }
-
-//         if wrapper.bus_config_set.contains(&candidate) {
-//             for (input, bus_state) in candidate
-//                 .get_inputs()
-//                 .iter()
-//                 .zip(bus_states.inputs.iter_mut())
-//             {
-//                 bus_state.set_format(input.clone());
-//             }
-
-//             for (output, bus_state) in candidate
-//                 .get_outputs()
-//                 .iter()
-//                 .zip(bus_states.outputs.iter_mut())
-//             {
-//                 bus_state.set_format(output.clone());
-//             }
-
-//             return result::TRUE;
-//         }
-
-//         result::FALSE
-//     }
-
-//     unsafe extern "system" fn get_bus_arrangement(
-//         this: *mut c_void,
-//         dir: BusDirection,
-//         index: i32,
-//         arr: *mut SpeakerArrangement,
-//     ) -> TResult {
-//         let wrapper = &*(this.offset(-offset_of!(Self, audio_processor)) as *const Wrapper<P>);
-//         let bus_states = &*wrapper.bus_states.get();
-
-//         let bus_state = match dir {
-//             bus_directions::INPUT => bus_states.inputs.get(index as usize),
-//             bus_directions::OUTPUT => bus_states.outputs.get(index as usize),
-//             _ => None,
-//         };
-
-//         if let Some(bus_state) = bus_state {
-//             *arr = bus_format_to_speaker_arrangement(bus_state.format());
-//             return result::OK;
-//         }
-
-//         result::INVALID_ARGUMENT
 //     }
 
 //     unsafe extern "system" fn setup_processing(
