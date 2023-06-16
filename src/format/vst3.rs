@@ -1,6 +1,5 @@
 #![allow(non_snake_case)]
 
-// use crate::atomic::AtomicBitset;
 // use crate::process::{Event, ProcessContext, *};
 // use crate::{buffer::*, bus::*, editor::*, param::*, plugin::*};
 
@@ -10,8 +9,8 @@ use std::collections::HashSet;
 // use std::marker::PhantomData;
 // use std::os::raw::{c_char, c_int};
 // use std::rc::Rc;
-// use std::sync::atomic::Ordering;
-// use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 // use std::{io, ptr, slice};
 use std::cell::UnsafeCell;
 use std::ffi::{c_void, CStr};
@@ -24,7 +23,8 @@ use std::{ptr, slice};
 use vst3_bindgen::{uid, Class, ComWrapper, Steinberg::Vst::*, Steinberg::*};
 
 use super::util::{self, copy_cstring};
-use crate::bus::{BusConfig, BusConfigList, BusList, BusState, BusFormat};
+use crate::atomic::AtomicBitset;
+use crate::bus::{BusConfig, BusConfigList, BusFormat, BusList, BusState};
 use crate::plugin::{Plugin, PluginHandle, PluginInfo};
 
 // macro_rules! offset_of {
@@ -51,15 +51,15 @@ fn copy_wstring(src: &str, dst: &mut [TChar]) {
     }
 }
 
-// unsafe fn len_wstring(string: *const i16) -> usize {
-//     let mut len = 0;
+unsafe fn len_wstring(string: *const i16) -> usize {
+    let mut len = 0;
 
-//     while *string.offset(len) != 0 {
-//         len += 1;
-//     }
+    while *string.offset(len) != 0 {
+        len += 1;
+    }
 
-//     len as usize
-// }
+    len as usize
+}
 
 fn bus_format_to_speaker_arrangement(bus_format: &BusFormat) -> SpeakerArrangement {
     match bus_format {
@@ -163,10 +163,10 @@ struct BusStates {
     outputs: Vec<BusState>,
 }
 
-// struct ParamStates {
-//     dirty_processor: AtomicBitset,
-//     dirty_editor: AtomicBitset,
-// }
+struct ParamStates {
+    dirty_processor: AtomicBitset,
+    dirty_editor: AtomicBitset,
+}
 
 // struct ProcessorState<P: Plugin> {
 //     sample_rate: f64,
@@ -201,7 +201,7 @@ struct Wrapper<P: Plugin> {
     // activate_bus, which aren't called concurrently with any other methods on
     // IComponent or IAudioProcessor per the spec.
     bus_states: UnsafeCell<BusStates>,
-    // param_states: Arc<ParamStates>,
+    param_states: Arc<ParamStates>,
     plugin: PluginHandle<P>,
     // processor_state: UnsafeCell<ProcessorState<P>>,
     // editor_state: UnsafeCell<EditorState<P>>,
@@ -236,14 +236,14 @@ impl<P: Plugin> Wrapper<P> {
 
         let plugin = PluginHandle::<P>::new();
 
-        //         let param_count = PluginHandle::params(&plugin).params().len();
+        let param_count = PluginHandle::params(&plugin).params().len();
 
-        //         let dirty_processor = AtomicBitset::with_len(param_count);
-        //         let dirty_editor = AtomicBitset::with_len(param_count);
-        //         let param_states = Arc::new(ParamStates {
-        //             dirty_processor,
-        //             dirty_editor,
-        //         });
+        let dirty_processor = AtomicBitset::with_len(param_count);
+        let dirty_editor = AtomicBitset::with_len(param_count);
+        let param_states = Arc::new(ParamStates {
+            dirty_processor,
+            dirty_editor,
+        });
 
         //         let input_indices = Vec::with_capacity(bus_list.get_inputs().len());
         //         let input_ptrs = Vec::new();
@@ -289,7 +289,7 @@ impl<P: Plugin> Wrapper<P> {
             bus_config_list,
             bus_config_set,
             bus_states,
-            // param_states,
+            param_states,
             plugin,
             // processor_state,
             // editor_state,
@@ -577,11 +577,31 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
     }
 
     unsafe fn getParameterCount(&self) -> int32 {
-        0
+        PluginHandle::params(&self.plugin).params().len() as int32
     }
 
     unsafe fn getParameterInfo(&self, paramIndex: int32, info: *mut ParameterInfo) -> tresult {
-        kNotImplemented
+        let params = PluginHandle::params(&self.plugin);
+        if let Some(param_info) = params.params().get(paramIndex as usize) {
+            let info = &mut *info;
+
+            info.id = param_info.get_id();
+            copy_wstring(&param_info.get_name(), &mut info.title);
+            copy_wstring(&param_info.get_name(), &mut info.shortTitle);
+            copy_wstring(&param_info.get_label(), &mut info.units);
+            info.stepCount = if let Some(steps) = param_info.get_steps() {
+                (steps.max(2) - 1) as i32
+            } else {
+                0
+            };
+            info.defaultNormalizedValue = param_info.get_mapping().unmap(param_info.get_default());
+            info.unitId = 0;
+            info.flags = ParameterInfo_::ParameterFlags_::kCanAutomate as int32;
+
+            kResultOk
+        } else {
+            kInvalidArgument
+        }
     }
 
     unsafe fn getParamStringByValue(
@@ -590,7 +610,16 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
         valueNormalized: ParamValue,
         string: *mut String128,
     ) -> tresult {
-        kNotImplemented
+        if let Some(param_info) = PluginHandle::params(&self.plugin).get(id) {
+            let mut display = String::new();
+            let value = param_info.get_mapping().map(valueNormalized);
+            param_info.get_format().display(value, &mut display);
+            copy_wstring(&display, &mut *string);
+
+            return kResultOk;
+        }
+
+        kInvalidArgument
     }
 
     unsafe fn getParamValueByString(
@@ -599,7 +628,18 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
         string: *mut TChar,
         valueNormalized: *mut ParamValue,
     ) -> tresult {
-        kNotImplemented
+        if let Some(param_info) = PluginHandle::params(&self.plugin).get(id) {
+            let len = len_wstring(string);
+            if let Ok(string) = String::from_utf16(slice::from_raw_parts(string as *const u16, len))
+            {
+                if let Ok(value) = param_info.get_format().parse(&string) {
+                    *valueNormalized = param_info.get_mapping().unmap(value);
+                    return kResultOk;
+                }
+            }
+        }
+
+        kInvalidArgument
     }
 
     unsafe fn normalizedParamToPlain(
@@ -607,19 +647,48 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
         id: ParamID,
         valueNormalized: ParamValue,
     ) -> ParamValue {
+        if let Some(param_info) = PluginHandle::params(&self.plugin).get(id) {
+            return param_info.get_mapping().map(valueNormalized);
+        }
+
         0.0
     }
 
     unsafe fn plainParamToNormalized(&self, id: ParamID, plainValue: ParamValue) -> ParamValue {
+        if let Some(param_info) = PluginHandle::params(&self.plugin).get(id) {
+            return param_info.get_mapping().unmap(plainValue);
+        }
+
         0.0
     }
 
     unsafe fn getParamNormalized(&self, id: ParamID) -> ParamValue {
+        if let Some(param_info) = PluginHandle::params(&self.plugin).get(id) {
+            let value = param_info.get_accessor().get(&self.plugin);
+            return param_info.get_mapping().unmap(value);
+        }
+
         0.0
     }
 
     unsafe fn setParamNormalized(&self, id: ParamID, value: ParamValue) -> tresult {
-        kNotImplemented
+        if let Some(param_info) = PluginHandle::params(&self.plugin).get(id) {
+            let param_index = PluginHandle::params(&self.plugin).index_of(id).unwrap();
+
+            let value = param_info.get_mapping().map(value);
+            param_info.get_accessor().set(&self.plugin, value);
+
+            self.param_states
+                .dirty_processor
+                .set(param_index, Ordering::Release);
+            self.param_states
+                .dirty_editor
+                .set(param_index, Ordering::Release);
+
+            return kResultOk;
+        }
+
+        kInvalidArgument
     }
 
     unsafe fn setComponentHandler(&self, handler: *mut IComponentHandler) -> tresult {
@@ -1084,154 +1153,6 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
 //         _state: *mut *const IBStream,
 //     ) -> TResult {
 //         result::OK
-//     }
-
-//     unsafe extern "system" fn get_parameter_count(this: *mut c_void) -> i32 {
-//         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
-
-//         PluginHandle::params(&wrapper.plugin).params().len() as i32
-//     }
-
-//     unsafe extern "system" fn get_parameter_info(
-//         this: *mut c_void,
-//         param_index: i32,
-//         info: *mut ParameterInfo,
-//     ) -> TResult {
-//         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
-
-//         if let Some(param_info) = PluginHandle::params(&wrapper.plugin)
-//             .params()
-//             .get(param_index as usize)
-//         {
-//             let info = &mut *info;
-
-//             info.id = param_info.get_id();
-//             copy_wstring(&param_info.get_name(), &mut info.title);
-//             copy_wstring(&param_info.get_name(), &mut info.short_title);
-//             copy_wstring(&param_info.get_label(), &mut info.units);
-//             info.step_count = if let Some(steps) = param_info.get_steps() {
-//                 (steps.max(2) - 1) as i32
-//             } else {
-//                 0
-//             };
-//             info.default_normalized_value =
-//                 param_info.get_mapping().unmap(param_info.get_default());
-//             info.unit_id = 0;
-//             info.flags = ParameterInfo::CAN_AUTOMATE;
-
-//             result::OK
-//         } else {
-//             result::INVALID_ARGUMENT
-//         }
-//     }
-
-//     unsafe extern "system" fn get_param_string_by_value(
-//         this: *mut c_void,
-//         id: u32,
-//         value_normalized: f64,
-//         string: *mut String128,
-//     ) -> TResult {
-//         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
-
-//         if let Some(param_info) = PluginHandle::params(&wrapper.plugin).get(id) {
-//             let mut display = String::new();
-//             let value = param_info.get_mapping().map(value_normalized);
-//             param_info.get_format().display(value, &mut display);
-//             copy_wstring(&display, &mut *string);
-
-//             return result::OK;
-//         }
-
-//         result::INVALID_ARGUMENT
-//     }
-
-//     unsafe extern "system" fn get_param_value_by_string(
-//         this: *mut c_void,
-//         id: u32,
-//         string: *const TChar,
-//         value_normalized: *mut f64,
-//     ) -> TResult {
-//         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
-
-//         if let Some(param_info) = PluginHandle::params(&wrapper.plugin).get(id) {
-//             let len = len_wstring(string);
-//             if let Ok(string) = String::from_utf16(slice::from_raw_parts(string as *const u16, len))
-//             {
-//                 if let Ok(value) = param_info.get_format().parse(&string) {
-//                     *value_normalized = param_info.get_mapping().unmap(value);
-//                     return result::OK;
-//                 }
-//             }
-//         }
-
-//         result::INVALID_ARGUMENT
-//     }
-
-//     unsafe extern "system" fn normalized_param_to_plain(
-//         this: *mut c_void,
-//         id: u32,
-//         value_normalized: f64,
-//     ) -> f64 {
-//         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
-
-//         if let Some(param_info) = PluginHandle::params(&wrapper.plugin).get(id) {
-//             return param_info.get_mapping().map(value_normalized);
-//         }
-
-//         0.0
-//     }
-
-//     unsafe extern "system" fn plain_param_to_normalized(
-//         this: *mut c_void,
-//         id: u32,
-//         plain_value: f64,
-//     ) -> f64 {
-//         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
-
-//         if let Some(param_info) = PluginHandle::params(&wrapper.plugin).get(id) {
-//             return param_info.get_mapping().unmap(plain_value);
-//         }
-
-//         0.0
-//     }
-
-//     unsafe extern "system" fn get_param_normalized(this: *mut c_void, id: u32) -> f64 {
-//         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
-
-//         if let Some(param_info) = PluginHandle::params(&wrapper.plugin).get(id) {
-//             let value = param_info.get_accessor().get(&wrapper.plugin);
-//             return param_info.get_mapping().unmap(value);
-//         }
-
-//         0.0
-//     }
-
-//     unsafe extern "system" fn set_param_normalized(
-//         this: *mut c_void,
-//         id: u32,
-//         value: f64,
-//     ) -> TResult {
-//         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
-
-//         if let Some(param_index) = PluginHandle::params(&wrapper.plugin).index_of(id) {
-//             let param_info = &PluginHandle::params(&wrapper.plugin).params()[param_index];
-
-//             let value = param_info.get_mapping().map(value);
-//             param_info.get_accessor().set(&wrapper.plugin, value);
-
-//             wrapper
-//                 .param_states
-//                 .dirty_processor
-//                 .set(param_index, Ordering::Release);
-//             wrapper
-//                 .param_states
-//                 .dirty_editor
-//                 .set(param_index, Ordering::Release);
-
-//             return result::OK;
-//         }
-
-//         result::INVALID_ARGUMENT
 //     }
 
 //     unsafe extern "system" fn set_component_handler(
