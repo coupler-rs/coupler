@@ -3,15 +3,14 @@
 // use crate::process::{Event, ProcessContext, *};
 // use crate::{buffer::*, bus::*, editor::*, param::*, plugin::*};
 
-// use std::cell::{Cell, UnsafeCell};
+use std::cell::{RefCell, UnsafeCell};
 use std::collections::HashSet;
 // use std::ffi::{c_void, CStr};
 // use std::marker::PhantomData;
 // use std::os::raw::{c_char, c_int};
-// use std::rc::Rc;
-use std::cell::UnsafeCell;
 use std::ffi::{c_void, CStr};
 use std::marker::PhantomData;
+use std::rc::Rc;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::{io, ptr, slice};
@@ -19,13 +18,14 @@ use std::{io, ptr, slice};
 use raw_window_handle::RawWindowHandle;
 
 // use vst3_sys::{BusInfo, *};
-use vst3_bindgen::{uid, Class, ComRef, ComWrapper, Steinberg::Vst::*, Steinberg::*};
+use vst3_bindgen::{uid, Class, ComPtr, ComRef, ComWrapper, Steinberg::Vst::*, Steinberg::*};
 
 use super::util::{self, copy_cstring};
 use crate::atomic::AtomicBitset;
 use crate::buffer::Buffers;
 use crate::bus::{BusConfig, BusConfigList, BusFormat, BusList, BusState};
-use crate::editor::Editor;
+use crate::editor::{Editor, EditorContext, EditorContextHandler, ParentWindow, PollParams};
+use crate::param::ParamId;
 use crate::plugin::{Plugin, PluginHandle, PluginInfo};
 use crate::process::{Event, EventType, ParamChange, ProcessContext, Processor};
 
@@ -76,89 +76,76 @@ fn speaker_arrangement_to_bus_format(speaker_arrangement: SpeakerArrangement) ->
     }
 }
 
-// struct Vst3EditorContext<P> {
-//     component_handler: Cell<Option<*mut *const IComponentHandler>>,
-//     plug_frame: Cell<Option<*mut *const IPlugFrame>>,
-//     plugin: PluginHandle<P>,
-//     param_states: Arc<ParamStates>,
-// }
+struct Vst3EditorContext<P> {
+    component_handler: RefCell<Option<ComPtr<IComponentHandler>>>,
+    plug_frame: RefCell<Option<ComPtr<IPlugFrame>>>,
+    plugin: PluginHandle<P>,
+    param_states: Arc<ParamStates>,
+}
 
-// impl<P> Drop for Vst3EditorContext<P> {
-//     fn drop(&mut self) {
-//         if let Some(handler) = self.component_handler.take() {
-//             unsafe {
-//                 ((*(*handler)).unknown.release)(handler as *mut c_void);
-//             }
-//         }
+impl<P> EditorContextHandler<P> for Vst3EditorContext<P> {
+    fn begin_edit(&self, id: ParamId) {
+        let _ = PluginHandle::params(&self.plugin)
+            .index_of(id)
+            .expect("Invalid parameter id");
 
-//         if let Some(frame) = self.plug_frame.take() {
-//             unsafe {
-//                 ((*(*frame)).unknown.release)(frame as *mut c_void);
-//             }
-//         }
-//     }
-// }
+        let component_handler = self.component_handler.borrow().clone();
+        if let Some(component_handler) = &component_handler {
+            unsafe {
+                component_handler.beginEdit(id);
+            }
+        }
+    }
 
-// impl<P> EditorContextHandler<P> for Vst3EditorContext<P> {
-//     fn begin_edit(&self, id: ParamId) {
-//         let _ = PluginHandle::params(&self.plugin)
-//             .index_of(id)
-//             .expect("Invalid parameter id");
+    fn perform_edit(&self, id: ParamId, value: f64) {
+        let param_index = PluginHandle::params(&self.plugin)
+            .index_of(id)
+            .expect("Invalid parameter id");
+        let param_info = &PluginHandle::params(&self.plugin).params()[param_index];
 
-//         if let Some(component_handler) = self.component_handler.get() {
-//             unsafe {
-//                 ((*(*component_handler)).begin_edit)(component_handler as *mut c_void, id);
-//             }
-//         }
-//     }
+        param_info.get_accessor().set(&self.plugin, value);
 
-//     fn perform_edit(&self, id: ParamId, value: f64) {
-//         let param_index = PluginHandle::params(&self.plugin)
-//             .index_of(id)
-//             .expect("Invalid parameter id");
-//         let param_info = &PluginHandle::params(&self.plugin).params()[param_index];
+        let value_normalized = param_info.get_mapping().unmap(value);
 
-//         param_info.get_accessor().set(&self.plugin, value);
+        let _ = PluginHandle::params(&self.plugin)
+            .index_of(id)
+            .expect("Invalid parameter id");
 
-//         let value_normalized = param_info.get_mapping().unmap(value);
+        let component_handler = self.component_handler.borrow().clone();
+        if let Some(component_handler) = &component_handler {
+            unsafe {
+                component_handler.performEdit(id, value_normalized);
+            }
+        }
 
-//         if let Some(component_handler) = self.component_handler.get() {
-//             unsafe {
-//                 ((*(*component_handler)).perform_edit)(
-//                     component_handler as *mut c_void,
-//                     id,
-//                     value_normalized,
-//                 );
-//             }
-//         }
+        self.param_states
+            .dirty_processor
+            .set(param_index, Ordering::Release);
+    }
 
-//         self.param_states
-//             .dirty_processor
-//             .set(param_index, Ordering::Release);
-//     }
+    fn end_edit(&self, id: ParamId) {
+        let _ = PluginHandle::params(&self.plugin)
+            .index_of(id)
+            .expect("Invalid parameter id");
 
-//     fn end_edit(&self, id: ParamId) {
-//         let _ = PluginHandle::params(&self.plugin)
-//             .index_of(id)
-//             .expect("Invalid parameter id");
+        let component_handler = self.component_handler.borrow().clone();
+        if let Some(component_handler) = &component_handler {
+            unsafe {
+                component_handler.endEdit(id);
+            }
+        }
+    }
 
-//         if let Some(component_handler) = self.component_handler.get() {
-//             unsafe {
-//                 ((*(*component_handler)).end_edit)(component_handler as *mut c_void, id);
-//             }
-//         }
-//     }
-
-//     fn poll_params(&self) -> PollParams<P> {
-//         PollParams {
-//             iter: self
-//                 .param_states
-//                 .dirty_editor
-//                 .drain_indices(Ordering::Acquire),
-//             param_list: PluginHandle::params(&self.plugin),
-//         }
-//     }
-// }
+    fn poll_params(&self) -> PollParams<P> {
+        PollParams {
+            iter: self
+                .param_states
+                .dirty_editor
+                .drain_indices(Ordering::Acquire),
+            param_list: PluginHandle::params(&self.plugin),
+        }
+    }
+}
 
 struct BusStates {
     inputs: Vec<BusState>,
@@ -189,10 +176,9 @@ struct ProcessorState<P: Plugin> {
     processor: Option<P::Processor>,
 }
 
-// struct EditorState<P: Plugin> {
-//     context: Rc<Vst3EditorContext<P>>,
-//     editor: Option<P::Editor>,
-// }
+struct EditorState<P: Plugin> {
+    context: Rc<Vst3EditorContext<P>>,
+}
 
 struct Wrapper<P: Plugin> {
     has_editor: bool,
@@ -206,7 +192,7 @@ struct Wrapper<P: Plugin> {
     param_states: Arc<ParamStates>,
     plugin: PluginHandle<P>,
     processor_state: UnsafeCell<ProcessorState<P>>,
-    // editor_state: UnsafeCell<EditorState<P>>,
+    editor_state: UnsafeCell<EditorState<P>>,
 }
 
 impl<P: Plugin> Wrapper<P> {
@@ -273,17 +259,16 @@ impl<P: Plugin> Wrapper<P> {
             processor: None,
         });
 
-        //         let editor_context = Rc::new(Vst3EditorContext {
-        //             component_handler: Cell::new(None),
-        //             plug_frame: Cell::new(None),
-        //             plugin: plugin.clone(),
-        //             param_states: param_states.clone(),
-        //         });
+        let editor_context = Rc::new(Vst3EditorContext {
+            component_handler: RefCell::new(None),
+            plug_frame: RefCell::new(None),
+            plugin: plugin.clone(),
+            param_states: param_states.clone(),
+        });
 
-        //         let editor_state = UnsafeCell::new(EditorState {
-        //             context: editor_context,
-        //             editor: None,
-        //         });
+        let editor_state = UnsafeCell::new(EditorState {
+            context: editor_context,
+        });
 
         Wrapper {
             has_editor: info.get_has_editor(),
@@ -294,7 +279,7 @@ impl<P: Plugin> Wrapper<P> {
             param_states,
             plugin,
             processor_state,
-            // editor_state,
+            editor_state,
         }
     }
 }
@@ -1073,6 +1058,15 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
     }
 
     unsafe fn setComponentHandler(&self, handler: *mut IComponentHandler) -> tresult {
+        let editor_state = &*self.editor_state.get();
+
+        if let Some(handler) = ComRef::from_raw(handler) {
+            editor_state
+                .context
+                .component_handler
+                .replace(Some(handler.to_com_ptr()));
+        }
+
         kResultOk
     }
 
@@ -1081,8 +1075,10 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
             return ptr::null_mut();
         }
 
+        let editor_state = &*self.editor_state.get();
+
         if CStr::from_ptr(name) == CStr::from_ptr(ViewType::kEditor) {
-            let view = ComWrapper::new(View::<P>::new());
+            let view = ComWrapper::new(View::<P>::new(&self.plugin, &editor_state.context));
             return view.to_com_ptr::<IPlugView>().unwrap().into_raw();
         }
 
@@ -1091,14 +1087,17 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
 }
 
 struct View<P: Plugin> {
-    _marker: PhantomData<P>,
-    // editor: UnsafeCell<Option<P::Editor>>,
+    plugin: PluginHandle<P>,
+    context: Rc<Vst3EditorContext<P>>,
+    editor: RefCell<Option<P::Editor>>,
 }
 
 impl<P: Plugin> View<P> {
-    pub fn new() -> View<P> {
+    pub fn new(plugin: &PluginHandle<P>, context: &Rc<Vst3EditorContext<P>>) -> View<P> {
         View {
-            _marker: PhantomData,
+            plugin: plugin.clone(),
+            context: context.clone(),
+            editor: RefCell::new(None),
         }
     }
 }
@@ -1132,8 +1131,6 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
             return kNotImplemented;
         }
 
-        // let editor_state = &mut *self.editor_state.get();
-
         #[cfg(target_os = "macos")]
         let parent = {
             use raw_window_handle::macos::MacOSHandle;
@@ -1161,9 +1158,9 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
             })
         };
 
-        // let context = EditorContext::new(editor_state.context.clone());
+        let context = EditorContext::new(self.context.clone());
 
-        // let editor = P::Editor::open(self.plugin.clone(), context, Some(&ParentWindow(parent)));
+        let editor = P::Editor::open(self.plugin.clone(), context, Some(&ParentWindow(parent)));
 
         // #[cfg(target_os = "linux")]
         // {
@@ -1203,17 +1200,15 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
         //     }
         // }
 
-        // editor_state.editor = Some(editor);
+        self.editor.replace(Some(editor));
 
         kResultOk
     }
 
     unsafe fn removed(&self) -> tresult {
-        // let editor_state = &mut *self.editor_state.get();
-
-        // if let Some(mut editor) = editor_state.editor.take() {
-        //     editor.close();
-        // }
+        if let Some(mut editor) = self.editor.take() {
+            editor.close();
+        }
 
         // #[cfg(target_os = "linux")]
         // {
@@ -1282,17 +1277,9 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
     }
 
     unsafe fn setFrame(&self, frame: *mut IPlugFrame) -> tresult {
-        // let wrapper = &*(this.offset(-offset_of!(Self, plug_view)) as *const Wrapper<P>);
-        // let editor_state = &*wrapper.editor_state.get();
-
-        // if let Some(prev_frame) = editor_state.context.plug_frame.take() {
-        //     ((*(*prev_frame)).unknown.release)(prev_frame as *mut c_void);
-        // }
-
-        // if !frame.is_null() {
-        //     ((*(*frame)).unknown.add_ref)(frame as *mut c_void);
-        //     editor_state.context.plug_frame.set(Some(frame));
-        // }
+        if let Some(frame) = ComRef::from_raw(frame) {
+            self.context.plug_frame.replace(Some(frame.to_com_ptr()));
+        }
 
         kResultOk
     }
@@ -1305,25 +1292,6 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
         kNotImplemented
     }
 }
-
-//     unsafe extern "system" fn set_component_handler(
-//         this: *mut c_void,
-//         handler: *mut *const IComponentHandler,
-//     ) -> TResult {
-//         let wrapper = &*(this.offset(-offset_of!(Self, edit_controller)) as *const Wrapper<P>);
-//         let editor_state = &*wrapper.editor_state.get();
-
-//         if let Some(prev_handler) = editor_state.context.component_handler.take() {
-//             ((*(*prev_handler)).unknown.release)(prev_handler as *mut c_void);
-//         }
-
-//         if !handler.is_null() {
-//             ((*(*handler)).unknown.add_ref)(handler as *mut c_void);
-//             editor_state.context.component_handler.set(Some(handler));
-//         }
-
-//         kResultOk
-//     }
 
 //     #[cfg(target_os = "linux")]
 //     unsafe extern "system" fn on_fd_is_set(this: *mut c_void, _fd: c_int) {
