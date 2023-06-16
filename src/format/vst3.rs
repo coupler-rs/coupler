@@ -323,7 +323,7 @@ impl<P: Plugin> IComponentTrait for Wrapper<P> {
                     _ => None,
                 };
 
-                let bus_state = match dir {
+                let bus_state = match dir as BusDirections {
                     BusDirections_::kInput => bus_states.inputs.get(index as usize),
                     BusDirections_::kOutput => bus_states.outputs.get(index as usize),
                     _ => None,
