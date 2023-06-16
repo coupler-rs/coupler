@@ -1,13 +1,7 @@
 #![allow(non_snake_case)]
 
-// use crate::process::{Event, ProcessContext, *};
-// use crate::{buffer::*, bus::*, editor::*, param::*, plugin::*};
-
 use std::cell::{RefCell, UnsafeCell};
 use std::collections::HashSet;
-// use std::ffi::{c_void, CStr};
-// use std::marker::PhantomData;
-// use std::os::raw::{c_char, c_int};
 use std::ffi::{c_void, CStr};
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -17,27 +11,16 @@ use std::{io, ptr, slice};
 
 use raw_window_handle::RawWindowHandle;
 
-// use vst3_sys::{BusInfo, *};
 use vst3_bindgen::{uid, Class, ComPtr, ComRef, ComWrapper, Steinberg::Vst::*, Steinberg::*};
 
 use super::util::{self, copy_cstring};
 use crate::atomic::AtomicBitset;
 use crate::buffer::Buffers;
-use crate::bus::{BusConfig, BusConfigList, BusFormat, BusList, BusState};
+use crate::bus::{BusConfig, BusFormat, BusList, BusState};
 use crate::editor::{Editor, EditorContext, EditorContextHandler, ParentWindow, PollParams};
 use crate::param::ParamId;
 use crate::plugin::{Plugin, PluginHandle, PluginInfo};
 use crate::process::{Event, EventType, ParamChange, ProcessContext, Processor};
-
-// macro_rules! offset_of {
-//     ($struct:ty, $field:ident) => {{
-//         let dummy = std::mem::MaybeUninit::<$struct>::uninit();
-//         let base = dummy.as_ptr();
-//         let field = std::ptr::addr_of!((*base).$field);
-
-//         (field as *const c_void).offset_from(base as *const c_void)
-//     }};
-// }
 
 fn copy_wstring(src: &str, dst: &mut [TChar]) {
     let mut len = 0;
@@ -183,7 +166,6 @@ struct EditorState<P: Plugin> {
 struct Wrapper<P: Plugin> {
     has_editor: bool,
     bus_list: BusList,
-    bus_config_list: BusConfigList,
     bus_config_set: HashSet<BusConfig>,
     // We only form an &mut to bus_states in set_bus_arrangements and
     // activate_bus, which aren't called concurrently with any other methods on
@@ -273,7 +255,6 @@ impl<P: Plugin> Wrapper<P> {
         Wrapper {
             has_editor: info.get_has_editor(),
             bus_list,
-            bus_config_list,
             bus_config_set,
             bus_states,
             param_states,
@@ -305,11 +286,11 @@ impl<P: Plugin> IPluginBaseTrait for Wrapper<P> {
 }
 
 impl<P: Plugin> IComponentTrait for Wrapper<P> {
-    unsafe fn getControllerClassId(&self, classId: *mut TUID) -> tresult {
+    unsafe fn getControllerClassId(&self, _classId: *mut TUID) -> tresult {
         kNotImplemented
     }
 
-    unsafe fn setIoMode(&self, mode: IoMode) -> tresult {
+    unsafe fn setIoMode(&self, _mode: IoMode) -> tresult {
         kResultOk
     }
 
@@ -374,8 +355,8 @@ impl<P: Plugin> IComponentTrait for Wrapper<P> {
 
     unsafe fn getRoutingInfo(
         &self,
-        inInfo: *mut RoutingInfo,
-        outInfo: *mut RoutingInfo,
+        _inInfo: *mut RoutingInfo,
+        _outInfo: *mut RoutingInfo,
     ) -> tresult {
         kNotImplemented
     }
