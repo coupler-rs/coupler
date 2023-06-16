@@ -23,9 +23,10 @@ use vst3_bindgen::{uid, Class, ComRef, ComWrapper, Steinberg::Vst::*, Steinberg:
 
 use super::util::{self, copy_cstring};
 use crate::atomic::AtomicBitset;
+use crate::buffer::Buffers;
 use crate::bus::{BusConfig, BusConfigList, BusFormat, BusList, BusState};
 use crate::plugin::{Plugin, PluginHandle, PluginInfo};
-use crate::process::{ProcessContext, Processor};
+use crate::process::{Event, EventType, ParamChange, ProcessContext, Processor};
 
 // macro_rules! offset_of {
 //     ($struct:ty, $field:ident) => {{
@@ -172,18 +173,18 @@ struct ProcessorState<P: Plugin> {
     sample_rate: f64,
     max_buffer_size: usize,
     needs_reset: bool,
-    // input_channels: usize,
-    // input_indices: Vec<(usize, usize)>,
-    // input_ptrs: Vec<*const f32>,
-    // output_channels: usize,
-    // output_indices: Vec<(usize, usize)>,
-    // output_ptrs: Vec<*mut f32>,
-    // // Scratch buffers for copying inputs to when the host uses the same
-    // // buffers for inputs and outputs
-    // scratch_buffers: Vec<f32>,
-    // output_ptr_set: Vec<*mut f32>,
-    // aliased_inputs: Vec<usize>,
-    // events: Vec<Event>,
+    input_channels: usize,
+    input_indices: Vec<(usize, usize)>,
+    input_ptrs: Vec<*const f32>,
+    output_channels: usize,
+    output_indices: Vec<(usize, usize)>,
+    output_ptrs: Vec<*mut f32>,
+    // Scratch buffers for copying inputs to when the host uses the same
+    // buffers for inputs and outputs
+    scratch_buffers: Vec<f32>,
+    output_ptr_set: Vec<*mut f32>,
+    aliased_inputs: Vec<usize>,
+    events: Vec<Event>,
     processor: Option<P::Processor>,
 }
 
@@ -245,29 +246,29 @@ impl<P: Plugin> Wrapper<P> {
             dirty_editor,
         });
 
-        //         let input_indices = Vec::with_capacity(bus_list.get_inputs().len());
-        //         let input_ptrs = Vec::new();
+        let input_indices = Vec::with_capacity(bus_list.get_inputs().len());
+        let input_ptrs = Vec::new();
 
-        //         let output_indices = Vec::with_capacity(bus_list.get_outputs().len());
-        //         let output_ptrs = Vec::new();
+        let output_indices = Vec::with_capacity(bus_list.get_outputs().len());
+        let output_ptrs = Vec::new();
 
         let processor_state = UnsafeCell::new(ProcessorState {
             sample_rate: 0.0,
             max_buffer_size: 0,
             needs_reset: false,
-            // input_channels: 0,
-            // input_indices,
-            // input_ptrs,
-            // output_channels: 0,
-            // output_indices,
-            // output_ptrs,
-            // scratch_buffers: Vec::new(),
-            // output_ptr_set: Vec::new(),
-            // aliased_inputs: Vec::new(),
-            // // We can't know the maximum number of param changes in a
-            // // block, so make a reasonable guess and hope we don't have to
-            // // allocate more
-            // events: Vec::with_capacity(1024 + 4 * param_count),
+            input_channels: 0,
+            input_indices,
+            input_ptrs,
+            output_channels: 0,
+            output_indices,
+            output_ptrs,
+            scratch_buffers: Vec::new(),
+            output_ptr_set: Vec::new(),
+            aliased_inputs: Vec::new(),
+            // We can't know the maximum number of param changes in a
+            // block, so make a reasonable guess and hope we don't have to
+            // allocate more
+            events: Vec::with_capacity(1024 + 4 * param_count),
             processor: None,
         });
 
@@ -440,76 +441,76 @@ impl<P: Plugin> IComponentTrait for Wrapper<P> {
                 processor_state.processor =
                     Some(P::Processor::create(self.plugin.clone(), &context));
 
-                // // Prepare buffer indices and ensure that buffer pointer Vecs are the correct size:
+                // Prepare buffer indices and ensure that buffer pointer Vecs are the correct size:
 
-                // processor_state.input_indices.clear();
-                // let mut total_channels = 0;
-                // for bus_state in bus_states.inputs.iter() {
-                //     let channels = if bus_state.enabled() {
-                //         bus_state.format().channels()
-                //     } else {
-                //         0
-                //     };
-                //     processor_state
-                //         .input_indices
-                //         .push((total_channels, total_channels + channels));
-                //     total_channels += channels;
-                // }
-                // processor_state.input_channels = total_channels;
+                processor_state.input_indices.clear();
+                let mut total_channels = 0;
+                for bus_state in bus_states.inputs.iter() {
+                    let channels = if bus_state.enabled() {
+                        bus_state.format().channels()
+                    } else {
+                        0
+                    };
+                    processor_state
+                        .input_indices
+                        .push((total_channels, total_channels + channels));
+                    total_channels += channels;
+                }
+                processor_state.input_channels = total_channels;
 
-                // processor_state
-                //     .input_ptrs
-                //     .reserve(processor_state.input_channels);
-                // processor_state
-                //     .input_ptrs
-                //     .shrink_to(processor_state.input_channels);
+                processor_state
+                    .input_ptrs
+                    .reserve(processor_state.input_channels);
+                processor_state
+                    .input_ptrs
+                    .shrink_to(processor_state.input_channels);
 
-                // processor_state.output_indices.clear();
-                // let mut total_channels = 0;
-                // for bus_state in bus_states.outputs.iter() {
-                //     let channels = if bus_state.enabled() {
-                //         bus_state.format().channels()
-                //     } else {
-                //         0
-                //     };
-                //     processor_state
-                //         .output_indices
-                //         .push((total_channels, total_channels + channels));
-                //     total_channels += channels;
-                // }
-                // processor_state.output_channels = total_channels;
+                processor_state.output_indices.clear();
+                let mut total_channels = 0;
+                for bus_state in bus_states.outputs.iter() {
+                    let channels = if bus_state.enabled() {
+                        bus_state.format().channels()
+                    } else {
+                        0
+                    };
+                    processor_state
+                        .output_indices
+                        .push((total_channels, total_channels + channels));
+                    total_channels += channels;
+                }
+                processor_state.output_channels = total_channels;
 
-                // processor_state
-                //     .output_ptrs
-                //     .reserve(processor_state.output_channels);
-                // processor_state
-                //     .output_ptrs
-                //     .shrink_to(processor_state.output_channels);
+                processor_state
+                    .output_ptrs
+                    .reserve(processor_state.output_channels);
+                processor_state
+                    .output_ptrs
+                    .shrink_to(processor_state.output_channels);
 
-                // // Ensure enough scratch buffer space for any number of aliased input buffers:
+                // Ensure enough scratch buffer space for any number of aliased input buffers:
 
-                // let scratch_buffer_size = processor_state.max_buffer_size
-                //     * processor_state
-                //         .input_channels
-                //         .min(processor_state.output_channels);
-                // processor_state.scratch_buffers.reserve(scratch_buffer_size);
-                // processor_state
-                //     .scratch_buffers
-                //     .shrink_to(scratch_buffer_size);
+                let scratch_buffer_size = processor_state.max_buffer_size
+                    * processor_state
+                        .input_channels
+                        .min(processor_state.output_channels);
+                processor_state.scratch_buffers.reserve(scratch_buffer_size);
+                processor_state
+                    .scratch_buffers
+                    .shrink_to(scratch_buffer_size);
 
-                // processor_state
-                //     .output_ptr_set
-                //     .reserve(processor_state.output_channels);
-                // processor_state
-                //     .output_ptr_set
-                //     .shrink_to(processor_state.output_channels);
+                processor_state
+                    .output_ptr_set
+                    .reserve(processor_state.output_channels);
+                processor_state
+                    .output_ptr_set
+                    .shrink_to(processor_state.output_channels);
 
-                // processor_state
-                //     .aliased_inputs
-                //     .reserve(processor_state.input_channels);
-                // processor_state
-                //     .aliased_inputs
-                //     .shrink_to(processor_state.input_channels);
+                processor_state
+                    .aliased_inputs
+                    .reserve(processor_state.input_channels);
+                processor_state
+                    .aliased_inputs
+                    .shrink_to(processor_state.input_channels);
             }
         }
 
@@ -744,202 +745,189 @@ impl<P: Plugin> IAudioProcessorTrait for Wrapper<P> {
             return kNotInitialized;
         }
 
-        // processor_state.events.clear();
+        processor_state.events.clear();
 
-        // for index in self
-        //     .param_states
-        //     .dirty_processor
-        //     .drain_indices(Ordering::Acquire)
-        // {
-        //     let param_info = &PluginHandle::params(&self.plugin).params()[index];
-        //     let value = param_info.get_accessor().get(&self.plugin);
+        for index in self
+            .param_states
+            .dirty_processor
+            .drain_indices(Ordering::Acquire)
+        {
+            let param_info = &PluginHandle::params(&self.plugin).params()[index];
+            let value = param_info.get_accessor().get(&self.plugin);
 
-        //     processor_state.events.push(Event {
-        //         offset: 0,
-        //         event: EventType::ParamChange(ParamChange {
-        //             id: param_info.get_id(),
-        //             value,
-        //         }),
-        //     });
-        // }
+            processor_state.events.push(Event {
+                offset: 0,
+                event: EventType::ParamChange(ParamChange {
+                    id: param_info.get_id(),
+                    value,
+                }),
+            });
+        }
 
-        // let process_data = &*data;
+        let process_data = &*data;
 
-        // let param_changes = process_data.input_parameter_changes;
-        // if !param_changes.is_null() {
-        //     let param_count =
-        //         ((*(*param_changes)).get_parameter_count)(param_changes as *mut c_void);
-        //     for index in 0..param_count {
-        //         let param_data =
-        //             ((*(*param_changes)).get_parameter_data)(param_changes as *mut c_void, index);
+        if let Some(param_changes) = ComRef::from_raw(process_data.inputParameterChanges) {
+            for index in 0..param_changes.getParameterCount() {
+                let param_data = param_changes.getParameterData(index);
 
-        //         if param_data.is_null() {
-        //             continue;
-        //         }
+                let Some(param_data) = ComRef::from_raw(param_data) else { continue; };
 
-        //         let id = ((*(*param_data)).get_parameter_id)(param_data as *mut c_void);
-        //         let point_count = ((*(*param_data)).get_point_count)(param_data as *mut c_void);
+                let id = param_data.getParameterId();
+                let point_count = param_data.getPointCount();
 
-        //         if let Some(param_index) = PluginHandle::params(&self.plugin).index_of(id) {
-        //             for index in 0..point_count {
-        //                 let mut offset = 0;
-        //                 let mut value_normalized = 0.0;
-        //                 let result = ((*(*param_data)).get_point)(
-        //                     param_data as *mut c_void,
-        //                     index,
-        //                     &mut offset,
-        //                     &mut value_normalized,
-        //                 );
+                if let Some(param_index) = PluginHandle::params(&self.plugin).index_of(id) {
+                    for index in 0..point_count {
+                        let mut offset = 0;
+                        let mut value_normalized = 0.0;
+                        let result = param_data.getPoint(index, &mut offset, &mut value_normalized);
 
-        //                 if result != kResultOk {
-        //                     continue;
-        //                 }
+                        if result != kResultOk {
+                            continue;
+                        }
 
-        //                 let param_info =
-        //                     &PluginHandle::params(&self.plugin).params()[param_index];
-        //                 let value = param_info.get_mapping().map(value_normalized);
-        //                 param_info.get_accessor().set(&self.plugin, value);
-        //                 self
-        //                     .param_states
-        //                     .dirty_editor
-        //                     .set(param_index, Ordering::Release);
+                        let param_info = &PluginHandle::params(&self.plugin).params()[param_index];
+                        let value = param_info.get_mapping().map(value_normalized);
+                        param_info.get_accessor().set(&self.plugin, value);
+                        self.param_states
+                            .dirty_editor
+                            .set(param_index, Ordering::Release);
 
-        //                 processor_state.events.push(Event {
-        //                     offset: offset as usize,
-        //                     event: EventType::ParamChange(ParamChange { id, value }),
-        //                 });
-        //             }
-        //         }
-        //     }
-        // }
+                        processor_state.events.push(Event {
+                            offset: offset as usize,
+                            event: EventType::ParamChange(ParamChange { id, value }),
+                        });
+                    }
+                }
+            }
+        }
 
-        // processor_state
-        //     .events
-        //     .sort_by_key(|param_change| param_change.offset);
+        processor_state
+            .events
+            .sort_by_key(|param_change| param_change.offset);
 
-        // processor_state.input_ptrs.clear();
-        // processor_state.output_ptrs.clear();
+        processor_state.input_ptrs.clear();
+        processor_state.output_ptrs.clear();
 
-        // let samples = process_data.num_samples as usize;
+        let samples = process_data.numSamples as usize;
 
-        // if samples > 0 {
-        //     if self.bus_list.get_inputs().len() > 0 {
-        //         if process_data.num_inputs as usize != self.bus_list.get_inputs().len() {
-        //             return kInvalidArgument;
-        //         }
+        if samples > 0 {
+            if self.bus_list.get_inputs().len() > 0 {
+                if process_data.numInputs as usize != self.bus_list.get_inputs().len() {
+                    return kInvalidArgument;
+                }
 
-        //         let inputs =
-        //             slice::from_raw_parts(process_data.inputs, process_data.num_inputs as usize);
+                let inputs =
+                    slice::from_raw_parts(process_data.inputs, process_data.numInputs as usize);
 
-        //         for (input, bus_state) in inputs.iter().zip(bus_states.inputs.iter()) {
-        //             if !bus_state.enabled() || bus_state.format().channels() == 0 {
-        //                 continue;
-        //             }
+                for (input, bus_state) in inputs.iter().zip(bus_states.inputs.iter()) {
+                    if !bus_state.enabled() || bus_state.format().channels() == 0 {
+                        continue;
+                    }
 
-        //             if input.num_channels as usize != bus_state.format().channels() {
-        //                 return kInvalidArgument;
-        //             }
+                    if input.numChannels as usize != bus_state.format().channels() {
+                        return kInvalidArgument;
+                    }
 
-        //             let channels = slice::from_raw_parts(
-        //                 input.channel_buffers as *const *const f32,
-        //                 input.num_channels as usize,
-        //             );
-        //             processor_state.input_ptrs.extend_from_slice(channels);
-        //         }
-        //     }
+                    let channels = slice::from_raw_parts(
+                        input.__field0.channelBuffers32 as *const *const f32,
+                        input.numChannels as usize,
+                    );
+                    processor_state.input_ptrs.extend_from_slice(channels);
+                }
+            }
 
-        //     if self.bus_list.get_outputs().len() > 0 {
-        //         if process_data.num_outputs as usize != self.bus_list.get_outputs().len() {
-        //             return kInvalidArgument;
-        //         }
+            if self.bus_list.get_outputs().len() > 0 {
+                if process_data.numOutputs as usize != self.bus_list.get_outputs().len() {
+                    return kInvalidArgument;
+                }
 
-        //         let outputs =
-        //             slice::from_raw_parts(process_data.outputs, process_data.num_outputs as usize);
+                let outputs =
+                    slice::from_raw_parts(process_data.outputs, process_data.numOutputs as usize);
 
-        //         for (output, bus_state) in outputs.iter().zip(bus_states.outputs.iter()) {
-        //             if !bus_state.enabled() || bus_state.format().channels() == 0 {
-        //                 continue;
-        //             }
+                for (output, bus_state) in outputs.iter().zip(bus_states.outputs.iter()) {
+                    if !bus_state.enabled() || bus_state.format().channels() == 0 {
+                        continue;
+                    }
 
-        //             if output.num_channels as usize != bus_state.format().channels() {
-        //                 return kInvalidArgument;
-        //             }
+                    if output.numChannels as usize != bus_state.format().channels() {
+                        return kInvalidArgument;
+                    }
 
-        //             let channels = slice::from_raw_parts(
-        //                 output.channel_buffers as *const *mut f32,
-        //                 output.num_channels as usize,
-        //             );
-        //             processor_state.output_ptrs.extend_from_slice(channels);
-        //         }
-        //     }
+                    let channels = slice::from_raw_parts(
+                        output.__field0.channelBuffers32 as *const *mut f32,
+                        output.numChannels as usize,
+                    );
+                    processor_state.output_ptrs.extend_from_slice(channels);
+                }
+            }
 
-        //     // Copy aliased input buffers into scratch buffers
+            // Copy aliased input buffers into scratch buffers
 
-        //     processor_state
-        //         .output_ptr_set
-        //         .extend_from_slice(&processor_state.output_ptrs);
-        //     processor_state.output_ptr_set.sort();
-        //     processor_state.output_ptr_set.dedup();
+            processor_state
+                .output_ptr_set
+                .extend_from_slice(&processor_state.output_ptrs);
+            processor_state.output_ptr_set.sort();
+            processor_state.output_ptr_set.dedup();
 
-        //     for (channel, input_ptr) in processor_state.input_ptrs.iter().enumerate() {
-        //         if processor_state
-        //             .output_ptr_set
-        //             .binary_search(&(*input_ptr as *mut f32))
-        //             .is_ok()
-        //         {
-        //             processor_state.aliased_inputs.push(channel);
+            for (channel, input_ptr) in processor_state.input_ptrs.iter().enumerate() {
+                if processor_state
+                    .output_ptr_set
+                    .binary_search(&(*input_ptr as *mut f32))
+                    .is_ok()
+                {
+                    processor_state.aliased_inputs.push(channel);
 
-        //             let input_buffer = slice::from_raw_parts(*input_ptr, samples);
-        //             processor_state
-        //                 .scratch_buffers
-        //                 .extend_from_slice(input_buffer);
-        //         }
-        //     }
+                    let input_buffer = slice::from_raw_parts(*input_ptr, samples);
+                    processor_state
+                        .scratch_buffers
+                        .extend_from_slice(input_buffer);
+                }
+            }
 
-        //     for (index, channel) in processor_state.aliased_inputs.iter().enumerate() {
-        //         let offset = index * processor_state.max_buffer_size;
-        //         let ptr = processor_state.scratch_buffers.as_ptr().add(offset) as *mut f32;
-        //         processor_state.input_ptrs[*channel] = ptr;
-        //     }
+            for (index, channel) in processor_state.aliased_inputs.iter().enumerate() {
+                let offset = index * processor_state.max_buffer_size;
+                let ptr = processor_state.scratch_buffers.as_ptr().add(offset) as *mut f32;
+                processor_state.input_ptrs[*channel] = ptr;
+            }
 
-        //     processor_state.output_ptr_set.clear();
-        //     processor_state.aliased_inputs.clear();
-        // } else {
-        //     processor_state
-        //         .input_ptrs
-        //         .resize(processor_state.input_channels, ptr::null());
-        //     processor_state
-        //         .output_ptrs
-        //         .resize(processor_state.output_channels, ptr::null_mut());
-        // }
+            processor_state.output_ptr_set.clear();
+            processor_state.aliased_inputs.clear();
+        } else {
+            processor_state
+                .input_ptrs
+                .resize(processor_state.input_channels, ptr::null());
+            processor_state
+                .output_ptrs
+                .resize(processor_state.output_channels, ptr::null_mut());
+        }
 
-        // let buffers = Buffers::new(
-        //     samples,
-        //     &bus_states.inputs,
-        //     &processor_state.input_indices,
-        //     &processor_state.input_ptrs,
-        //     &bus_states.outputs,
-        //     &processor_state.output_indices,
-        //     &processor_state.output_ptrs,
-        // );
+        let buffers = Buffers::new(
+            samples,
+            &bus_states.inputs,
+            &processor_state.input_indices,
+            &processor_state.input_ptrs,
+            &bus_states.outputs,
+            &processor_state.output_indices,
+            &processor_state.output_ptrs,
+        );
 
-        // let context = ProcessContext::new(
-        //     processor_state.sample_rate,
-        //     processor_state.max_buffer_size,
-        //     &bus_states.inputs[..],
-        //     &bus_states.outputs[..],
-        // );
+        let context = ProcessContext::new(
+            processor_state.sample_rate,
+            processor_state.max_buffer_size,
+            &bus_states.inputs[..],
+            &bus_states.outputs[..],
+        );
 
-        // if let Some(processor) = &mut processor_state.processor {
-        //     processor.process(&context, buffers, &processor_state.events[..]);
-        // }
+        if let Some(processor) = &mut processor_state.processor {
+            processor.process(&context, buffers, &processor_state.events[..]);
+        }
 
-        // processor_state.scratch_buffers.clear();
+        processor_state.scratch_buffers.clear();
 
-        // processor_state.input_ptrs.clear();
-        // processor_state.output_ptrs.clear();
+        processor_state.input_ptrs.clear();
+        processor_state.output_ptrs.clear();
 
-        // processor_state.events.clear();
+        processor_state.events.clear();
 
         kResultOk
     }
