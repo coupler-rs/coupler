@@ -9,7 +9,7 @@ on:
       master
 
 env:
-  VST3_SDK_DIR: vst3sdk
+  VST3_SDK_DIR: ${{ github.workspace }}/vst3sdk
 
 jobs:
   ci:
