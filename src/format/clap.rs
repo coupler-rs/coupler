@@ -82,7 +82,8 @@ struct Wrapper<P: Plugin> {
     has_editor: bool,
     bus_list: BusList,
     bus_config_list: BusConfigList,
-    plugin: PluginHandle<P>,
+    params: ParamList<P>,
+    plugin: P,
     processor_state: UnsafeCell<ProcessorState<P>>,
     editor_state: UnsafeCell<EditorState<P>>,
 }
@@ -190,7 +191,8 @@ impl<P: Plugin> Wrapper<P> {
             has_editor: info.get_has_editor(),
             bus_list,
             bus_config_list,
-            plugin: PluginHandle::new(),
+            params: P::params(),
+            plugin: P::create(),
             processor_state: UnsafeCell::new(ProcessorState {
                 sample_rate: 0.0,
                 max_buffer_size: 0,
@@ -254,7 +256,7 @@ impl<P: Plugin> Wrapper<P> {
             &[],
             &[],
         );
-        processor_state.processor = Some(P::Processor::create(wrapper.plugin.clone(), &context));
+        processor_state.processor = Some(P::Processor::create(&wrapper.plugin, &context));
 
         true
     }
@@ -474,7 +476,7 @@ impl<P: Plugin> Wrapper<P> {
     unsafe extern "C" fn params_count(plugin: *const clap_plugin) -> u32 {
         let wrapper = &*(plugin as *mut Wrapper<P>);
 
-        PluginHandle::params(&wrapper.plugin).params().len() as u32
+        wrapper.params.params().len() as u32
     }
 
     unsafe extern "C" fn params_get_info(
@@ -486,10 +488,7 @@ impl<P: Plugin> Wrapper<P> {
 
         let info = &mut *param_info;
 
-        if let Some(param_info) = PluginHandle::params(&wrapper.plugin)
-            .params()
-            .get(param_index as usize)
-        {
+        if let Some(param_info) = wrapper.params.params().get(param_index as usize) {
             info.id = param_info.get_id();
             info.flags = CLAP_PARAM_IS_AUTOMATABLE;
             info.cookie = ptr::null_mut();
@@ -519,7 +518,7 @@ impl<P: Plugin> Wrapper<P> {
     ) -> bool {
         let wrapper = &*(plugin as *mut Wrapper<P>);
 
-        if let Some(param_info) = PluginHandle::params(&wrapper.plugin).get(param_id) {
+        if let Some(param_info) = wrapper.params.get(param_id) {
             let value_mapped = param_info.get_accessor().get(&wrapper.plugin);
             *value = param_info.get_mapping().unmap(value_mapped);
 
@@ -538,7 +537,7 @@ impl<P: Plugin> Wrapper<P> {
     ) -> bool {
         let wrapper = &*(plugin as *mut Wrapper<P>);
 
-        if let Some(param_info) = PluginHandle::params(&wrapper.plugin).get(param_id) {
+        if let Some(param_info) = wrapper.params.get(param_id) {
             let mut string = String::new();
             let value_mapped = param_info.get_mapping().map(value);
             param_info.get_format().display(value_mapped, &mut string);
@@ -564,7 +563,7 @@ impl<P: Plugin> Wrapper<P> {
     ) -> bool {
         let wrapper = &*(plugin as *mut Wrapper<P>);
 
-        if let Some(param_info) = PluginHandle::params(&wrapper.plugin).get(param_id) {
+        if let Some(param_info) = wrapper.params.get(param_id) {
             if let Ok(display) = CStr::from_ptr(display).to_str() {
                 if let Ok(value_mapped) = param_info.get_format().parse(display) {
                     *value = param_info.get_mapping().unmap(value_mapped);
@@ -590,8 +589,7 @@ impl<P: Plugin> Wrapper<P> {
             if (*event).type_ == CLAP_EVENT_PARAM_VALUE {
                 let event = &*(event as *const clap_event_param_value);
 
-                if let Some(param_info) = PluginHandle::params(&wrapper.plugin).get(event.param_id)
-                {
+                if let Some(param_info) = wrapper.params.get(event.param_id) {
                     let value = param_info.get_mapping().map(event.value);
                     param_info.get_accessor().set(&wrapper.plugin, value);
                 }
@@ -863,7 +861,7 @@ impl<P: Plugin> Wrapper<P> {
         };
 
         let context = EditorContext::<P>::new(Rc::new(ClapEditorContext {}));
-        let editor = P::Editor::open(wrapper.plugin.clone(), context, Some(&ParentWindow(parent)));
+        let editor = P::Editor::open(&wrapper.plugin, context, Some(&ParentWindow(parent)));
 
         #[cfg(target_os = "linux")]
         {

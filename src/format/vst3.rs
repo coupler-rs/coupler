@@ -18,8 +18,8 @@ use crate::atomic::AtomicBitset;
 use crate::buffer::Buffers;
 use crate::bus::{BusConfig, BusFormat, BusList, BusState};
 use crate::editor::{Editor, EditorContext, EditorContextHandler, ParentWindow, PollParams};
-use crate::param::ParamId;
-use crate::plugin::{Plugin, PluginHandle, PluginInfo};
+use crate::param::{ParamId, ParamList};
+use crate::plugin::{Plugin, PluginInfo};
 use crate::process::{Event, EventType, ParamChange, ProcessContext, Processor};
 
 fn copy_wstring(src: &str, dst: &mut [TChar]) {
@@ -62,15 +62,14 @@ fn speaker_arrangement_to_bus_format(speaker_arrangement: SpeakerArrangement) ->
 struct Vst3EditorContext<P> {
     component_handler: RefCell<Option<ComPtr<IComponentHandler>>>,
     plug_frame: RefCell<Option<ComPtr<IPlugFrame>>>,
-    plugin: PluginHandle<P>,
+    plugin: Arc<P>,
+    params: Arc<ParamList<P>>,
     param_states: Arc<ParamStates>,
 }
 
 impl<P> EditorContextHandler<P> for Vst3EditorContext<P> {
     fn begin_edit(&self, id: ParamId) {
-        let _ = PluginHandle::params(&self.plugin)
-            .index_of(id)
-            .expect("Invalid parameter id");
+        let _ = self.params.index_of(id).expect("Invalid parameter id");
 
         let component_handler = self.component_handler.borrow().clone();
         if let Some(component_handler) = &component_handler {
@@ -81,18 +80,14 @@ impl<P> EditorContextHandler<P> for Vst3EditorContext<P> {
     }
 
     fn perform_edit(&self, id: ParamId, value: f64) {
-        let param_index = PluginHandle::params(&self.plugin)
-            .index_of(id)
-            .expect("Invalid parameter id");
-        let param_info = &PluginHandle::params(&self.plugin).params()[param_index];
+        let param_index = self.params.index_of(id).expect("Invalid parameter id");
+        let param_info = &self.params.params()[param_index];
 
         param_info.get_accessor().set(&self.plugin, value);
 
         let value_normalized = param_info.get_mapping().unmap(value);
 
-        let _ = PluginHandle::params(&self.plugin)
-            .index_of(id)
-            .expect("Invalid parameter id");
+        let _ = self.params.index_of(id).expect("Invalid parameter id");
 
         let component_handler = self.component_handler.borrow().clone();
         if let Some(component_handler) = &component_handler {
@@ -107,9 +102,7 @@ impl<P> EditorContextHandler<P> for Vst3EditorContext<P> {
     }
 
     fn end_edit(&self, id: ParamId) {
-        let _ = PluginHandle::params(&self.plugin)
-            .index_of(id)
-            .expect("Invalid parameter id");
+        let _ = self.params.index_of(id).expect("Invalid parameter id");
 
         let component_handler = self.component_handler.borrow().clone();
         if let Some(component_handler) = &component_handler {
@@ -125,7 +118,7 @@ impl<P> EditorContextHandler<P> for Vst3EditorContext<P> {
                 .param_states
                 .dirty_editor
                 .drain_indices(Ordering::Acquire),
-            param_list: PluginHandle::params(&self.plugin),
+            param_list: &self.params,
         }
     }
 }
@@ -173,7 +166,8 @@ struct Wrapper<P: Plugin> {
     // IComponent or IAudioProcessor per the spec.
     bus_states: UnsafeCell<BusStates>,
     param_states: Arc<ParamStates>,
-    plugin: PluginHandle<P>,
+    params: Arc<ParamList<P>>,
+    plugin: Arc<P>,
     processor_state: UnsafeCell<ProcessorState<P>>,
     editor_state: UnsafeCell<Rc<EditorState<P>>>,
 }
@@ -205,9 +199,9 @@ impl<P: Plugin> Wrapper<P> {
 
         let bus_states = UnsafeCell::new(BusStates { inputs, outputs });
 
-        let plugin = PluginHandle::<P>::new();
+        let params = Arc::new(P::params());
 
-        let param_count = PluginHandle::params(&plugin).params().len();
+        let param_count = params.params().len();
 
         let dirty_processor = AtomicBitset::with_len(param_count);
         let dirty_editor = AtomicBitset::with_len(param_count);
@@ -215,6 +209,8 @@ impl<P: Plugin> Wrapper<P> {
             dirty_processor,
             dirty_editor,
         });
+
+        let plugin = Arc::new(P::create());
 
         let input_indices = Vec::with_capacity(bus_list.get_inputs().len());
         let input_ptrs = Vec::new();
@@ -246,6 +242,7 @@ impl<P: Plugin> Wrapper<P> {
             component_handler: RefCell::new(None),
             plug_frame: RefCell::new(None),
             plugin: plugin.clone(),
+            params: params.clone(),
             param_states: param_states.clone(),
         });
 
@@ -260,6 +257,7 @@ impl<P: Plugin> Wrapper<P> {
             bus_config_set,
             bus_states,
             param_states,
+            params,
             plugin,
             processor_state,
             editor_state,
@@ -407,8 +405,7 @@ impl<P: Plugin> IComponentTrait for Wrapper<P> {
                     &bus_states.inputs[..],
                     &bus_states.outputs[..],
                 );
-                processor_state.processor =
-                    Some(P::Processor::create(self.plugin.clone(), &context));
+                processor_state.processor = Some(P::Processor::create(&self.plugin, &context));
 
                 // Prepare buffer indices and ensure that buffer pointer Vecs are the correct size:
 
@@ -721,7 +718,7 @@ impl<P: Plugin> IAudioProcessorTrait for Wrapper<P> {
             .dirty_processor
             .drain_indices(Ordering::Acquire)
         {
-            let param_info = &PluginHandle::params(&self.plugin).params()[index];
+            let param_info = &self.params.params()[index];
             let value = param_info.get_accessor().get(&self.plugin);
 
             processor_state.events.push(Event {
@@ -744,7 +741,7 @@ impl<P: Plugin> IAudioProcessorTrait for Wrapper<P> {
                 let id = param_data.getParameterId();
                 let point_count = param_data.getPointCount();
 
-                if let Some(param_index) = PluginHandle::params(&self.plugin).index_of(id) {
+                if let Some(param_index) = self.params.index_of(id) {
                     for index in 0..point_count {
                         let mut offset = 0;
                         let mut value_normalized = 0.0;
@@ -754,7 +751,7 @@ impl<P: Plugin> IAudioProcessorTrait for Wrapper<P> {
                             continue;
                         }
 
-                        let param_info = &PluginHandle::params(&self.plugin).params()[param_index];
+                        let param_info = &self.params.params()[param_index];
                         let value = param_info.get_mapping().map(value_normalized);
                         param_info.get_accessor().set(&self.plugin, value);
                         self.param_states
@@ -926,11 +923,11 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
     }
 
     unsafe fn getParameterCount(&self) -> int32 {
-        PluginHandle::params(&self.plugin).params().len() as int32
+        self.params.params().len() as int32
     }
 
     unsafe fn getParameterInfo(&self, paramIndex: int32, info: *mut ParameterInfo) -> tresult {
-        let params = PluginHandle::params(&self.plugin);
+        let params = &self.params;
         if let Some(param_info) = params.params().get(paramIndex as usize) {
             let info = &mut *info;
 
@@ -959,7 +956,7 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
         valueNormalized: ParamValue,
         string: *mut String128,
     ) -> tresult {
-        if let Some(param_info) = PluginHandle::params(&self.plugin).get(id) {
+        if let Some(param_info) = self.params.get(id) {
             let mut display = String::new();
             let value = param_info.get_mapping().map(valueNormalized);
             param_info.get_format().display(value, &mut display);
@@ -977,7 +974,7 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
         string: *mut TChar,
         valueNormalized: *mut ParamValue,
     ) -> tresult {
-        if let Some(param_info) = PluginHandle::params(&self.plugin).get(id) {
+        if let Some(param_info) = self.params.get(id) {
             let len = len_wstring(string);
             if let Ok(string) = String::from_utf16(slice::from_raw_parts(string as *const u16, len))
             {
@@ -996,7 +993,7 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
         id: ParamID,
         valueNormalized: ParamValue,
     ) -> ParamValue {
-        if let Some(param_info) = PluginHandle::params(&self.plugin).get(id) {
+        if let Some(param_info) = self.params.get(id) {
             return param_info.get_mapping().map(valueNormalized);
         }
 
@@ -1004,7 +1001,7 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
     }
 
     unsafe fn plainParamToNormalized(&self, id: ParamID, plainValue: ParamValue) -> ParamValue {
-        if let Some(param_info) = PluginHandle::params(&self.plugin).get(id) {
+        if let Some(param_info) = self.params.get(id) {
             return param_info.get_mapping().unmap(plainValue);
         }
 
@@ -1012,7 +1009,7 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
     }
 
     unsafe fn getParamNormalized(&self, id: ParamID) -> ParamValue {
-        if let Some(param_info) = PluginHandle::params(&self.plugin).get(id) {
+        if let Some(param_info) = self.params.get(id) {
             let value = param_info.get_accessor().get(&self.plugin);
             return param_info.get_mapping().unmap(value);
         }
@@ -1021,8 +1018,8 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
     }
 
     unsafe fn setParamNormalized(&self, id: ParamID, value: ParamValue) -> tresult {
-        if let Some(param_info) = PluginHandle::params(&self.plugin).get(id) {
-            let param_index = PluginHandle::params(&self.plugin).index_of(id).unwrap();
+        if let Some(param_info) = self.params.get(id) {
+            let param_index = self.params.index_of(id).unwrap();
 
             let value = param_info.get_mapping().map(value);
             param_info.get_accessor().set(&self.plugin, value);
@@ -1061,7 +1058,7 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
         let editor_state = &*self.editor_state.get();
 
         if CStr::from_ptr(name) == CStr::from_ptr(ViewType::kEditor) {
-            let view = ComWrapper::new(View::<P>::new(&editor_state));
+            let view = ComWrapper::new(View::<P>::new(&self.plugin, &editor_state));
             return view.to_com_ptr::<IPlugView>().unwrap().into_raw();
         }
 
@@ -1070,14 +1067,16 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
 }
 
 struct View<P: Plugin> {
+    plugin: Arc<P>,
     state: Rc<EditorState<P>>,
     #[cfg(target_os = "linux")]
     handler: ComWrapper<linux::EventHandler<P>>,
 }
 
 impl<P: Plugin> View<P> {
-    pub fn new(state: &Rc<EditorState<P>>) -> View<P> {
+    pub fn new(plugin: &Arc<P>, state: &Rc<EditorState<P>>) -> View<P> {
         View {
+            plugin: plugin.clone(),
             state: state.clone(),
             #[cfg(target_os = "linux")]
             handler: ComWrapper::new(linux::EventHandler::new(state)),
@@ -1143,11 +1142,7 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
 
         let context = EditorContext::new(self.state.context.clone());
 
-        let editor = P::Editor::open(
-            self.state.context.plugin.clone(),
-            context,
-            Some(&ParentWindow(parent)),
-        );
+        let editor = P::Editor::open(&self.plugin, context, Some(&ParentWindow(parent)));
 
         #[cfg(target_os = "linux")]
         {

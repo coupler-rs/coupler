@@ -64,11 +64,7 @@ unsafe impl HasRawWindowHandle for ParentWindow {
 }
 
 pub trait Editor<P>: Sized + 'static {
-    fn open(
-        plugin: PluginHandle<P>,
-        context: EditorContext<P>,
-        parent: Option<&ParentWindow>,
-    ) -> Self;
+    fn open(plugin: &P, context: EditorContext<P>, parent: Option<&ParentWindow>) -> Self;
     fn close(&mut self);
     fn size() -> (f64, f64);
     fn raw_window_handle(&self) -> Option<RawWindowHandle>;
@@ -82,11 +78,7 @@ pub trait Editor<P>: Sized + 'static {
 pub struct NoEditor;
 
 impl<P: Plugin> Editor<P> for NoEditor {
-    fn open(
-        _plugin: PluginHandle<P>,
-        _context: EditorContext<P>,
-        _parent: Option<&ParentWindow>,
-    ) -> Self {
+    fn open(_plugin: &P, _context: EditorContext<P>, _parent: Option<&ParentWindow>) -> Self {
         NoEditor
     }
 

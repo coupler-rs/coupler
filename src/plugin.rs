@@ -1,8 +1,5 @@
 use crate::{bus::*, editor::*, param::*, process::*};
 
-use std::ops::Deref;
-use std::sync::Arc;
-
 #[derive(Clone)]
 pub struct PluginInfo {
     name: String,
@@ -98,46 +95,4 @@ pub trait Plugin: Send + Sync + Sized + 'static {
     fn create() -> Self;
     fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()>;
     fn deserialize(&self, read: &mut impl std::io::Read) -> Result<(), ()>;
-}
-
-struct PluginState<P> {
-    params: ParamList<P>,
-    plugin: P,
-}
-
-pub struct PluginHandle<P> {
-    state: Arc<PluginState<P>>,
-}
-
-impl<P> Clone for PluginHandle<P> {
-    fn clone(&self) -> PluginHandle<P> {
-        PluginHandle {
-            state: self.state.clone(),
-        }
-    }
-}
-
-impl<P: Plugin> PluginHandle<P> {
-    pub fn new() -> PluginHandle<P> {
-        let params = P::params();
-        let plugin = P::create();
-
-        PluginHandle {
-            state: Arc::new(PluginState { params, plugin }),
-        }
-    }
-}
-
-impl<P> PluginHandle<P> {
-    pub fn params(handle: &PluginHandle<P>) -> &ParamList<P> {
-        &handle.state.params
-    }
-}
-
-impl<P> Deref for PluginHandle<P> {
-    type Target = P;
-
-    fn deref(&self) -> &Self::Target {
-        &self.state.plugin
-    }
 }

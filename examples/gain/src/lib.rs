@@ -1,4 +1,5 @@
 use std::cell::{Cell, RefCell};
+use std::sync::Arc;
 
 use coupler::atomic::AtomicF64;
 use coupler::format::{clap::*, vst3::*};
@@ -16,16 +17,28 @@ struct GainAccessor;
 
 impl Access<Gain> for GainAccessor {
     fn get(&self, target: &Gain) -> f64 {
-        target.gain.load()
+        target.params.gain.load()
     }
 
     fn set(&self, target: &Gain, value: f64) {
-        target.gain.store(value);
+        target.params.gain.store(value);
+    }
+}
+
+pub struct GainParams {
+    gain: AtomicF64,
+}
+
+impl Default for GainParams {
+    fn default() -> GainParams {
+        GainParams {
+            gain: AtomicF64::new(1.0),
+        }
     }
 }
 
 pub struct Gain {
-    gain: AtomicF64,
+    params: Arc<GainParams>,
 }
 
 impl Plugin for Gain {
@@ -61,13 +74,13 @@ impl Plugin for Gain {
 
     fn create() -> Gain {
         Gain {
-            gain: AtomicF64::new(0.0),
+            params: Arc::new(GainParams::default()),
         }
     }
 
     fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()> {
         write
-            .write(&self.gain.load().to_le_bytes())
+            .write(&self.params.gain.load().to_le_bytes())
             .map(|_| ())
             .map_err(|_| ())
     }
@@ -75,7 +88,7 @@ impl Plugin for Gain {
     fn deserialize(&self, read: &mut impl std::io::Read) -> Result<(), ()> {
         let mut buf = [0; std::mem::size_of::<u64>()];
         if read.read(&mut buf).is_ok() {
-            self.gain.store(f64::from_le_bytes(buf));
+            self.params.gain.store(f64::from_le_bytes(buf));
             Ok(())
         } else {
             Err(())
@@ -96,22 +109,19 @@ impl Vst3Plugin for Gain {
 }
 
 pub struct GainProcessor {
-    plugin: PluginHandle<Gain>,
     gain: f32,
     gain_target: f32,
 }
 
 impl Processor<Gain> for GainProcessor {
-    fn create(plugin: PluginHandle<Gain>, _context: &ProcessContext) -> Self {
+    fn create(plugin: &Gain, _context: &ProcessContext) -> Self {
         GainProcessor {
-            plugin: plugin.clone(),
-            gain: plugin.gain.load() as f32,
-            gain_target: plugin.gain.load() as f32,
+            gain: plugin.params.gain.load() as f32,
+            gain_target: plugin.params.gain.load() as f32,
         }
     }
 
     fn reset(&mut self, _context: &ProcessContext) {
-        self.gain = self.plugin.gain.load() as f32;
         self.gain_target = self.gain;
     }
 
@@ -154,11 +164,7 @@ pub struct GainEditor {
 }
 
 impl Editor<Gain> for GainEditor {
-    fn open(
-        plugin: PluginHandle<Gain>,
-        context: EditorContext<Gain>,
-        parent: Option<&ParentWindow>,
-    ) -> Self {
+    fn open(plugin: &Gain, context: EditorContext<Gain>, parent: Option<&ParentWindow>) -> Self {
         let parent = if let Some(parent) = parent {
             Parent::Parent(parent)
         } else {
@@ -211,7 +217,7 @@ impl Editor<Gain> for GainEditor {
 }
 
 struct GainWindowHandler {
-    plugin: PluginHandle<Gain>,
+    params: Arc<GainParams>,
     context: EditorContext<Gain>,
     canvas: RefCell<Canvas>,
     mouse: Cell<Point>,
@@ -219,9 +225,9 @@ struct GainWindowHandler {
 }
 
 impl GainWindowHandler {
-    fn new(plugin: PluginHandle<Gain>, context: EditorContext<Gain>) -> GainWindowHandler {
+    fn new(plugin: &Gain, context: EditorContext<Gain>) -> GainWindowHandler {
         GainWindowHandler {
-            plugin,
+            params: plugin.params.clone(),
             context,
             canvas: RefCell::new(Canvas::with_size(256, 256)),
             mouse: Cell::new(Point { x: -1.0, y: -1.0 }),
@@ -249,7 +255,7 @@ impl WindowHandler for GainWindowHandler {
 
         canvas.clear(Color::rgba(21, 26, 31, 255));
 
-        let value = self.plugin.gain.load() as f32;
+        let value = self.params.gain.load() as f32;
 
         let center = Vec2::new(128.0, 128.0);
         let radius = 32.0;
@@ -297,7 +303,7 @@ impl WindowHandler for GainWindowHandler {
             {
                 window.set_cursor(Cursor::SizeNs);
                 self.context.begin_edit(GAIN);
-                let value = self.plugin.gain.load() as f32;
+                let value = self.params.gain.load() as f32;
                 self.context.perform_edit(GAIN, value as f64);
                 self.down.set(Some((position, value)));
                 return true;

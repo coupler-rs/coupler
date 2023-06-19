@@ -1,4 +1,4 @@
-use crate::{buffer::*, bus::*, param::*, plugin::*};
+use crate::{buffer::*, bus::*, param::*};
 
 pub struct ProcessContext<'a> {
     sample_rate: f64,
@@ -57,7 +57,7 @@ pub struct ParamChange {
 }
 
 pub trait Processor<P>: Send + Sized + 'static {
-    fn create(plugin: PluginHandle<P>, context: &ProcessContext) -> Self;
+    fn create(plugin: &P, context: &ProcessContext) -> Self;
     fn reset(&mut self, context: &ProcessContext);
     fn process(&mut self, context: &ProcessContext, buffers: Buffers, events: &[Event]);
 }
