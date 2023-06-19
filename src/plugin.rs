@@ -94,8 +94,8 @@ pub trait Plugin: Send + Sync + Sized + 'static {
     fn info() -> PluginInfo;
     fn buses() -> BusList;
     fn bus_configs() -> BusConfigList;
+    fn params() -> ParamList<Self>;
     fn create() -> Self;
-    fn params(&self) -> ParamList<Self>;
     fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()>;
     fn deserialize(&self, read: &mut impl std::io::Read) -> Result<(), ()>;
 }
@@ -119,8 +119,8 @@ impl<P> Clone for PluginHandle<P> {
 
 impl<P: Plugin> PluginHandle<P> {
     pub fn new() -> PluginHandle<P> {
+        let params = P::params();
         let plugin = P::create();
-        let params = plugin.params();
 
         PluginHandle {
             state: Arc::new(PluginState { params, plugin }),

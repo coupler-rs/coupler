@@ -55,14 +55,14 @@ impl Plugin for Gain {
         )
     }
 
+    fn params() -> ParamList<Self> {
+        ParamList::new().param(ParamInfo::new(GAIN).name("Gain").accessor(GainAccessor))
+    }
+
     fn create() -> Gain {
         Gain {
             gain: AtomicF64::new(0.0),
         }
-    }
-
-    fn params(&self) -> ParamList<Self> {
-        ParamList::new().param(ParamInfo::new(GAIN).name("Gain").accessor(GainAccessor))
     }
 
     fn serialize(&self, write: &mut impl std::io::Write) -> Result<(), ()> {
