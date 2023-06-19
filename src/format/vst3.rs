@@ -59,19 +59,17 @@ fn speaker_arrangement_to_bus_format(speaker_arrangement: SpeakerArrangement) ->
     }
 }
 
-struct Vst3EditorContext<P> {
-    component_handler: RefCell<Option<ComPtr<IComponentHandler>>>,
-    plug_frame: RefCell<Option<ComPtr<IPlugFrame>>>,
-    plugin: Arc<P>,
-    params: Arc<ParamList<P>>,
-    param_states: Arc<ParamStates>,
+struct Vst3EditorContext<P: Plugin> {
+    state: Arc<PluginState<P>>,
 }
 
-impl<P> EditorContextHandler<P> for Vst3EditorContext<P> {
+impl<P: Plugin> EditorContextHandler<P> for Vst3EditorContext<P> {
     fn begin_edit(&self, id: ParamId) {
-        let _ = self.params.index_of(id).expect("Invalid parameter id");
+        let editor_state = unsafe { &*self.state.editor_state.get() };
 
-        let component_handler = self.component_handler.borrow().clone();
+        let _ = self.state.params.index_of(id).expect("Invalid parameter id");
+
+        let component_handler = editor_state.component_handler.borrow().clone();
         if let Some(component_handler) = &component_handler {
             unsafe {
                 component_handler.beginEdit(id);
@@ -80,31 +78,36 @@ impl<P> EditorContextHandler<P> for Vst3EditorContext<P> {
     }
 
     fn perform_edit(&self, id: ParamId, value: f64) {
-        let param_index = self.params.index_of(id).expect("Invalid parameter id");
-        let param_info = &self.params.params()[param_index];
+        let editor_state = unsafe { &*self.state.editor_state.get() };
 
-        param_info.get_accessor().set(&self.plugin, value);
+        let param_index = self.state.params.index_of(id).expect("Invalid parameter id");
+        let param_info = &self.state.params.params()[param_index];
+
+        param_info.get_accessor().set(&self.state.plugin, value);
 
         let value_normalized = param_info.get_mapping().unmap(value);
 
-        let _ = self.params.index_of(id).expect("Invalid parameter id");
+        let _ = self.state.params.index_of(id).expect("Invalid parameter id");
 
-        let component_handler = self.component_handler.borrow().clone();
+        let component_handler = editor_state.component_handler.borrow().clone();
         if let Some(component_handler) = &component_handler {
             unsafe {
                 component_handler.performEdit(id, value_normalized);
             }
         }
 
-        self.param_states
+        self.state
+            .param_states
             .dirty_processor
             .set(param_index, Ordering::Release);
     }
 
     fn end_edit(&self, id: ParamId) {
-        let _ = self.params.index_of(id).expect("Invalid parameter id");
+        let editor_state = unsafe { &*self.state.editor_state.get() };
 
-        let component_handler = self.component_handler.borrow().clone();
+        let _ = self.state.params.index_of(id).expect("Invalid parameter id");
+
+        let component_handler = editor_state.component_handler.borrow().clone();
         if let Some(component_handler) = &component_handler {
             unsafe {
                 component_handler.endEdit(id);
@@ -113,12 +116,10 @@ impl<P> EditorContextHandler<P> for Vst3EditorContext<P> {
     }
 
     fn poll_params(&self) -> PollParams<P> {
+        let dirty_editor = &self.state.param_states.dirty_editor;
         PollParams {
-            iter: self
-                .param_states
-                .dirty_editor
-                .drain_indices(Ordering::Acquire),
-            param_list: &self.params,
+            iter: dirty_editor.drain_indices(Ordering::Acquire),
+            param_list: &self.state.params,
         }
     }
 }
@@ -153,11 +154,12 @@ struct ProcessorState<P: Plugin> {
 }
 
 struct EditorState<P: Plugin> {
-    context: Rc<Vst3EditorContext<P>>,
+    component_handler: RefCell<Option<ComPtr<IComponentHandler>>>,
+    plug_frame: RefCell<Option<ComPtr<IPlugFrame>>>,
     editor: RefCell<Option<P::Editor>>,
 }
 
-struct Wrapper<P: Plugin> {
+struct PluginState<P: Plugin> {
     has_editor: bool,
     bus_list: BusList,
     bus_config_set: HashSet<BusConfig>,
@@ -165,11 +167,15 @@ struct Wrapper<P: Plugin> {
     // activate_bus, which aren't called concurrently with any other methods on
     // IComponent or IAudioProcessor per the spec.
     bus_states: UnsafeCell<BusStates>,
-    param_states: Arc<ParamStates>,
-    params: Arc<ParamList<P>>,
-    plugin: Arc<P>,
+    param_states: ParamStates,
+    params: ParamList<P>,
+    plugin: P,
     processor_state: UnsafeCell<ProcessorState<P>>,
-    editor_state: UnsafeCell<Rc<EditorState<P>>>,
+    editor_state: UnsafeCell<EditorState<P>>,
+}
+
+struct Wrapper<P: Plugin> {
+    state: Arc<PluginState<P>>,
 }
 
 impl<P: Plugin> Wrapper<P> {
@@ -199,18 +205,14 @@ impl<P: Plugin> Wrapper<P> {
 
         let bus_states = UnsafeCell::new(BusStates { inputs, outputs });
 
-        let params = Arc::new(P::params());
+        let params = P::params();
 
         let param_count = params.params().len();
 
-        let dirty_processor = AtomicBitset::with_len(param_count);
-        let dirty_editor = AtomicBitset::with_len(param_count);
-        let param_states = Arc::new(ParamStates {
-            dirty_processor,
-            dirty_editor,
-        });
-
-        let plugin = Arc::new(P::create());
+        let param_states = ParamStates {
+            dirty_processor: AtomicBitset::with_len(param_count),
+            dirty_editor: AtomicBitset::with_len(param_count),
+        };
 
         let input_indices = Vec::with_capacity(bus_list.get_inputs().len());
         let input_ptrs = Vec::new();
@@ -238,30 +240,25 @@ impl<P: Plugin> Wrapper<P> {
             processor: None,
         });
 
-        let editor_context = Rc::new(Vst3EditorContext {
+        let editor_state = UnsafeCell::new(EditorState {
             component_handler: RefCell::new(None),
             plug_frame: RefCell::new(None),
-            plugin: plugin.clone(),
-            params: params.clone(),
-            param_states: param_states.clone(),
+            editor: RefCell::new(None),
         });
 
-        let editor_state = UnsafeCell::new(Rc::new(EditorState {
-            context: editor_context,
-            editor: RefCell::new(None),
-        }));
-
-        Wrapper {
+        let state = Arc::new(PluginState {
             has_editor: info.get_has_editor(),
             bus_list,
             bus_config_set,
             bus_states,
             param_states,
             params,
-            plugin,
+            plugin: P::create(),
             processor_state,
             editor_state,
-        }
+        });
+
+        Wrapper { state }
     }
 }
 
@@ -297,8 +294,8 @@ impl<P: Plugin> IComponentTrait for Wrapper<P> {
     unsafe fn getBusCount(&self, type_: MediaType, dir: BusDirection) -> int32 {
         match type_ as MediaTypes {
             MediaTypes_::kAudio => match dir as BusDirections {
-                BusDirections_::kInput => self.bus_list.get_inputs().len() as int32,
-                BusDirections_::kOutput => self.bus_list.get_outputs().len() as int32,
+                BusDirections_::kInput => self.state.bus_list.get_inputs().len() as int32,
+                BusDirections_::kOutput => self.state.bus_list.get_outputs().len() as int32,
                 _ => 0,
             },
             MediaTypes_::kEvent => 0,
@@ -313,13 +310,15 @@ impl<P: Plugin> IComponentTrait for Wrapper<P> {
         index: int32,
         bus: *mut BusInfo,
     ) -> tresult {
-        let bus_states = &*self.bus_states.get();
+        let bus_states = &*self.state.bus_states.get();
 
         match type_ as MediaTypes {
             MediaTypes_::kAudio => {
                 let bus_info = match dir as BusDirections {
-                    BusDirections_::kInput => self.bus_list.get_inputs().get(index as usize),
-                    BusDirections_::kOutput => self.bus_list.get_outputs().get(index as usize),
+                    BusDirections_::kInput => self.state.bus_list.get_inputs().get(index as usize),
+                    BusDirections_::kOutput => {
+                        self.state.bus_list.get_outputs().get(index as usize)
+                    }
                     _ => None,
                 };
 
@@ -368,7 +367,7 @@ impl<P: Plugin> IComponentTrait for Wrapper<P> {
         index: int32,
         state: TBool,
     ) -> tresult {
-        let bus_states = &mut *self.bus_states.get();
+        let bus_states = &mut *self.state.bus_states.get();
 
         match type_ as MediaTypes {
             MediaTypes_::kAudio => {
@@ -391,8 +390,8 @@ impl<P: Plugin> IComponentTrait for Wrapper<P> {
     }
 
     unsafe fn setActive(&self, state: TBool) -> tresult {
-        let bus_states = &mut *self.bus_states.get();
-        let processor_state = &mut *self.processor_state.get();
+        let bus_states = &mut *self.state.bus_states.get();
+        let processor_state = &mut *self.state.processor_state.get();
 
         match state {
             0 => {
@@ -405,7 +404,8 @@ impl<P: Plugin> IComponentTrait for Wrapper<P> {
                     &bus_states.inputs[..],
                     &bus_states.outputs[..],
                 );
-                processor_state.processor = Some(P::Processor::create(&self.plugin, &context));
+                processor_state.processor =
+                    Some(P::Processor::create(&self.state.plugin, &context));
 
                 // Prepare buffer indices and ensure that buffer pointer Vecs are the correct size:
 
@@ -509,9 +509,15 @@ impl<P: Plugin> IComponentTrait for Wrapper<P> {
         }
 
         if let Some(state) = ComRef::from_raw(state) {
-            if let Ok(_) = self.plugin.deserialize(&mut StreamReader(state)) {
-                self.param_states.dirty_processor.set_all(Ordering::Release);
-                self.param_states.dirty_editor.set_all(Ordering::Release);
+            if let Ok(_) = self.state.plugin.deserialize(&mut StreamReader(state)) {
+                self.state
+                    .param_states
+                    .dirty_processor
+                    .set_all(Ordering::Release);
+                self.state
+                    .param_states
+                    .dirty_editor
+                    .set_all(Ordering::Release);
 
                 return kResultOk;
             }
@@ -547,9 +553,15 @@ impl<P: Plugin> IComponentTrait for Wrapper<P> {
         }
 
         if let Some(state) = ComRef::from_raw(state) {
-            if let Ok(_) = self.plugin.serialize(&mut StreamWriter(state)) {
-                self.param_states.dirty_processor.set_all(Ordering::Release);
-                self.param_states.dirty_editor.set_all(Ordering::Release);
+            if let Ok(_) = self.state.plugin.serialize(&mut StreamWriter(state)) {
+                self.state
+                    .param_states
+                    .dirty_processor
+                    .set_all(Ordering::Release);
+                self.state
+                    .param_states
+                    .dirty_editor
+                    .set_all(Ordering::Release);
 
                 return kResultOk;
             }
@@ -567,10 +579,10 @@ impl<P: Plugin> IAudioProcessorTrait for Wrapper<P> {
         outputs: *mut SpeakerArrangement,
         numOuts: int32,
     ) -> tresult {
-        let bus_states = &mut *self.bus_states.get();
+        let bus_states = &mut *self.state.bus_states.get();
 
-        if numIns as usize != self.bus_list.get_inputs().len()
-            || numOuts as usize != self.bus_list.get_outputs().len()
+        if numIns as usize != self.state.bus_list.get_inputs().len()
+            || numOuts as usize != self.state.bus_list.get_outputs().len()
         {
             return kResultFalse;
         }
@@ -607,7 +619,7 @@ impl<P: Plugin> IAudioProcessorTrait for Wrapper<P> {
             }
         }
 
-        if self.bus_config_set.contains(&candidate) {
+        if self.state.bus_config_set.contains(&candidate) {
             for (input, bus_state) in candidate
                 .get_inputs()
                 .iter()
@@ -636,7 +648,7 @@ impl<P: Plugin> IAudioProcessorTrait for Wrapper<P> {
         index: int32,
         arr: *mut SpeakerArrangement,
     ) -> tresult {
-        let bus_states = &*self.bus_states.get();
+        let bus_states = &*self.state.bus_states.get();
 
         let bus_state = match dir as BusDirections {
             BusDirections_::kInput => bus_states.inputs.get(index as usize),
@@ -665,7 +677,7 @@ impl<P: Plugin> IAudioProcessorTrait for Wrapper<P> {
     }
 
     unsafe fn setupProcessing(&self, setup: *mut ProcessSetup) -> tresult {
-        let processor_state = &mut *self.processor_state.get();
+        let processor_state = &mut *self.state.processor_state.get();
 
         let setup = &*setup;
 
@@ -676,8 +688,8 @@ impl<P: Plugin> IAudioProcessorTrait for Wrapper<P> {
     }
 
     unsafe fn setProcessing(&self, state: TBool) -> tresult {
-        let bus_states = &*self.bus_states.get();
-        let processor_state = &mut *self.processor_state.get();
+        let bus_states = &*self.state.bus_states.get();
+        let processor_state = &mut *self.state.processor_state.get();
 
         if processor_state.processor.is_none() {
             return kNotInitialized;
@@ -704,8 +716,8 @@ impl<P: Plugin> IAudioProcessorTrait for Wrapper<P> {
     }
 
     unsafe fn process(&self, data: *mut ProcessData) -> tresult {
-        let bus_states = &*self.bus_states.get();
-        let processor_state = &mut *self.processor_state.get();
+        let bus_states = &*self.state.bus_states.get();
+        let processor_state = &mut *self.state.processor_state.get();
 
         if processor_state.processor.is_none() {
             return kNotInitialized;
@@ -713,13 +725,10 @@ impl<P: Plugin> IAudioProcessorTrait for Wrapper<P> {
 
         processor_state.events.clear();
 
-        for index in self
-            .param_states
-            .dirty_processor
-            .drain_indices(Ordering::Acquire)
-        {
-            let param_info = &self.params.params()[index];
-            let value = param_info.get_accessor().get(&self.plugin);
+        let dirty_processor = &self.state.param_states.dirty_processor;
+        for index in dirty_processor.drain_indices(Ordering::Acquire) {
+            let param_info = &self.state.params.params()[index];
+            let value = param_info.get_accessor().get(&self.state.plugin);
 
             processor_state.events.push(Event {
                 offset: 0,
@@ -741,7 +750,7 @@ impl<P: Plugin> IAudioProcessorTrait for Wrapper<P> {
                 let id = param_data.getParameterId();
                 let point_count = param_data.getPointCount();
 
-                if let Some(param_index) = self.params.index_of(id) {
+                if let Some(param_index) = self.state.params.index_of(id) {
                     for index in 0..point_count {
                         let mut offset = 0;
                         let mut value_normalized = 0.0;
@@ -751,10 +760,11 @@ impl<P: Plugin> IAudioProcessorTrait for Wrapper<P> {
                             continue;
                         }
 
-                        let param_info = &self.params.params()[param_index];
+                        let param_info = &self.state.params.params()[param_index];
                         let value = param_info.get_mapping().map(value_normalized);
-                        param_info.get_accessor().set(&self.plugin, value);
-                        self.param_states
+                        param_info.get_accessor().set(&self.state.plugin, value);
+                        self.state
+                            .param_states
                             .dirty_editor
                             .set(param_index, Ordering::Release);
 
@@ -777,8 +787,8 @@ impl<P: Plugin> IAudioProcessorTrait for Wrapper<P> {
         let samples = process_data.numSamples as usize;
 
         if samples > 0 {
-            if self.bus_list.get_inputs().len() > 0 {
-                if process_data.numInputs as usize != self.bus_list.get_inputs().len() {
+            if self.state.bus_list.get_inputs().len() > 0 {
+                if process_data.numInputs as usize != self.state.bus_list.get_inputs().len() {
                     return kInvalidArgument;
                 }
 
@@ -802,8 +812,8 @@ impl<P: Plugin> IAudioProcessorTrait for Wrapper<P> {
                 }
             }
 
-            if self.bus_list.get_outputs().len() > 0 {
-                if process_data.numOutputs as usize != self.bus_list.get_outputs().len() {
+            if self.state.bus_list.get_outputs().len() > 0 {
+                if process_data.numOutputs as usize != self.state.bus_list.get_outputs().len() {
                     return kInvalidArgument;
                 }
 
@@ -923,11 +933,11 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
     }
 
     unsafe fn getParameterCount(&self) -> int32 {
-        self.params.params().len() as int32
+        self.state.params.params().len() as int32
     }
 
     unsafe fn getParameterInfo(&self, paramIndex: int32, info: *mut ParameterInfo) -> tresult {
-        let params = &self.params;
+        let params = &self.state.params;
         if let Some(param_info) = params.params().get(paramIndex as usize) {
             let info = &mut *info;
 
@@ -956,7 +966,7 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
         valueNormalized: ParamValue,
         string: *mut String128,
     ) -> tresult {
-        if let Some(param_info) = self.params.get(id) {
+        if let Some(param_info) = self.state.params.get(id) {
             let mut display = String::new();
             let value = param_info.get_mapping().map(valueNormalized);
             param_info.get_format().display(value, &mut display);
@@ -974,7 +984,7 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
         string: *mut TChar,
         valueNormalized: *mut ParamValue,
     ) -> tresult {
-        if let Some(param_info) = self.params.get(id) {
+        if let Some(param_info) = self.state.params.get(id) {
             let len = len_wstring(string);
             if let Ok(string) = String::from_utf16(slice::from_raw_parts(string as *const u16, len))
             {
@@ -993,7 +1003,7 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
         id: ParamID,
         valueNormalized: ParamValue,
     ) -> ParamValue {
-        if let Some(param_info) = self.params.get(id) {
+        if let Some(param_info) = self.state.params.get(id) {
             return param_info.get_mapping().map(valueNormalized);
         }
 
@@ -1001,7 +1011,7 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
     }
 
     unsafe fn plainParamToNormalized(&self, id: ParamID, plainValue: ParamValue) -> ParamValue {
-        if let Some(param_info) = self.params.get(id) {
+        if let Some(param_info) = self.state.params.get(id) {
             return param_info.get_mapping().unmap(plainValue);
         }
 
@@ -1009,8 +1019,8 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
     }
 
     unsafe fn getParamNormalized(&self, id: ParamID) -> ParamValue {
-        if let Some(param_info) = self.params.get(id) {
-            let value = param_info.get_accessor().get(&self.plugin);
+        if let Some(param_info) = self.state.params.get(id) {
+            let value = param_info.get_accessor().get(&self.state.plugin);
             return param_info.get_mapping().unmap(value);
         }
 
@@ -1018,18 +1028,16 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
     }
 
     unsafe fn setParamNormalized(&self, id: ParamID, value: ParamValue) -> tresult {
-        if let Some(param_info) = self.params.get(id) {
-            let param_index = self.params.index_of(id).unwrap();
+        if let Some(param_info) = self.state.params.get(id) {
+            let param_index = self.state.params.index_of(id).unwrap();
 
             let value = param_info.get_mapping().map(value);
-            param_info.get_accessor().set(&self.plugin, value);
+            param_info.get_accessor().set(&self.state.plugin, value);
 
-            self.param_states
-                .dirty_processor
-                .set(param_index, Ordering::Release);
-            self.param_states
-                .dirty_editor
-                .set(param_index, Ordering::Release);
+            let dirty_processor = &self.state.param_states.dirty_processor;
+            dirty_processor.set(param_index, Ordering::Release);
+            let dirty_editor = &self.state.param_states.dirty_editor;
+            dirty_editor.set(param_index, Ordering::Release);
 
             return kResultOk;
         }
@@ -1038,11 +1046,10 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
     }
 
     unsafe fn setComponentHandler(&self, handler: *mut IComponentHandler) -> tresult {
-        let editor_state = &*self.editor_state.get();
+        let editor_state = &*self.state.editor_state.get();
 
         if let Some(handler) = ComRef::from_raw(handler) {
             editor_state
-                .context
                 .component_handler
                 .replace(Some(handler.to_com_ptr()));
         }
@@ -1051,14 +1058,12 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
     }
 
     unsafe fn createView(&self, name: FIDString) -> *mut IPlugView {
-        if !self.has_editor {
+        if !self.state.has_editor {
             return ptr::null_mut();
         }
 
-        let editor_state = &*self.editor_state.get();
-
         if CStr::from_ptr(name) == CStr::from_ptr(ViewType::kEditor) {
-            let view = ComWrapper::new(View::<P>::new(&self.plugin, &editor_state));
+            let view = ComWrapper::new(View::<P>::new(&self.state));
             return view.to_com_ptr::<IPlugView>().unwrap().into_raw();
         }
 
@@ -1067,16 +1072,14 @@ impl<P: Plugin> IEditControllerTrait for Wrapper<P> {
 }
 
 struct View<P: Plugin> {
-    plugin: Arc<P>,
-    state: Rc<EditorState<P>>,
+    state: Arc<PluginState<P>>,
     #[cfg(target_os = "linux")]
     handler: ComWrapper<linux::EventHandler<P>>,
 }
 
 impl<P: Plugin> View<P> {
-    pub fn new(plugin: &Arc<P>, state: &Rc<EditorState<P>>) -> View<P> {
+    pub fn new(state: &Arc<PluginState<P>>) -> View<P> {
         View {
-            plugin: plugin.clone(),
             state: state.clone(),
             #[cfg(target_os = "linux")]
             handler: ComWrapper::new(linux::EventHandler::new(state)),
@@ -1140,15 +1143,19 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
             })
         };
 
-        let context = EditorContext::new(self.state.context.clone());
+        let editor_state = unsafe { &*self.state.editor_state.get() };
 
-        let editor = P::Editor::open(&self.plugin, context, Some(&ParentWindow(parent)));
+        let context = EditorContext::new(Rc::new(Vst3EditorContext {
+            state: self.state.clone(),
+        }));
+
+        let editor = P::Editor::open(&self.state.plugin, context, Some(&ParentWindow(parent)));
 
         #[cfg(target_os = "linux")]
         {
             use vst3_bindgen::Steinberg::Linux::*;
 
-            let Some(frame) = self.state.context.plug_frame.borrow().clone() else {
+            let Some(frame) = editor_state.plug_frame.borrow().clone() else {
                 return kNotInitialized;
             };
 
@@ -1163,13 +1170,15 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
             }
         }
 
-        self.state.editor.replace(Some(editor));
+        editor_state.editor.replace(Some(editor));
 
         kResultOk
     }
 
     unsafe fn removed(&self) -> tresult {
-        if let Some(mut editor) = self.state.editor.take() {
+        let editor_state = unsafe { &*self.state.editor_state.get() };
+
+        if let Some(mut editor) = editor_state.editor.take() {
             editor.close();
         }
 
@@ -1177,7 +1186,7 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
         {
             use vst3_bindgen::Steinberg::Linux::*;
 
-            let Some(frame) = self.state.context.plug_frame.borrow().clone() else {
+            let Some(frame) = editor_state.plug_frame.borrow().clone() else {
                 return kNotInitialized;
             };
 
@@ -1226,11 +1235,10 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
     }
 
     unsafe fn setFrame(&self, frame: *mut IPlugFrame) -> tresult {
+        let editor_state = unsafe { &*self.state.editor_state.get() };
+
         if let Some(frame) = ComRef::from_raw(frame) {
-            self.state
-                .context
-                .plug_frame
-                .replace(Some(frame.to_com_ptr()));
+            editor_state.plug_frame.replace(Some(frame.to_com_ptr()));
         }
 
         kResultOk
@@ -1251,11 +1259,11 @@ mod linux {
     use vst3_bindgen::Steinberg::Linux::*;
 
     pub(super) struct EventHandler<P: Plugin> {
-        state: Rc<EditorState<P>>,
+        state: Arc<PluginState<P>>,
     }
 
     impl<P: Plugin> EventHandler<P> {
-        pub fn new(state: &Rc<EditorState<P>>) -> EventHandler<P> {
+        pub fn new(state: &Arc<PluginState<P>>) -> EventHandler<P> {
             EventHandler {
                 state: state.clone(),
             }
@@ -1268,7 +1276,9 @@ mod linux {
 
     impl<P: Plugin> IEventHandlerTrait for EventHandler<P> {
         unsafe fn onFDIsSet(&self, _fd: FileDescriptor) {
-            if let Ok(mut editor) = self.state.editor.try_borrow_mut() {
+            let editor_state = unsafe { &*self.state.editor_state.get() };
+
+            if let Ok(mut editor) = editor_state.editor.try_borrow_mut() {
                 if let Some(editor) = &mut *editor {
                     editor.poll();
                 }
@@ -1278,7 +1288,9 @@ mod linux {
 
     impl<P: Plugin> ITimerHandlerTrait for EventHandler<P> {
         unsafe fn onTimer(&self) {
-            if let Ok(mut editor) = self.state.editor.try_borrow_mut() {
+            let editor_state = unsafe { &*self.state.editor_state.get() };
+
+            if let Ok(mut editor) = editor_state.editor.try_borrow_mut() {
                 if let Some(editor) = &mut *editor {
                     editor.poll();
                 }
