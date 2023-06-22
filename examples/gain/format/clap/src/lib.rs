@@ -1,1 +1,0 @@
-coupler::clap!(gain::Gain);
