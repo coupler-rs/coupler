@@ -1,10 +1,25 @@
 use std::io::{self, Read, Write};
 
+pub mod bus;
+pub mod param;
+
+use bus::{BusInfo, Layout};
+use param::ParamInfo;
+
 pub type ParamId = u32;
 
 pub type ParamValue = f64;
 
-pub struct PluginInfo {}
+pub struct PluginInfo {
+    pub name: String,
+    pub vendor: String,
+    pub url: String,
+    pub email: String,
+    pub inputs: Vec<BusInfo>,
+    pub outputs: Vec<BusInfo>,
+    pub layouts: Vec<Layout>,
+    pub params: Vec<ParamInfo>,
+}
 
 pub trait Plugin: Send + Sync + Sized + 'static {
     type Processor: Processor<Self>;
