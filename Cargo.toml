@@ -21,6 +21,7 @@ derive = ["coupler-derive"]
 members = [
     "cargo-coupler",
     "coupler-derive",
+    "examples/*",
 ]
 
 [workspace.dependencies]
