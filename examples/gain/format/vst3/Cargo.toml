@@ -5,6 +5,9 @@ authors = ["Micah Johnston <micah@photophore.systems>"]
 edition = "2021"
 publish = false
 
+[lib]
+crate-type = ["cdylib"]
+
 [dependencies]
 coupler = { workspace = true }
 gain = { path = "../.." }
