@@ -2,8 +2,9 @@ use std::ffi::{c_void, CStr};
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use vst3_bindgen::{uid, Class, Steinberg::Vst::*, Steinberg::*};
+use vst3_bindgen::{uid, Class, ComWrapper, Steinberg::Vst::*, Steinberg::*};
 
+use super::component::Component;
 use super::util::{copy_cstring, copy_wstring};
 use super::{Uuid, Vst3Info, Vst3Plugin};
 use crate::{Plugin, PluginInfo};
@@ -66,10 +67,19 @@ impl<P: Plugin> IPluginFactoryTrait for Factory<P> {
     unsafe fn createInstance(
         &self,
         cid: FIDString,
-        _iid: FIDString,
+        iid: FIDString,
         obj: *mut *mut c_void,
     ) -> tresult {
-        kNotImplemented
+        let cid = &*(cid as *const TUID);
+        let class_id = uuid_to_tuid(&self.vst3_info.class_id);
+        if cid == &class_id {
+            let component = ComWrapper::new(Component::<P>::new(&self.info));
+            let unknown = component.as_com_ref::<FUnknown>().unwrap();
+            let ptr = unknown.as_ptr();
+            return ((*(*ptr).vtbl).queryInterface)(ptr, iid as *const TUID, obj);
+        }
+
+        kInvalidArgument
     }
 }
 

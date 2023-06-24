@@ -2,10 +2,12 @@ use std::ffi::c_void;
 
 use vst3_bindgen::{ComWrapper, Steinberg::IPluginFactory};
 
+mod component;
 mod factory;
 mod util;
 
 use crate::Plugin;
+use component::Component;
 use factory::Factory;
 
 pub struct Uuid(pub u32, pub u32, pub u32, pub u32);
