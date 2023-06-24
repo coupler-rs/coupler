@@ -1,6 +1,7 @@
 use std::io::{self, Read, Write};
 
 pub mod bus;
+pub mod format;
 pub mod param;
 pub mod process;
 
