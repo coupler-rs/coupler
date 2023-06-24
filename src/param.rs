@@ -19,3 +19,15 @@ pub trait Display {
     fn parse(&self, string: &str) -> Option<ParamValue>;
     fn display(&self, value: ParamValue, output: &mut dyn Write);
 }
+
+pub struct Float;
+
+impl Display for Float {
+    fn parse(&self, string: &str) -> Option<ParamValue> {
+        string.parse().ok()
+    }
+
+    fn display(&self, value: ParamValue, output: &mut dyn Write) {
+        let _ = write!(output, "{:.2}", value);
+    }
+}
