@@ -28,11 +28,11 @@ impl<P: Plugin + Vst3Plugin> Factory<P> {
     }
 }
 
-impl<P: Plugin + Vst3Plugin> Class for Factory<P> {
+impl<P: Plugin> Class for Factory<P> {
     type Interfaces = (IPluginFactory3,);
 }
 
-impl<P: Plugin + Vst3Plugin> IPluginFactoryTrait for Factory<P> {
+impl<P: Plugin> IPluginFactoryTrait for Factory<P> {
     unsafe fn getFactoryInfo(&self, info: *mut PFactoryInfo) -> tresult {
         let info = &mut *info;
 
@@ -73,7 +73,7 @@ impl<P: Plugin + Vst3Plugin> IPluginFactoryTrait for Factory<P> {
     }
 }
 
-impl<P: Plugin + Vst3Plugin> IPluginFactory2Trait for Factory<P> {
+impl<P: Plugin> IPluginFactory2Trait for Factory<P> {
     unsafe fn getClassInfo2(&self, index: int32, info: *mut PClassInfo2) -> tresult {
         if index == 0 {
             let info = &mut *info;
@@ -96,7 +96,7 @@ impl<P: Plugin + Vst3Plugin> IPluginFactory2Trait for Factory<P> {
     }
 }
 
-impl<P: Plugin + Vst3Plugin> IPluginFactory3Trait for Factory<P> {
+impl<P: Plugin> IPluginFactory3Trait for Factory<P> {
     unsafe fn getClassInfoUnicode(&self, index: int32, info: *mut PClassInfoW) -> tresult {
         if index == 0 {
             let info = &mut *info;
