@@ -22,6 +22,7 @@ members = [
     "cargo-coupler",
     "coupler-derive",
     "examples/*",
+    "examples/*/format/*",
 ]
 
 [workspace.dependencies]

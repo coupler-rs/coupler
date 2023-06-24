@@ -1,0 +1,10 @@
+[package]
+name = "gain-vst3"
+version = "0.1.0"
+authors = ["Micah Johnston <micah@photophore.systems>"]
+edition = "2021"
+publish = false
+
+[dependencies]
+coupler = { workspace = true }
+gain = { path = "../.." }

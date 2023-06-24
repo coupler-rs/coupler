@@ -1,5 +1,6 @@
 use std::io::{self, Read, Write};
 
+use coupler::format::vst3::*;
 use coupler::{bus::*, param::*, process::*, *};
 
 pub struct Gain {}
@@ -56,6 +57,14 @@ impl Plugin for Gain {
 
     fn load(&self, input: &mut impl Read) -> io::Result<()> {
         Ok(())
+    }
+}
+
+impl Vst3Plugin for Gain {
+    fn vst3_info() -> Vst3Info {
+        Vst3Info {
+            class_id: Uuid(0x84B4DD04, 0x0D964565, 0x97AC3AAA, 0x87C5CCA7),
+        }
     }
 }
 
