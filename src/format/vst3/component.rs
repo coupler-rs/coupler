@@ -25,15 +25,23 @@ fn speaker_arrangement_to_format(speaker_arrangement: SpeakerArrangement) -> Opt
     }
 }
 
+struct MainThreadState {
+    layout: Layout,
+}
+
 struct ProcessState {
     inputs_active: Vec<bool>,
     outputs_active: Vec<bool>,
-    layout: Layout,
 }
 
 pub struct Component<P: Plugin> {
     info: Arc<PluginInfo>,
     layout_set: HashSet<Layout>,
+    // References to MainThreadState may only be formed from the main thread.
+    main_thread_state: UnsafeCell<MainThreadState>,
+    // When the audio processor is *not* active, references to ProcessState may only be formed from
+    // the main thread. When the audio processor *is* active, references to ProcessState may only
+    // be formed from the audio thread.
     process_state: UnsafeCell<ProcessState>,
     _marker: PhantomData<P>,
 }
@@ -45,10 +53,12 @@ impl<P: Plugin> Component<P> {
         Component {
             info: info.clone(),
             layout_set,
+            main_thread_state: UnsafeCell::new(MainThreadState {
+                layout: info.layouts.first().unwrap().clone(),
+            }),
             process_state: UnsafeCell::new(ProcessState {
                 inputs_active: vec![true; info.inputs.len()],
                 outputs_active: vec![true; info.outputs.len()],
-                layout: info.layouts.first().unwrap().clone(),
             }),
             _marker: PhantomData,
         }
@@ -102,19 +112,19 @@ impl<P: Plugin> IComponentTrait for Component<P> {
         index: int32,
         bus: *mut BusInfo,
     ) -> tresult {
-        let process_state = &mut *self.process_state.get();
+        let main_thread_state = &mut *self.main_thread_state.get();
 
         match type_ as MediaTypes {
             MediaTypes_::kAudio => {
                 let (info, format) = match dir as BusDirections {
                     BusDirections_::kInput => {
                         let info = self.info.inputs.get(index as usize);
-                        let format = process_state.layout.inputs.get(index as usize);
+                        let format = main_thread_state.layout.inputs.get(index as usize);
                         (info, format)
                     }
                     BusDirections_::kOutput => {
                         let info = self.info.outputs.get(index as usize);
-                        let format = process_state.layout.outputs.get(index as usize);
+                        let format = main_thread_state.layout.outputs.get(index as usize);
                         (info, format)
                     }
                     _ => return kInvalidArgument,
@@ -238,8 +248,8 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         }
 
         if self.layout_set.contains(&candidate) {
-            let process_state = &mut *self.process_state.get();
-            process_state.layout = candidate;
+            let main_thread_state = &mut *self.main_thread_state.get();
+            main_thread_state.layout = candidate;
             return kResultTrue;
         }
 
@@ -252,17 +262,17 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         index: int32,
         arr: *mut SpeakerArrangement,
     ) -> tresult {
-        let process_state = &mut *self.process_state.get();
+        let main_thread_state = &mut *self.main_thread_state.get();
 
         match dir as BusDirections {
             BusDirections_::kInput => {
-                if let Some(format) = process_state.layout.inputs.get(index as usize) {
+                if let Some(format) = main_thread_state.layout.inputs.get(index as usize) {
                     *arr = format_to_speaker_arrangement(format);
                     return kResultOk;
                 }
             }
             BusDirections_::kOutput => {
-                if let Some(format) = process_state.layout.outputs.get(index as usize) {
+                if let Some(format) = main_thread_state.layout.outputs.get(index as usize) {
                     *arr = format_to_speaker_arrangement(format);
                     return kResultOk;
                 }
