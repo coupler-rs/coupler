@@ -1,7 +1,7 @@
 use std::io::{self, Read, Write};
 
 use coupler::format::vst3::*;
-use coupler::{bus::*, param::*, process::*, *};
+use coupler::{bus::*, param::*, *};
 
 pub struct Gain {}
 
@@ -73,10 +73,6 @@ pub struct GainProcessor {}
 impl Processor<Gain> for GainProcessor {
     fn create(plugin: &Gain, config: Config) -> Self {
         GainProcessor {}
-    }
-
-    fn info(&self) -> ProcessInfo {
-        ProcessInfo { latency: 0 }
     }
 
     fn set_param(&mut self, id: ParamId, value: ParamValue) {}

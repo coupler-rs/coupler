@@ -3,11 +3,9 @@ use std::io::{self, Read, Write};
 pub mod bus;
 pub mod format;
 pub mod param;
-pub mod process;
 
 use bus::{BusInfo, Layout};
 use param::ParamInfo;
-use process::{Config, ProcessInfo};
 
 pub type ParamId = u32;
 
@@ -36,16 +34,24 @@ pub trait Plugin: Send + Sync + Sized + 'static {
     fn load(&self, input: &mut impl Read) -> io::Result<()>;
 }
 
+pub struct Config {
+    pub layout: Layout,
+    pub sample_rate: f64,
+}
+
 pub struct Buffers {}
 
 pub struct Events {}
 
 pub trait Processor<P>: Send + Sized + 'static {
     fn create(plugin: &P, config: Config) -> Self;
-    fn info(&self) -> ProcessInfo;
     fn set_param(&mut self, id: ParamId, value: ParamValue);
     fn reset(&mut self);
     fn process(&mut self, buffers: Buffers, events: Events);
+
+    fn latency(&self) -> u64 {
+        0
+    }
 }
 
 pub struct EditorContext {}
