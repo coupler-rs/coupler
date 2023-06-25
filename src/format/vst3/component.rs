@@ -284,7 +284,11 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
     }
 
     unsafe fn canProcessSampleSize(&self, symbolicSampleSize: int32) -> tresult {
-        unimplemented!()
+        match symbolicSampleSize as SymbolicSampleSizes {
+            SymbolicSampleSizes_::kSample32 => kResultTrue,
+            SymbolicSampleSizes_::kSample64 => kResultFalse,
+            _ => kInvalidArgument,
+        }
     }
 
     unsafe fn getLatencySamples(&self) -> uint32 {
