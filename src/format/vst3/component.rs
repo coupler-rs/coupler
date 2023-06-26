@@ -1,7 +1,7 @@
 use std::cell::UnsafeCell;
 use std::collections::{HashMap, HashSet};
-use std::slice;
 use std::sync::Arc;
+use std::{ptr, slice};
 
 use vst3_bindgen::{Class, Steinberg::Vst::*, Steinberg::*};
 
@@ -238,11 +238,11 @@ impl<P: Plugin> IComponentTrait for Component<P> {
     }
 
     unsafe fn setState(&self, state: *mut IBStream) -> tresult {
-        unimplemented!()
+        kResultOk
     }
 
     unsafe fn getState(&self, state: *mut IBStream) -> tresult {
-        unimplemented!()
+        kResultOk
     }
 }
 
@@ -331,7 +331,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
     }
 
     unsafe fn getLatencySamples(&self) -> uint32 {
-        unimplemented!()
+        0
     }
 
     unsafe fn setupProcessing(&self, setup: *mut ProcessSetup) -> tresult {
@@ -358,31 +358,31 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
     }
 
     unsafe fn process(&self, data: *mut ProcessData) -> tresult {
-        unimplemented!()
+        kResultOk
     }
 
     unsafe fn getTailSamples(&self) -> uint32 {
-        unimplemented!()
+        kInfiniteTail
     }
 }
 
 impl<P: Plugin> IProcessContextRequirementsTrait for Component<P> {
     unsafe fn getProcessContextRequirements(&self) -> uint32 {
-        unimplemented!()
+        0
     }
 }
 
 impl<P: Plugin> IEditControllerTrait for Component<P> {
     unsafe fn setComponentState(&self, state: *mut IBStream) -> tresult {
-        unimplemented!()
+        kResultOk
     }
 
     unsafe fn setState(&self, state: *mut IBStream) -> tresult {
-        unimplemented!()
+        kResultOk
     }
 
     unsafe fn getState(&self, state: *mut IBStream) -> tresult {
-        unimplemented!()
+        kResultOk
     }
 
     unsafe fn getParameterCount(&self) -> int32 {
@@ -474,18 +474,18 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     }
 
     unsafe fn getParamNormalized(&self, id: ParamID) -> ParamValue {
-        unimplemented!()
+        0.0
     }
 
     unsafe fn setParamNormalized(&self, id: ParamID, value: ParamValue) -> tresult {
-        unimplemented!()
+        kResultOk
     }
 
     unsafe fn setComponentHandler(&self, handler: *mut IComponentHandler) -> tresult {
-        unimplemented!()
+        kResultOk
     }
 
     unsafe fn createView(&self, name: FIDString) -> *mut IPlugView {
-        unimplemented!()
+        ptr::null_mut()
     }
 }
