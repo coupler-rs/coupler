@@ -1,6 +1,5 @@
 use std::cell::UnsafeCell;
 use std::collections::{HashMap, HashSet};
-use std::marker::PhantomData;
 use std::slice;
 use std::sync::Arc;
 
@@ -59,7 +58,7 @@ pub struct Component<P: Plugin> {
     // the main thread. When the audio processor *is* active, references to ProcessState may only
     // be formed from the audio thread.
     process_state: UnsafeCell<ProcessState>,
-    _marker: PhantomData<P>,
+    plugin: P,
 }
 
 impl<P: Plugin> Component<P> {
@@ -82,7 +81,7 @@ impl<P: Plugin> Component<P> {
                 inputs_active: vec![true; info.inputs.len()],
                 outputs_active: vec![true; info.outputs.len()],
             }),
-            _marker: PhantomData,
+            plugin: P::create(),
         }
     }
 }
