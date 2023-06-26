@@ -32,6 +32,11 @@ pub trait Plugin: Send + Sync + Sized + 'static {
     fn get_param(&self, id: ParamId) -> ParamValue;
     fn save(&self, output: &mut impl Write) -> io::Result<()>;
     fn load(&self, input: &mut impl Read) -> io::Result<()>;
+
+    #[allow(unused_variables)]
+    fn latency(&self, config: &Config) -> u64 {
+        0
+    }
 }
 
 pub struct Config {
@@ -48,10 +53,6 @@ pub trait Processor<P>: Send + Sized + 'static {
     fn set_param(&mut self, id: ParamId, value: ParamValue);
     fn reset(&mut self);
     fn process(&mut self, buffers: Buffers, events: Events);
-
-    fn latency(&self) -> u64 {
-        0
-    }
 }
 
 pub struct EditorContext {}
