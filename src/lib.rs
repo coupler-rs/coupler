@@ -62,6 +62,10 @@ pub struct ParentWindow {}
 pub struct Size {}
 
 pub trait Editor<P>: Sized + 'static {
+    fn exists() -> bool {
+        true
+    }
+
     fn create(plugin: &P, context: EditorContext, parent: &ParentWindow) -> Self;
     fn size(&self) -> Size;
     fn set_param(&mut self, id: ParamId, value: ParamValue);
