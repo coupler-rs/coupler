@@ -8,7 +8,7 @@ use vst3_bindgen::{Class, Steinberg::Vst::*, Steinberg::*};
 use super::util::{copy_wstring, utf16_from_ptr};
 use crate::bus::{Format, Layout};
 use crate::param::{ParamInfo, Range};
-use crate::{ParamId, Plugin, PluginInfo};
+use crate::{Config, ParamId, Plugin, PluginInfo, Processor};
 
 fn format_to_speaker_arrangement(format: &Format) -> SpeakerArrangement {
     match format {
@@ -43,9 +43,11 @@ struct MainThreadState {
     layout: Layout,
 }
 
-struct ProcessState {
+struct ProcessState<P: Plugin> {
     inputs_active: Vec<bool>,
     outputs_active: Vec<bool>,
+    sample_rate: f64,
+    processor: Option<P::Processor>,
 }
 
 pub struct Component<P: Plugin> {
@@ -57,7 +59,7 @@ pub struct Component<P: Plugin> {
     // When the audio processor is *not* active, references to ProcessState may only be formed from
     // the main thread. When the audio processor *is* active, references to ProcessState may only
     // be formed from the audio thread.
-    process_state: UnsafeCell<ProcessState>,
+    process_state: UnsafeCell<ProcessState<P>>,
     plugin: P,
 }
 
@@ -80,6 +82,8 @@ impl<P: Plugin> Component<P> {
             process_state: UnsafeCell::new(ProcessState {
                 inputs_active: vec![true; info.inputs.len()],
                 outputs_active: vec![true; info.outputs.len()],
+                sample_rate: 0.0,
+                processor: None,
             }),
             plugin: P::create(),
         }
@@ -216,7 +220,21 @@ impl<P: Plugin> IComponentTrait for Component<P> {
     }
 
     unsafe fn setActive(&self, state: TBool) -> tresult {
-        unimplemented!()
+        let main_thread_state = &mut *self.main_thread_state.get();
+        let process_state = &mut *self.process_state.get();
+
+        if state == 0 {
+            process_state.processor = None;
+        } else {
+            let config = Config {
+                layout: main_thread_state.layout.clone(),
+                sample_rate: process_state.sample_rate,
+            };
+
+            process_state.processor = Some(P::Processor::create(&self.plugin, config));
+        }
+
+        kResultOk
     }
 
     unsafe fn setState(&self, state: *mut IBStream) -> tresult {
@@ -317,11 +335,26 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
     }
 
     unsafe fn setupProcessing(&self, setup: *mut ProcessSetup) -> tresult {
-        unimplemented!()
+        let process_state = &mut *self.process_state.get();
+
+        let setup = &*setup;
+        process_state.sample_rate = setup.sampleRate;
+
+        kResultOk
     }
 
     unsafe fn setProcessing(&self, state: TBool) -> tresult {
-        unimplemented!()
+        let process_state = &mut *self.process_state.get();
+
+        if let Some(processor) = &mut process_state.processor {
+            if state == 0 {
+                processor.reset();
+            }
+
+            return kResultOk;
+        }
+
+        kNotInitialized
     }
 
     unsafe fn process(&self, data: *mut ProcessData) -> tresult {
