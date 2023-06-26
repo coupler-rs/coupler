@@ -1,14 +1,15 @@
 use std::cell::UnsafeCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::slice;
 use std::sync::Arc;
 
 use vst3_bindgen::{Class, Steinberg::Vst::*, Steinberg::*};
 
-use super::util::copy_wstring;
+use super::util::{copy_wstring, utf16_from_ptr};
 use crate::bus::{Format, Layout};
-use crate::{Plugin, PluginInfo};
+use crate::param::{ParamInfo, Range};
+use crate::{ParamId, Plugin, PluginInfo};
 
 fn format_to_speaker_arrangement(format: &Format) -> SpeakerArrangement {
     match format {
@@ -25,6 +26,20 @@ fn speaker_arrangement_to_format(speaker_arrangement: SpeakerArrangement) -> Opt
     }
 }
 
+fn map_param(param: &ParamInfo, value: ParamValue) -> ParamValue {
+    match param.range {
+        Range::Continuous { min, max } => (1.0 - value) * min + value * max,
+        Range::Discrete { steps } => value * steps as f64,
+    }
+}
+
+fn unmap_param(param: &ParamInfo, value: ParamValue) -> ParamValue {
+    match param.range {
+        Range::Continuous { min, max } => (value - min) / (max - min),
+        Range::Discrete { steps } => value / steps as f64,
+    }
+}
+
 struct MainThreadState {
     layout: Layout,
 }
@@ -36,6 +51,7 @@ struct ProcessState {
 
 pub struct Component<P: Plugin> {
     info: Arc<PluginInfo>,
+    param_map: HashMap<ParamId, usize>,
     layout_set: HashSet<Layout>,
     // References to MainThreadState may only be formed from the main thread.
     main_thread_state: UnsafeCell<MainThreadState>,
@@ -48,10 +64,16 @@ pub struct Component<P: Plugin> {
 
 impl<P: Plugin> Component<P> {
     pub fn new(info: &Arc<PluginInfo>) -> Component<P> {
+        let mut param_map = HashMap::new();
+        for (index, param) in info.params.iter().enumerate() {
+            param_map.insert(param.id, index);
+        }
+
         let layout_set = info.layouts.iter().cloned().collect::<HashSet<_>>();
 
         Component {
             info: info.clone(),
+            param_map,
             layout_set,
             main_thread_state: UnsafeCell::new(MainThreadState {
                 layout: info.layouts.first().unwrap().clone(),
@@ -332,11 +354,29 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     }
 
     unsafe fn getParameterCount(&self) -> int32 {
-        unimplemented!()
+        self.info.params.len() as int32
     }
 
     unsafe fn getParameterInfo(&self, paramIndex: int32, info: *mut ParameterInfo) -> tresult {
-        unimplemented!()
+        if let Some(param) = self.info.params.get(paramIndex as usize) {
+            let info = &mut *info;
+
+            info.id = param.id as ParamID;
+            copy_wstring(&param.name, &mut info.title);
+            copy_wstring(&param.name, &mut info.shortTitle);
+            copy_wstring("", &mut info.units);
+            info.stepCount = match param.range {
+                Range::Continuous { .. } => 0,
+                Range::Discrete { steps } => (steps as int32 - 1).max(1),
+            };
+            info.defaultNormalizedValue = map_param(param, param.default);
+            info.unitId = 0;
+            info.flags = ParameterInfo_::ParameterFlags_::kCanAutomate as int32;
+
+            return kResultOk;
+        }
+
+        kInvalidArgument
     }
 
     unsafe fn getParamStringByValue(
@@ -345,7 +385,18 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         valueNormalized: ParamValue,
         string: *mut String128,
     ) -> tresult {
-        unimplemented!()
+        if let Some(&index) = self.param_map.get(&(id as ParamId)) {
+            let param = &self.info.params[index];
+
+            let mut display = String::new();
+            let value = map_param(param, valueNormalized);
+            param.display.display(value, &mut display);
+            copy_wstring(&display, &mut *string);
+
+            return kResultOk;
+        }
+
+        kInvalidArgument
     }
 
     unsafe fn getParamValueByString(
@@ -354,7 +405,18 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         string: *mut TChar,
         valueNormalized: *mut ParamValue,
     ) -> tresult {
-        unimplemented!()
+        if let Some(&index) = self.param_map.get(&(id as ParamId)) {
+            let param = &self.info.params[index];
+
+            if let Ok(display) = String::from_utf16(utf16_from_ptr(string)) {
+                if let Some(value) = param.display.parse(&display) {
+                    *valueNormalized = unmap_param(param, value);
+                    return kResultOk;
+                }
+            }
+        }
+
+        kInvalidArgument
     }
 
     unsafe fn normalizedParamToPlain(
@@ -362,11 +424,21 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         id: ParamID,
         valueNormalized: ParamValue,
     ) -> ParamValue {
-        unimplemented!()
+        if let Some(&index) = self.param_map.get(&(id as ParamId)) {
+            let param = &self.info.params[index];
+            return map_param(param, valueNormalized);
+        }
+
+        0.0
     }
 
     unsafe fn plainParamToNormalized(&self, id: ParamID, plainValue: ParamValue) -> ParamValue {
-        unimplemented!()
+        if let Some(&index) = self.param_map.get(&(id as ParamId)) {
+            let param = &self.info.params[index];
+            return unmap_param(param, plainValue);
+        }
+
+        0.0
     }
 
     unsafe fn getParamNormalized(&self, id: ParamID) -> ParamValue {

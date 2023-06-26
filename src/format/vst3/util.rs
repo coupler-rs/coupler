@@ -1,5 +1,6 @@
 use std::ffi::CString;
 use std::os::raw::c_char;
+use std::slice;
 
 use vst3_bindgen::Steinberg::char16;
 
@@ -30,4 +31,13 @@ pub fn copy_wstring(src: &str, dst: &mut [char16]) {
     } else if let Some(last) = dst.last_mut() {
         *last = 0;
     }
+}
+
+pub unsafe fn utf16_from_ptr<'a>(ptr: *const char16) -> &'a [u16] {
+    let mut len = 0;
+    while *ptr.offset(len as isize) != 0 {
+        len += 1;
+    }
+
+    slice::from_raw_parts(ptr as *const u16, len)
 }
