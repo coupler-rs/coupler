@@ -110,11 +110,11 @@ impl<P: Plugin> IPluginBaseTrait for Component<P> {
 }
 
 impl<P: Plugin> IComponentTrait for Component<P> {
-    unsafe fn getControllerClassId(&self, classId: *mut TUID) -> tresult {
+    unsafe fn getControllerClassId(&self, _classId: *mut TUID) -> tresult {
         kNotImplemented
     }
 
-    unsafe fn setIoMode(&self, mode: IoMode) -> tresult {
+    unsafe fn setIoMode(&self, _mode: IoMode) -> tresult {
         kResultOk
     }
 
@@ -181,8 +181,8 @@ impl<P: Plugin> IComponentTrait for Component<P> {
 
     unsafe fn getRoutingInfo(
         &self,
-        inInfo: *mut RoutingInfo,
-        outInfo: *mut RoutingInfo,
+        _inInfo: *mut RoutingInfo,
+        _outInfo: *mut RoutingInfo,
     ) -> tresult {
         kNotImplemented
     }
@@ -200,13 +200,13 @@ impl<P: Plugin> IComponentTrait for Component<P> {
             MediaTypes_::kAudio => match dir as BusDirections {
                 BusDirections_::kInput => {
                     if let Some(active) = process_state.inputs_active.get_mut(index as usize) {
-                        *active = (state != 0);
+                        *active = state != 0;
                         return kResultOk;
                     }
                 }
                 BusDirections_::kOutput => {
                     if let Some(active) = process_state.outputs_active.get_mut(index as usize) {
-                        *active = (state != 0);
+                        *active = state != 0;
                         return kResultOk;
                     }
                 }
@@ -373,15 +373,15 @@ impl<P: Plugin> IProcessContextRequirementsTrait for Component<P> {
 }
 
 impl<P: Plugin> IEditControllerTrait for Component<P> {
-    unsafe fn setComponentState(&self, state: *mut IBStream) -> tresult {
+    unsafe fn setComponentState(&self, _state: *mut IBStream) -> tresult {
         kResultOk
     }
 
-    unsafe fn setState(&self, state: *mut IBStream) -> tresult {
+    unsafe fn setState(&self, _state: *mut IBStream) -> tresult {
         kResultOk
     }
 
-    unsafe fn getState(&self, state: *mut IBStream) -> tresult {
+    unsafe fn getState(&self, _state: *mut IBStream) -> tresult {
         kResultOk
     }
 
