@@ -417,7 +417,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
     unsafe fn process(&self, data: *mut ProcessData) -> tresult {
         let process_state = &mut *self.process_state.get();
 
-        let Some(processor) = &mut process_state.processor else {
+        let Some(_processor) = &mut process_state.processor else {
             return kNotInitialized;
         };
 
@@ -591,11 +591,11 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         kInvalidArgument
     }
 
-    unsafe fn setComponentHandler(&self, handler: *mut IComponentHandler) -> tresult {
+    unsafe fn setComponentHandler(&self, _handler: *mut IComponentHandler) -> tresult {
         kResultOk
     }
 
-    unsafe fn createView(&self, name: FIDString) -> *mut IPlugView {
+    unsafe fn createView(&self, _name: FIDString) -> *mut IPlugView {
         ptr::null_mut()
     }
 }
