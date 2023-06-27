@@ -417,7 +417,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         valueNormalized: ParamValue,
         string: *mut String128,
     ) -> tresult {
-        if let Some(&index) = self.param_map.get(&(id as ParamId)) {
+        if let Some(&index) = self.param_map.get(&id) {
             let param = &self.info.params[index];
 
             let mut display = String::new();
@@ -437,7 +437,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         string: *mut TChar,
         valueNormalized: *mut ParamValue,
     ) -> tresult {
-        if let Some(&index) = self.param_map.get(&(id as ParamId)) {
+        if let Some(&index) = self.param_map.get(&id) {
             let param = &self.info.params[index];
 
             if let Ok(display) = String::from_utf16(utf16_from_ptr(string)) {
@@ -456,7 +456,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         id: ParamID,
         valueNormalized: ParamValue,
     ) -> ParamValue {
-        if let Some(&index) = self.param_map.get(&(id as ParamId)) {
+        if let Some(&index) = self.param_map.get(&id) {
             let param = &self.info.params[index];
             return map_param(param, valueNormalized);
         }
@@ -465,7 +465,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     }
 
     unsafe fn plainParamToNormalized(&self, id: ParamID, plainValue: ParamValue) -> ParamValue {
-        if let Some(&index) = self.param_map.get(&(id as ParamId)) {
+        if let Some(&index) = self.param_map.get(&id) {
             let param = &self.info.params[index];
             return unmap_param(param, plainValue);
         }
