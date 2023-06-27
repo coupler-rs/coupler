@@ -1,5 +1,6 @@
 use std::cell::UnsafeCell;
 use std::collections::{HashMap, HashSet};
+use std::ffi::c_void;
 use std::sync::Arc;
 use std::{ptr, slice};
 
@@ -240,11 +241,65 @@ impl<P: Plugin> IComponentTrait for Component<P> {
     }
 
     unsafe fn setState(&self, state: *mut IBStream) -> tresult {
-        kResultOk
+        use std::io::{Error, ErrorKind, Read, Result};
+
+        struct StreamReader<'a>(ComRef<'a, IBStream>);
+
+        impl<'a> Read for StreamReader<'a> {
+            fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+                let ptr = buf.as_mut_ptr() as *mut c_void;
+                let len = buf.len() as int32;
+                let mut bytes: int32 = 0;
+                let result = unsafe { self.0.read(ptr, len, &mut bytes) };
+
+                if result == kResultOk {
+                    Ok(bytes as usize)
+                } else {
+                    Err(Error::new(ErrorKind::Other, "failed to read from stream"))
+                }
+            }
+        }
+
+        if let Some(state) = ComRef::from_raw(state) {
+            if let Ok(_) = self.plugin.load(&mut StreamReader(state)) {
+                return kResultOk;
+            }
+        }
+
+        kResultFalse
     }
 
     unsafe fn getState(&self, state: *mut IBStream) -> tresult {
-        kResultOk
+        use std::io::{Error, ErrorKind, Result, Write};
+
+        struct StreamWriter<'a>(ComRef<'a, IBStream>);
+
+        impl<'a> Write for StreamWriter<'a> {
+            fn write(&mut self, buf: &[u8]) -> Result<usize> {
+                let ptr = buf.as_ptr() as *mut c_void;
+                let len = buf.len() as int32;
+                let mut bytes: int32 = 0;
+                let result = unsafe { self.0.write(ptr, len, &mut bytes) };
+
+                if result == kResultOk {
+                    Ok(bytes as usize)
+                } else {
+                    Err(Error::new(ErrorKind::Other, "failed to write to stream"))
+                }
+            }
+
+            fn flush(&mut self) -> Result<()> {
+                Ok(())
+            }
+        }
+
+        if let Some(state) = ComRef::from_raw(state) {
+            if let Ok(_) = self.plugin.save(&mut StreamWriter(state)) {
+                return kResultOk;
+            }
+        }
+
+        kResultFalse
     }
 }
 
