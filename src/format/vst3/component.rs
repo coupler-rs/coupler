@@ -41,6 +41,7 @@ fn unmap_param(param: &ParamInfo, value: ParamValue) -> ParamValue {
 
 struct MainThreadState {
     layout: Layout,
+    param_values: Vec<ParamValue>,
 }
 
 struct ProcessState<P: Plugin> {
@@ -78,6 +79,7 @@ impl<P: Plugin> Component<P> {
             layout_set,
             main_thread_state: UnsafeCell::new(MainThreadState {
                 layout: info.layouts.first().unwrap().clone(),
+                param_values: info.params.iter().map(|p| p.default).collect(),
             }),
             process_state: UnsafeCell::new(ProcessState {
                 inputs_active: vec![true; info.inputs.len()],
@@ -511,11 +513,27 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     }
 
     unsafe fn getParamNormalized(&self, id: ParamID) -> ParamValue {
+        let main_thread_state = &*self.main_thread_state.get();
+
+        if let Some(&index) = self.param_map.get(&id) {
+            let param = &self.info.params[index];
+            let value = main_thread_state.param_values[index];
+            return unmap_param(param, value);
+        }
+
         0.0
     }
 
     unsafe fn setParamNormalized(&self, id: ParamID, value: ParamValue) -> tresult {
-        kResultOk
+        let main_thread_state = &mut *self.main_thread_state.get();
+
+        if let Some(&index) = self.param_map.get(&id) {
+            let param = &self.info.params[index];
+            main_thread_state.param_values[index] = map_param(param, value);
+            return kResultOk;
+        }
+
+        kInvalidArgument
     }
 
     unsafe fn setComponentHandler(&self, handler: *mut IComponentHandler) -> tresult {
