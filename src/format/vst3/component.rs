@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::{ptr, slice};
 
-use vst3_bindgen::{Class, Steinberg::Vst::*, Steinberg::*};
+use vst3_bindgen::{Class, ComRef, Steinberg::Vst::*, Steinberg::*};
 
 use super::util::{copy_wstring, utf16_from_ptr};
 use crate::bus::{Format, Layout};
@@ -358,6 +358,43 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
     }
 
     unsafe fn process(&self, data: *mut ProcessData) -> tresult {
+        let process_state = &mut *self.process_state.get();
+
+        let Some(processor) = &mut process_state.processor else {
+            return kNotInitialized;
+        };
+
+        let data = &*data;
+        if let Some(param_changes) = ComRef::from_raw(data.inputParameterChanges) {
+            for index in 0..param_changes.getParameterCount() {
+                let param_data = param_changes.getParameterData(index);
+                let Some(param_data) = ComRef::from_raw(param_data) else {
+                    continue;
+                };
+
+                let id = param_data.getParameterId();
+                let point_count = param_data.getPointCount();
+
+                let Some(&param_index) = self.param_map.get(&id) else {
+                    continue;
+                };
+                let param = &self.info.params[param_index];
+
+                for index in 0..point_count {
+                    let mut offset = 0;
+                    let mut value_normalized = 0.0;
+                    let result = param_data.getPoint(index, &mut offset, &mut value_normalized);
+
+                    if result != kResultOk {
+                        continue;
+                    }
+
+                    let value = map_param(param, value_normalized);
+                    self.plugin.set_param(id, value);
+                }
+            }
+        }
+
         kResultOk
     }
 
