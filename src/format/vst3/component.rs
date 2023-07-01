@@ -40,9 +40,10 @@ fn unmap_param(param: &ParamInfo, value: ParamValue) -> ParamValue {
     }
 }
 
-struct MainThreadState {
+struct MainThreadState<P> {
     layout: Layout,
     param_values: Vec<ParamValue>,
+    plugin: P,
 }
 
 struct ProcessState<P: Plugin> {
@@ -57,12 +58,11 @@ pub struct Component<P: Plugin> {
     param_map: HashMap<ParamId, usize>,
     layout_set: HashSet<Layout>,
     // References to MainThreadState may only be formed from the main thread.
-    main_thread_state: UnsafeCell<MainThreadState>,
+    main_thread_state: UnsafeCell<MainThreadState<P>>,
     // When the audio processor is *not* active, references to ProcessState may only be formed from
     // the main thread. When the audio processor *is* active, references to ProcessState may only
     // be formed from the audio thread.
     process_state: UnsafeCell<ProcessState<P>>,
-    plugin: P,
 }
 
 impl<P: Plugin> Component<P> {
@@ -81,6 +81,7 @@ impl<P: Plugin> Component<P> {
             main_thread_state: UnsafeCell::new(MainThreadState {
                 layout: info.layouts.first().unwrap().clone(),
                 param_values: info.params.iter().map(|p| p.default).collect(),
+                plugin: P::default(),
             }),
             process_state: UnsafeCell::new(ProcessState {
                 inputs_active: vec![true; info.inputs.len()],
@@ -88,7 +89,6 @@ impl<P: Plugin> Component<P> {
                 sample_rate: 0.0,
                 processor: None,
             }),
-            plugin: P::create(),
         }
     }
 }
@@ -234,7 +234,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
                 sample_rate: process_state.sample_rate,
             };
 
-            process_state.processor = Some(P::Processor::create(&self.plugin, config));
+            process_state.processor = Some(main_thread_state.plugin.processor(config));
         }
 
         kResultOk
@@ -261,7 +261,9 @@ impl<P: Plugin> IComponentTrait for Component<P> {
         }
 
         if let Some(state) = ComRef::from_raw(state) {
-            if let Ok(_) = self.plugin.load(&mut StreamReader(state)) {
+            let main_thread_state = &mut *self.main_thread_state.get();
+
+            if let Ok(_) = main_thread_state.plugin.load(&mut StreamReader(state)) {
                 return kResultOk;
             }
         }
@@ -294,7 +296,9 @@ impl<P: Plugin> IComponentTrait for Component<P> {
         }
 
         if let Some(state) = ComRef::from_raw(state) {
-            if let Ok(_) = self.plugin.save(&mut StreamWriter(state)) {
+            let main_thread_state = &*self.main_thread_state.get();
+
+            if let Ok(_) = main_thread_state.plugin.save(&mut StreamWriter(state)) {
                 return kResultOk;
             }
         }
@@ -446,8 +450,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
                         continue;
                     }
 
-                    let value = map_param(param, value_normalized);
-                    self.plugin.set_param(id, value);
+                    let _value = map_param(param, value_normalized);
                 }
             }
         }

@@ -5,6 +5,12 @@ use coupler::{bus::*, param::*, *};
 
 pub struct Gain {}
 
+impl Default for Gain {
+    fn default() -> Gain {
+        Gain {}
+    }
+}
+
 impl Plugin for Gain {
     type Processor = GainProcessor;
     type Editor = GainEditor;
@@ -41,11 +47,7 @@ impl Plugin for Gain {
         }
     }
 
-    fn create() -> Self {
-        Gain {}
-    }
-
-    fn set_param(&self, id: ParamId, value: ParamValue) {}
+    fn set_param(&mut self, id: ParamId, value: ParamValue) {}
 
     fn get_param(&self, id: ParamId) -> ParamValue {
         0.0
@@ -55,8 +57,16 @@ impl Plugin for Gain {
         Ok(())
     }
 
-    fn load(&self, input: &mut impl Read) -> io::Result<()> {
+    fn load(&mut self, input: &mut impl Read) -> io::Result<()> {
         Ok(())
+    }
+
+    fn processor(&self, config: Config) -> Self::Processor {
+        GainProcessor {}
+    }
+
+    fn editor(&self, context: EditorContext, parent: &ParentWindow) -> GainEditor {
+        GainEditor {}
     }
 }
 
@@ -70,11 +80,7 @@ impl Vst3Plugin for Gain {
 
 pub struct GainProcessor {}
 
-impl Processor<Gain> for GainProcessor {
-    fn create(plugin: &Gain, config: Config) -> Self {
-        GainProcessor {}
-    }
-
+impl Processor for GainProcessor {
     fn set_param(&mut self, id: ParamId, value: ParamValue) {}
 
     fn reset(&mut self) {}
@@ -84,11 +90,7 @@ impl Processor<Gain> for GainProcessor {
 
 pub struct GainEditor {}
 
-impl Editor<Gain> for GainEditor {
-    fn create(plugin: &Gain, context: EditorContext, parent: &ParentWindow) -> Self {
-        GainEditor {}
-    }
-
+impl Editor for GainEditor {
     fn size(&self) -> Size {
         Size {}
     }

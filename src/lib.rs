@@ -22,16 +22,17 @@ pub struct PluginInfo {
     pub params: Vec<ParamInfo>,
 }
 
-pub trait Plugin: Send + Sync + Sized + 'static {
-    type Processor: Processor<Self>;
-    type Editor: Editor<Self>;
+pub trait Plugin: Default + Send + Sized + 'static {
+    type Processor: Processor;
+    type Editor: Editor;
 
     fn info() -> PluginInfo;
-    fn create() -> Self;
-    fn set_param(&self, id: ParamId, value: ParamValue);
+    fn set_param(&mut self, id: ParamId, value: ParamValue);
     fn get_param(&self, id: ParamId) -> ParamValue;
     fn save(&self, output: &mut impl Write) -> io::Result<()>;
-    fn load(&self, input: &mut impl Read) -> io::Result<()>;
+    fn load(&mut self, input: &mut impl Read) -> io::Result<()>;
+    fn processor(&self, config: Config) -> Self::Processor;
+    fn editor(&self, context: EditorContext, parent: &ParentWindow) -> Self::Editor;
 
     #[allow(unused_variables)]
     fn latency(&self, config: &Config) -> u64 {
@@ -48,8 +49,7 @@ pub struct Buffers {}
 
 pub struct Events {}
 
-pub trait Processor<P>: Send + Sized + 'static {
-    fn create(plugin: &P, config: Config) -> Self;
+pub trait Processor: Send + Sized + 'static {
     fn set_param(&mut self, id: ParamId, value: ParamValue);
     fn reset(&mut self);
     fn process(&mut self, buffers: Buffers, events: Events);
@@ -61,12 +61,11 @@ pub struct ParentWindow {}
 
 pub struct Size {}
 
-pub trait Editor<P>: Sized + 'static {
+pub trait Editor: Sized + 'static {
     fn exists() -> bool {
         true
     }
 
-    fn create(plugin: &P, context: EditorContext, parent: &ParentWindow) -> Self;
     fn size(&self) -> Size;
     fn set_param(&mut self, id: ParamId, value: ParamValue);
 }
