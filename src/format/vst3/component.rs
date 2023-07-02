@@ -42,7 +42,6 @@ fn unmap_param(param: &ParamInfo, value: ParamValue) -> ParamValue {
 
 struct MainThreadState<P> {
     layout: Layout,
-    param_values: Vec<ParamValue>,
     plugin: P,
 }
 
@@ -80,7 +79,6 @@ impl<P: Plugin> Component<P> {
             layout_set,
             main_thread_state: UnsafeCell::new(MainThreadState {
                 layout: info.layouts.first().unwrap().clone(),
-                param_values: info.params.iter().map(|p| p.default).collect(),
                 plugin: P::default(),
             }),
             process_state: UnsafeCell::new(ProcessState {
@@ -575,7 +573,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
 
         if let Some(&index) = self.param_map.get(&id) {
             let param = &self.info.params[index];
-            let value = main_thread_state.param_values[index];
+            let value = main_thread_state.plugin.get_param(id);
             return unmap_param(param, value);
         }
 
@@ -587,7 +585,8 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
 
         if let Some(&index) = self.param_map.get(&id) {
             let param = &self.info.params[index];
-            main_thread_state.param_values[index] = map_param(param, value);
+            let mapped = map_param(param, value);
+            main_thread_state.plugin.set_param(id, mapped);
             return kResultOk;
         }
 
