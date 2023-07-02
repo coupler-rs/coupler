@@ -3,11 +3,15 @@ use std::io::{self, Read, Write};
 use coupler::format::vst3::*;
 use coupler::{bus::*, param::*, *};
 
-pub struct Gain {}
+const GAIN: ParamId = 0;
+
+pub struct Gain {
+    gain: f64,
+}
 
 impl Default for Gain {
     fn default() -> Gain {
-        Gain {}
+        Gain { gain: 1.0 }
     }
 }
 
@@ -38,7 +42,7 @@ impl Plugin for Gain {
                 },
             ],
             params: vec![ParamInfo {
-                id: 0,
+                id: GAIN,
                 name: "Gain".to_string(),
                 default: 1.0,
                 range: Range::Continuous { min: 0.0, max: 1.0 },
@@ -47,17 +51,31 @@ impl Plugin for Gain {
         }
     }
 
-    fn set_param(&mut self, id: ParamId, value: ParamValue) {}
+    fn set_param(&mut self, id: ParamId, value: ParamValue) {
+        match id {
+            GAIN => self.gain = value,
+            _ => {}
+        }
+    }
 
     fn get_param(&self, id: ParamId) -> ParamValue {
-        0.0
+        match id {
+            GAIN => self.gain,
+            _ => 0.0,
+        }
     }
 
     fn save(&self, output: &mut impl Write) -> io::Result<()> {
+        output.write(&self.gain.to_le_bytes())?;
+
         Ok(())
     }
 
     fn load(&mut self, input: &mut impl Read) -> io::Result<()> {
+        let mut buf = [0; std::mem::size_of::<f64>()];
+        input.read_exact(&mut buf)?;
+        self.gain = f64::from_le_bytes(buf);
+
         Ok(())
     }
 
