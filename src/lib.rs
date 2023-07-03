@@ -40,6 +40,7 @@ pub trait Plugin: Default + Send + Sized + 'static {
     }
 }
 
+#[derive(Clone)]
 pub struct Config {
     pub layout: Layout,
     pub sample_rate: f64,

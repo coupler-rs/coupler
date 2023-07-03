@@ -41,14 +41,13 @@ fn unmap_param(param: &ParamInfo, value: ParamValue) -> ParamValue {
 }
 
 struct MainThreadState<P> {
-    layout: Layout,
+    config: Config,
     plugin: P,
 }
 
 struct ProcessState<P: Plugin> {
     inputs_active: Vec<bool>,
     outputs_active: Vec<bool>,
-    sample_rate: f64,
     processor: Option<P::Processor>,
 }
 
@@ -78,13 +77,15 @@ impl<P: Plugin> Component<P> {
             param_map,
             layout_set,
             main_thread_state: UnsafeCell::new(MainThreadState {
-                layout: info.layouts.first().unwrap().clone(),
+                config: Config {
+                    layout: info.layouts.first().unwrap().clone(),
+                    sample_rate: 0.0,
+                },
                 plugin: P::default(),
             }),
             process_state: UnsafeCell::new(ProcessState {
                 inputs_active: vec![true; info.inputs.len()],
                 outputs_active: vec![true; info.outputs.len()],
-                sample_rate: 0.0,
                 processor: None,
             }),
         }
@@ -145,12 +146,12 @@ impl<P: Plugin> IComponentTrait for Component<P> {
                 let (info, format) = match dir as BusDirections {
                     BusDirections_::kInput => {
                         let info = self.info.inputs.get(index as usize);
-                        let format = main_thread_state.layout.inputs.get(index as usize);
+                        let format = main_thread_state.config.layout.inputs.get(index as usize);
                         (info, format)
                     }
                     BusDirections_::kOutput => {
                         let info = self.info.outputs.get(index as usize);
-                        let format = main_thread_state.layout.outputs.get(index as usize);
+                        let format = main_thread_state.config.layout.outputs.get(index as usize);
                         (info, format)
                     }
                     _ => return kInvalidArgument,
@@ -227,11 +228,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
         if state == 0 {
             process_state.processor = None;
         } else {
-            let config = Config {
-                layout: main_thread_state.layout.clone(),
-                sample_rate: process_state.sample_rate,
-            };
-
+            let config = main_thread_state.config.clone();
             process_state.processor = Some(main_thread_state.plugin.processor(config));
         }
 
@@ -347,7 +344,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
 
         if self.layout_set.contains(&candidate) {
             let main_thread_state = &mut *self.main_thread_state.get();
-            main_thread_state.layout = candidate;
+            main_thread_state.config.layout = candidate;
             return kResultTrue;
         }
 
@@ -364,13 +361,13 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
 
         match dir as BusDirections {
             BusDirections_::kInput => {
-                if let Some(format) = main_thread_state.layout.inputs.get(index as usize) {
+                if let Some(format) = main_thread_state.config.layout.inputs.get(index as usize) {
                     *arr = format_to_speaker_arrangement(format);
                     return kResultOk;
                 }
             }
             BusDirections_::kOutput => {
-                if let Some(format) = main_thread_state.layout.outputs.get(index as usize) {
+                if let Some(format) = main_thread_state.config.layout.outputs.get(index as usize) {
                     *arr = format_to_speaker_arrangement(format);
                     return kResultOk;
                 }
@@ -394,10 +391,10 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
     }
 
     unsafe fn setupProcessing(&self, setup: *mut ProcessSetup) -> tresult {
-        let process_state = &mut *self.process_state.get();
+        let main_thread_state = &mut *self.main_thread_state.get();
 
         let setup = &*setup;
-        process_state.sample_rate = setup.sampleRate;
+        main_thread_state.config.sample_rate = setup.sampleRate;
 
         kResultOk
     }
