@@ -1,9 +1,11 @@
 use std::io::{self, Read, Write};
 
+pub mod buffers;
 pub mod bus;
 pub mod format;
 pub mod param;
 
+use buffers::Buffers;
 use bus::{BusInfo, Layout};
 use param::ParamInfo;
 
@@ -45,8 +47,6 @@ pub struct Config {
     pub layout: Layout,
     pub sample_rate: f64,
 }
-
-pub struct Buffers {}
 
 pub struct Events {}
 
