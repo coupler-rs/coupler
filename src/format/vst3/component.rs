@@ -387,7 +387,9 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
     }
 
     unsafe fn getLatencySamples(&self) -> uint32 {
-        0
+        let main_thread_state = &mut *self.main_thread_state.get();
+
+        main_thread_state.plugin.latency(&main_thread_state.config) as uint32
     }
 
     unsafe fn setupProcessing(&self, setup: *mut ProcessSetup) -> tresult {
