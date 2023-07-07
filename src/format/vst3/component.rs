@@ -163,7 +163,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
 
                     bus.mediaType = type_;
                     bus.direction = dir;
-                    bus.channelCount = format.channels() as int32;
+                    bus.channelCount = format.channel_count() as int32;
                     copy_wstring(&info.name, &mut bus.name);
                     bus.busType = if index == 0 {
                         BusTypes_::kMain as BusType

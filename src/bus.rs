@@ -15,7 +15,7 @@ pub enum Format {
 }
 
 impl Format {
-    pub fn channels(&self) -> usize {
+    pub fn channel_count(&self) -> usize {
         match self {
             Format::Mono => 1,
             Format::Stereo => 2,
