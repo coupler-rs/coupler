@@ -46,6 +46,7 @@ pub trait Plugin: Default + Send + Sized + 'static {
 pub struct Config {
     pub layout: Layout,
     pub sample_rate: f64,
+    pub max_buffer_size: usize,
 }
 
 pub struct Events {}

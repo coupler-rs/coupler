@@ -80,6 +80,7 @@ impl<P: Plugin> Component<P> {
                 config: Config {
                     layout: info.layouts.first().unwrap().clone(),
                     sample_rate: 0.0,
+                    max_buffer_size: 0,
                 },
                 plugin: P::default(),
             }),
@@ -397,6 +398,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
 
         let setup = &*setup;
         main_thread_state.config.sample_rate = setup.sampleRate;
+        main_thread_state.config.max_buffer_size = setup.maxSamplesPerBlock as usize;
 
         kResultOk
     }
