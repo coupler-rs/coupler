@@ -41,3 +41,11 @@ pub unsafe fn utf16_from_ptr<'a>(ptr: *const char16) -> &'a [u16] {
 
     slice::from_raw_parts(ptr as *const u16, len)
 }
+
+pub unsafe fn slice_from_raw_parts_checked<'a, T>(ptr: *const T, len: usize) -> &'a [T] {
+    if len > 0 {
+        slice::from_raw_parts(ptr, len)
+    } else {
+        &[]
+    }
+}

@@ -1,12 +1,12 @@
 use std::cell::UnsafeCell;
 use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
+use std::ptr;
 use std::sync::Arc;
-use std::{ptr, slice};
 
 use vst3_bindgen::{Class, ComRef, Steinberg::Vst::*, Steinberg::*};
 
-use super::util::{copy_wstring, utf16_from_ptr};
+use super::util::{copy_wstring, slice_from_raw_parts_checked, utf16_from_ptr};
 use crate::bus::{Format, Layout};
 use crate::param::{ParamInfo, Range};
 use crate::{Config, ParamId, Plugin, PluginInfo, Processor};
@@ -321,25 +321,21 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
             outputs: Vec::new(),
         };
 
-        if numIns > 0 {
-            let inputs = slice::from_raw_parts(inputs, numIns as usize);
-            for input in inputs {
-                if let Some(format) = speaker_arrangement_to_format(*input) {
-                    candidate.inputs.push(format);
-                } else {
-                    return kResultFalse;
-                }
+        let inputs = slice_from_raw_parts_checked(inputs, numIns as usize);
+        for input in inputs {
+            if let Some(format) = speaker_arrangement_to_format(*input) {
+                candidate.inputs.push(format);
+            } else {
+                return kResultFalse;
             }
         }
 
-        if numOuts > 0 {
-            let outputs = slice::from_raw_parts(outputs, numOuts as usize);
-            for output in outputs {
-                if let Some(format) = speaker_arrangement_to_format(*output) {
-                    candidate.outputs.push(format);
-                } else {
-                    return kResultFalse;
-                }
+        let outputs = slice_from_raw_parts_checked(outputs, numOuts as usize);
+        for output in outputs {
+            if let Some(format) = speaker_arrangement_to_format(*output) {
+                candidate.outputs.push(format);
+            } else {
+                return kResultFalse;
             }
         }
 
