@@ -80,7 +80,9 @@ impl Plugin for Gain {
     }
 
     fn processor(&self, config: Config) -> Self::Processor {
-        GainProcessor {}
+        GainProcessor {
+            gain: self.gain as f32,
+        }
     }
 
     fn editor(&self, context: EditorContext, parent: &ParentWindow) -> GainEditor {
@@ -96,14 +98,31 @@ impl Vst3Plugin for Gain {
     }
 }
 
-pub struct GainProcessor {}
+pub struct GainProcessor {
+    gain: f32,
+}
 
 impl Processor for GainProcessor {
-    fn set_param(&mut self, id: ParamId, value: ParamValue) {}
+    fn set_param(&mut self, id: ParamId, value: ParamValue) {
+        match id {
+            GAIN => self.gain = value as f32,
+            _ => {}
+        }
+    }
 
     fn reset(&mut self) {}
 
-    fn process(&mut self, buffers: Buffers, events: Events) {}
+    fn process(&mut self, mut buffers: Buffers, events: Events) {
+        let (inputs, outputs) = buffers.split();
+        let input = inputs.get(0).unwrap();
+        let mut output = outputs.get(0).unwrap();
+
+        for i in 0..input.channel_count() {
+            for (in_sample, out_sample) in input[i].iter().zip(&mut output[i]) {
+                *out_sample = self.gain * in_sample;
+            }
+        }
+    }
 }
 
 pub struct GainEditor {}
