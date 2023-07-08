@@ -416,7 +416,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
     unsafe fn process(&self, data: *mut ProcessData) -> tresult {
         let process_state = &mut *self.process_state.get();
 
-        let Some(_processor) = &mut process_state.processor else {
+        let Some(processor) = &mut process_state.processor else {
             return kNotInitialized;
         };
 
@@ -445,7 +445,8 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
                         continue;
                     }
 
-                    let _value = map_param(param, value_normalized);
+                    let value = map_param(param, value_normalized);
+                    processor.set_param(id, value);
                 }
             }
         }
