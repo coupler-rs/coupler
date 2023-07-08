@@ -4,6 +4,7 @@ use std::ffi::c_void;
 
 use vst3_bindgen::{ComWrapper, Steinberg::IPluginFactory};
 
+mod buffers;
 mod component;
 mod factory;
 mod util;

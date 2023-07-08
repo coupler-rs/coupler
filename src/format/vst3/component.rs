@@ -6,10 +6,11 @@ use std::sync::Arc;
 
 use vst3_bindgen::{Class, ComRef, Steinberg::Vst::*, Steinberg::*};
 
+use super::buffers::ScratchBuffers;
 use super::util::{copy_wstring, slice_from_raw_parts_checked, utf16_from_ptr};
 use crate::bus::{Format, Layout};
 use crate::param::{ParamInfo, Range};
-use crate::{Config, ParamId, Plugin, PluginInfo, Processor};
+use crate::{Config, Events, ParamId, Plugin, PluginInfo, Processor};
 
 fn format_to_speaker_arrangement(format: &Format) -> SpeakerArrangement {
     match format {
@@ -46,8 +47,10 @@ struct MainThreadState<P> {
 }
 
 struct ProcessState<P: Plugin> {
+    config: Config,
     inputs_active: Vec<bool>,
     outputs_active: Vec<bool>,
+    scratch_buffers: ScratchBuffers,
     processor: Option<P::Processor>,
 }
 
@@ -72,21 +75,25 @@ impl<P: Plugin> Component<P> {
 
         let layout_set = info.layouts.iter().cloned().collect::<HashSet<_>>();
 
+        let config = Config {
+            layout: info.layouts.first().unwrap().clone(),
+            sample_rate: 0.0,
+            max_buffer_size: 0,
+        };
+
         Component {
             info: info.clone(),
             param_map,
             layout_set,
             main_thread_state: UnsafeCell::new(MainThreadState {
-                config: Config {
-                    layout: info.layouts.first().unwrap().clone(),
-                    sample_rate: 0.0,
-                    max_buffer_size: 0,
-                },
+                config: config.clone(),
                 plugin: P::default(),
             }),
             process_state: UnsafeCell::new(ProcessState {
+                config,
                 inputs_active: vec![true; info.inputs.len()],
                 outputs_active: vec![true; info.outputs.len()],
+                scratch_buffers: ScratchBuffers::new(),
                 processor: None,
             }),
         }
@@ -230,6 +237,8 @@ impl<P: Plugin> IComponentTrait for Component<P> {
             process_state.processor = None;
         } else {
             let config = main_thread_state.config.clone();
+            process_state.config = config.clone();
+            process_state.scratch_buffers.resize(&config);
             process_state.processor = Some(main_thread_state.plugin.processor(config));
         }
 
@@ -421,6 +430,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         };
 
         let data = &*data;
+
         if let Some(param_changes) = ComRef::from_raw(data.inputParameterChanges) {
             for index in 0..param_changes.getParameterCount() {
                 let param_data = param_changes.getParameterData(index);
@@ -450,6 +460,17 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
                 }
             }
         }
+
+        let Ok(buffers) = process_state.scratch_buffers.get_buffers(
+            &process_state.config,
+            &process_state.inputs_active,
+            &process_state.outputs_active,
+            &data,
+        ) else {
+            return kInvalidArgument;
+        };
+
+        processor.process(buffers, Events {});
 
         kResultOk
     }
