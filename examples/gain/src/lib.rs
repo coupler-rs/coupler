@@ -79,13 +79,13 @@ impl Plugin for Gain {
         Ok(())
     }
 
-    fn processor(&self, config: Config) -> Self::Processor {
+    fn processor(&self, _config: Config) -> Self::Processor {
         GainProcessor {
             gain: self.gain as f32,
         }
     }
 
-    fn editor(&self, context: EditorContext, parent: &ParentWindow) -> GainEditor {
+    fn editor(&self, _context: EditorContext, _parent: &ParentWindow) -> GainEditor {
         GainEditor {}
     }
 }
@@ -112,7 +112,7 @@ impl Processor for GainProcessor {
 
     fn reset(&mut self) {}
 
-    fn process(&mut self, mut buffers: Buffers, events: Events) {
+    fn process(&mut self, mut buffers: Buffers, _events: Events) {
         let (inputs, outputs) = buffers.split();
         let input = inputs.get(0).unwrap();
         let mut output = outputs.get(0).unwrap();
@@ -132,5 +132,5 @@ impl Editor for GainEditor {
         Size {}
     }
 
-    fn set_param(&mut self, id: ParamId, value: ParamValue) {}
+    fn set_param(&mut self, _id: ParamId, _value: ParamValue) {}
 }
