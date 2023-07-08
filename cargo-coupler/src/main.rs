@@ -151,9 +151,8 @@ fn main() {
             let target = if let Some(target) = &cmd.target {
                 target.clone()
             } else {
-                let rustc_path = env::var("RUSTC")
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|_| PathBuf::from("rustc"));
+                let rustc_path =
+                    env::var("RUSTC").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("rustc"));
                 let mut rustc = Command::new(rustc_path);
                 rustc.args(&["--version", "--verbose"]);
 
@@ -327,10 +326,8 @@ fn main() {
             for &candidate in &candidates {
                 let package = &metadata.packages[candidate];
 
-                let has_cdylib = package
-                    .targets
-                    .iter()
-                    .any(|t| t.crate_types.iter().any(|c| c == "cdylib"));
+                let has_cdylib =
+                    package.targets.iter().any(|t| t.crate_types.iter().any(|c| c == "cdylib"));
 
                 let package_metadata: Option<PackageMetadata> =
                     match serde_json::from_value(package.metadata.clone()) {
@@ -378,11 +375,7 @@ fn main() {
                     if !package_formats.is_empty() {
                         packages_to_build.push(PackageInfo {
                             index: candidate,
-                            name: coupler_metadata
-                                .name
-                                .as_ref()
-                                .unwrap_or(&package.name)
-                                .clone(),
+                            name: coupler_metadata.name.as_ref().unwrap_or(&package.name).clone(),
                             formats: package_formats,
                         });
                     }
@@ -396,9 +389,8 @@ fn main() {
 
             // Invoke `cargo build`
 
-            let cargo_path = env::var("CARGO")
-                .map(PathBuf::from)
-                .unwrap_or_else(|_| PathBuf::from("cargo"));
+            let cargo_path =
+                env::var("CARGO").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("cargo"));
             let mut cargo = Command::new(cargo_path);
             cargo.arg("build");
 
