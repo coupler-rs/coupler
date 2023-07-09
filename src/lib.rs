@@ -2,11 +2,13 @@ use std::io::{self, Read, Write};
 
 pub mod buffers;
 pub mod bus;
+pub mod events;
 pub mod format;
 pub mod param;
 
 use buffers::Buffers;
 use bus::{BusInfo, Layout};
+use events::Events;
 use param::ParamInfo;
 
 pub type ParamId = u32;
@@ -48,8 +50,6 @@ pub struct Config {
     pub sample_rate: f64,
     pub max_buffer_size: usize,
 }
-
-pub struct Events {}
 
 pub trait Processor: Send + Sized + 'static {
     fn set_param(&mut self, id: ParamId, value: ParamValue);

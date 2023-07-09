@@ -1,7 +1,7 @@
 use std::io::{self, Read, Write};
 
 use coupler::format::vst3::*;
-use coupler::{buffers::*, bus::*, param::*, *};
+use coupler::{buffers::*, bus::*, param::*, events::*, *};
 
 const GAIN: ParamId = 0;
 

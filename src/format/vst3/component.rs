@@ -9,8 +9,9 @@ use vst3_bindgen::{Class, ComRef, Steinberg::Vst::*, Steinberg::*};
 use super::buffers::ScratchBuffers;
 use super::util::{copy_wstring, slice_from_raw_parts_checked, utf16_from_ptr};
 use crate::bus::{Format, Layout};
+use crate::events::Events;
 use crate::param::{ParamInfo, Range};
-use crate::{Config, Events, ParamId, Plugin, PluginInfo, Processor};
+use crate::{Config, ParamId, Plugin, PluginInfo, Processor};
 
 fn format_to_speaker_arrangement(format: &Format) -> SpeakerArrangement {
     match format {
@@ -470,7 +471,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
             return kInvalidArgument;
         };
 
-        processor.process(buffers, Events {});
+        processor.process(buffers, Events::new(&[]));
 
         kResultOk
     }
