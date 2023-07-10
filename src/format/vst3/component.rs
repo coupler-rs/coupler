@@ -11,7 +11,7 @@ use super::util::{copy_wstring, slice_from_raw_parts_checked, utf16_from_ptr};
 use crate::bus::{Format, Layout};
 use crate::events::{Data, Event, Events};
 use crate::param::{ParamInfo, Range};
-use crate::{Config, ParamId, Plugin, PluginInfo, Processor};
+use crate::{Config, ParamId, Plugin, PluginInfo, Processor, Host};
 
 fn format_to_speaker_arrangement(format: &Format) -> SpeakerArrangement {
     match format {
@@ -89,7 +89,7 @@ impl<P: Plugin> Component<P> {
             layout_set,
             main_thread_state: UnsafeCell::new(MainThreadState {
                 config: config.clone(),
-                plugin: P::default(),
+                plugin: P::new(Host {}),
             }),
             process_state: UnsafeCell::new(ProcessState {
                 config,

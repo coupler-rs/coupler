@@ -26,11 +26,14 @@ pub struct PluginInfo {
     pub params: Vec<ParamInfo>,
 }
 
-pub trait Plugin: Default + Send + Sized + 'static {
+pub struct Host {}
+
+pub trait Plugin: Send + Sized + 'static {
     type Processor: Processor;
     type Editor: Editor;
 
     fn info() -> PluginInfo;
+    fn new(host: Host) -> Self;
     fn set_param(&mut self, id: ParamId, value: ParamValue);
     fn get_param(&self, id: ParamId) -> ParamValue;
     fn save(&self, output: &mut impl Write) -> io::Result<()>;

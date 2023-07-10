@@ -9,12 +9,6 @@ pub struct Gain {
     gain: f64,
 }
 
-impl Default for Gain {
-    fn default() -> Gain {
-        Gain { gain: 1.0 }
-    }
-}
-
 impl Plugin for Gain {
     type Processor = GainProcessor;
     type Editor = GainEditor;
@@ -49,6 +43,10 @@ impl Plugin for Gain {
                 display: Box::new(Float),
             }],
         }
+    }
+
+    fn new(_host: Host) -> Self {
+        Gain { gain: 1.0 }
     }
 
     fn set_param(&mut self, id: ParamId, value: ParamValue) {
