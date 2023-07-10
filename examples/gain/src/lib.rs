@@ -83,7 +83,7 @@ impl Plugin for Gain {
         }
     }
 
-    fn editor(&self, _context: EditorContext, _parent: &ParentWindow) -> GainEditor {
+    fn editor(&self, _container: Container) -> GainEditor {
         GainEditor {}
     }
 }

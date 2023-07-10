@@ -39,7 +39,7 @@ pub trait Plugin: Send + Sized + 'static {
     fn save(&self, output: &mut impl Write) -> io::Result<()>;
     fn load(&mut self, input: &mut impl Read) -> io::Result<()>;
     fn processor(&self, config: Config) -> Self::Processor;
-    fn editor(&self, context: EditorContext, parent: &ParentWindow) -> Self::Editor;
+    fn editor(&self, container: Container) -> Self::Editor;
 
     #[allow(unused_variables)]
     fn latency(&self, config: &Config) -> u64 {
@@ -60,9 +60,7 @@ pub trait Processor: Send + Sized + 'static {
     fn process(&mut self, buffers: Buffers, events: Events);
 }
 
-pub struct EditorContext {}
-
-pub struct ParentWindow {}
+pub struct Container {}
 
 pub struct Size {}
 
