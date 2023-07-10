@@ -1,7 +1,7 @@
 use std::io::{self, Read, Write};
 
 use coupler::format::vst3::*;
-use coupler::{buffers::*, bus::*, param::*, events::*, *};
+use coupler::{buffers::*, bus::*, events::*, param::*, *};
 
 const GAIN: ParamId = 0;
 
@@ -112,7 +112,16 @@ impl Processor for GainProcessor {
 
     fn reset(&mut self) {}
 
-    fn process(&mut self, mut buffers: Buffers, _events: Events) {
+    fn process(&mut self, mut buffers: Buffers, events: Events) {
+        for event in events {
+            match event.data {
+                Data::ParamChange { id, value } => {
+                    self.set_param(id, value);
+                }
+                _ => {}
+            }
+        }
+
         let (inputs, outputs) = buffers.split();
         let input = inputs.get(0).unwrap();
         let mut output = outputs.get(0).unwrap();

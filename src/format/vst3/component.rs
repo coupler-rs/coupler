@@ -9,7 +9,7 @@ use vst3_bindgen::{Class, ComRef, Steinberg::Vst::*, Steinberg::*};
 use super::buffers::ScratchBuffers;
 use super::util::{copy_wstring, slice_from_raw_parts_checked, utf16_from_ptr};
 use crate::bus::{Format, Layout};
-use crate::events::Events;
+use crate::events::{Data, Event, Events};
 use crate::param::{ParamInfo, Range};
 use crate::{Config, ParamId, Plugin, PluginInfo, Processor};
 
@@ -52,6 +52,7 @@ struct ProcessState<P: Plugin> {
     inputs_active: Vec<bool>,
     outputs_active: Vec<bool>,
     scratch_buffers: ScratchBuffers,
+    events: Vec<Event>,
     processor: Option<P::Processor>,
 }
 
@@ -95,6 +96,7 @@ impl<P: Plugin> Component<P> {
                 inputs_active: vec![true; info.inputs.len()],
                 outputs_active: vec![true; info.outputs.len()],
                 scratch_buffers: ScratchBuffers::new(),
+                events: Vec::with_capacity(4096),
                 processor: None,
             }),
         }
@@ -432,6 +434,17 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
 
         let data = &*data;
 
+        let Ok(buffers) = process_state.scratch_buffers.get_buffers(
+            &process_state.config,
+            &process_state.inputs_active,
+            &process_state.outputs_active,
+            &data,
+        ) else {
+            return kInvalidArgument;
+        };
+
+        process_state.events.clear();
+
         if let Some(param_changes) = ComRef::from_raw(data.inputParameterChanges) {
             for index in 0..param_changes.getParameterCount() {
                 let param_data = param_changes.getParameterData(index);
@@ -457,21 +470,15 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
                     }
 
                     let value = map_param(param, value_normalized);
-                    processor.set_param(id, value);
+                    process_state.events.push(Event {
+                        time: offset as i64,
+                        data: Data::ParamChange { id, value },
+                    });
                 }
             }
         }
 
-        let Ok(buffers) = process_state.scratch_buffers.get_buffers(
-            &process_state.config,
-            &process_state.inputs_active,
-            &process_state.outputs_active,
-            &data,
-        ) else {
-            return kInvalidArgument;
-        };
-
-        processor.process(buffers, Events::new(&[]));
+        processor.process(buffers, Events::new(&process_state.events));
 
         kResultOk
     }
