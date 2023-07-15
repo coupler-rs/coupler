@@ -8,10 +8,10 @@ use vst3_bindgen::{Class, ComRef, Steinberg::Vst::*, Steinberg::*};
 
 use super::buffers::ScratchBuffers;
 use super::util::{copy_wstring, slice_from_raw_parts_checked, utf16_from_ptr};
-use crate::bus::{Format, Layout};
+use crate::bus::{BusDir, Format, Layout};
 use crate::events::{Data, Event, Events};
 use crate::param::{ParamInfo, Range};
-use crate::{Config, ParamId, Plugin, PluginInfo, Processor, Host};
+use crate::{Config, Host, ParamId, Plugin, PluginInfo, Processor};
 
 fn format_to_speaker_arrangement(format: &Format) -> SpeakerArrangement {
     match format {
@@ -58,8 +58,10 @@ struct ProcessState<P: Plugin> {
 
 pub struct Component<P: Plugin> {
     info: Arc<PluginInfo>,
-    param_map: HashMap<ParamId, usize>,
+    input_bus_map: Vec<usize>,
+    output_bus_map: Vec<usize>,
     layout_set: HashSet<Layout>,
+    param_map: HashMap<ParamId, usize>,
     // References to MainThreadState may only be formed from the main thread.
     main_thread_state: UnsafeCell<MainThreadState<P>>,
     // When the audio processor is *not* active, references to ProcessState may only be formed from
@@ -70,12 +72,21 @@ pub struct Component<P: Plugin> {
 
 impl<P: Plugin> Component<P> {
     pub fn new(info: &Arc<PluginInfo>) -> Component<P> {
+        let mut input_bus_map = Vec::new();
+        let mut output_bus_map = Vec::new();
+        for (index, bus) in info.buses.iter().enumerate() {
+            match bus.dir {
+                BusDir::In => input_bus_map.push(index),
+                BusDir::Out => output_bus_map.push(index),
+            }
+        }
+
+        let layout_set = info.layouts.iter().cloned().collect::<HashSet<_>>();
+
         let mut param_map = HashMap::new();
         for (index, param) in info.params.iter().enumerate() {
             param_map.insert(param.id, index);
         }
-
-        let layout_set = info.layouts.iter().cloned().collect::<HashSet<_>>();
 
         let config = Config {
             layout: info.layouts.first().unwrap().clone(),
@@ -83,18 +94,23 @@ impl<P: Plugin> Component<P> {
             max_buffer_size: 0,
         };
 
+        let inputs_active = vec![true; input_bus_map.len()];
+        let outputs_active = vec![true; output_bus_map.len()];
+
         Component {
             info: info.clone(),
-            param_map,
+            input_bus_map,
+            output_bus_map,
             layout_set,
+            param_map,
             main_thread_state: UnsafeCell::new(MainThreadState {
                 config: config.clone(),
                 plugin: P::new(Host {}),
             }),
             process_state: UnsafeCell::new(ProcessState {
                 config,
-                inputs_active: vec![true; info.inputs.len()],
-                outputs_active: vec![true; info.outputs.len()],
+                inputs_active,
+                outputs_active,
                 scratch_buffers: ScratchBuffers::new(),
                 events: Vec::with_capacity(4096),
                 processor: None,
@@ -134,8 +150,8 @@ impl<P: Plugin> IComponentTrait for Component<P> {
     unsafe fn getBusCount(&self, type_: MediaType, dir: BusDirection) -> int32 {
         match type_ as MediaTypes {
             MediaTypes_::kAudio => match dir as BusDirections {
-                BusDirections_::kInput => self.info.inputs.len() as int32,
-                BusDirections_::kOutput => self.info.outputs.len() as int32,
+                BusDirections_::kInput => self.input_bus_map.len() as int32,
+                BusDirections_::kOutput => self.output_bus_map.len() as int32,
                 _ => 0,
             },
             MediaTypes_::kEvent => 0,
@@ -154,35 +170,32 @@ impl<P: Plugin> IComponentTrait for Component<P> {
 
         match type_ as MediaTypes {
             MediaTypes_::kAudio => {
-                let (info, format) = match dir as BusDirections {
-                    BusDirections_::kInput => {
-                        let info = self.info.inputs.get(index as usize);
-                        let format = main_thread_state.config.layout.inputs.get(index as usize);
-                        (info, format)
-                    }
-                    BusDirections_::kOutput => {
-                        let info = self.info.outputs.get(index as usize);
-                        let format = main_thread_state.config.layout.outputs.get(index as usize);
-                        (info, format)
-                    }
+                let bus_index = match dir as BusDirections {
+                    BusDirections_::kInput => self.input_bus_map.get(index as usize),
+                    BusDirections_::kOutput => self.output_bus_map.get(index as usize),
                     _ => return kInvalidArgument,
                 };
 
-                if let (Some(info), Some(format)) = (info, format) {
-                    let bus = &mut *bus;
+                if let Some(&bus_index) = bus_index {
+                    let info = self.info.buses.get(bus_index);
+                    let format = main_thread_state.config.layout.formats.get(bus_index);
 
-                    bus.mediaType = type_;
-                    bus.direction = dir;
-                    bus.channelCount = format.channel_count() as int32;
-                    copy_wstring(&info.name, &mut bus.name);
-                    bus.busType = if index == 0 {
-                        BusTypes_::kMain as BusType
-                    } else {
-                        BusTypes_::kAux as BusType
-                    };
-                    bus.flags = BusInfo_::BusFlags_::kDefaultActive as uint32;
+                    if let (Some(info), Some(format)) = (info, format) {
+                        let bus = &mut *bus;
 
-                    return kResultOk;
+                        bus.mediaType = type_;
+                        bus.direction = dir;
+                        bus.channelCount = format.channel_count() as int32;
+                        copy_wstring(&info.name, &mut bus.name);
+                        bus.busType = if index == 0 {
+                            BusTypes_::kMain as BusType
+                        } else {
+                            BusTypes_::kAux as BusType
+                        };
+                        bus.flags = BusInfo_::BusFlags_::kDefaultActive as uint32;
+
+                        return kResultOk;
+                    }
                 }
             }
             MediaTypes_::kEvent => {}
@@ -241,7 +254,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
         } else {
             let config = main_thread_state.config.clone();
             process_state.config = config.clone();
-            process_state.scratch_buffers.resize(&config);
+            process_state.scratch_buffers.resize(&self.info.buses, &config);
             process_state.processor = Some(main_thread_state.plugin.processor(config));
         }
 
@@ -323,29 +336,26 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         outputs: *mut SpeakerArrangement,
         numOuts: int32,
     ) -> tresult {
-        if numIns as usize != self.info.inputs.len() || numOuts as usize != self.info.outputs.len()
-        {
+        let input_count = numIns as usize;
+        let output_count = numOuts as usize;
+        if input_count != self.input_bus_map.len() || output_count != self.output_bus_map.len() {
             return kInvalidArgument;
         }
 
         let mut candidate = Layout {
-            inputs: Vec::new(),
-            outputs: Vec::new(),
+            formats: Vec::new(),
         };
 
-        let inputs = slice_from_raw_parts_checked(inputs, numIns as usize);
-        for input in inputs {
-            if let Some(format) = speaker_arrangement_to_format(*input) {
-                candidate.inputs.push(format);
-            } else {
-                return kResultFalse;
-            }
-        }
+        let mut inputs = slice_from_raw_parts_checked(inputs, input_count).into_iter();
+        let mut outputs = slice_from_raw_parts_checked(outputs, output_count).into_iter();
+        for bus in &self.info.buses {
+            let arrangement = match bus.dir {
+                BusDir::In => *inputs.next().unwrap(),
+                BusDir::Out => *outputs.next().unwrap(),
+            };
 
-        let outputs = slice_from_raw_parts_checked(outputs, numOuts as usize);
-        for output in outputs {
-            if let Some(format) = speaker_arrangement_to_format(*output) {
-                candidate.outputs.push(format);
+            if let Some(format) = speaker_arrangement_to_format(arrangement) {
+                candidate.formats.push(format);
             } else {
                 return kResultFalse;
             }
@@ -368,21 +378,18 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
     ) -> tresult {
         let main_thread_state = &mut *self.main_thread_state.get();
 
-        match dir as BusDirections {
-            BusDirections_::kInput => {
-                if let Some(format) = main_thread_state.config.layout.inputs.get(index as usize) {
-                    *arr = format_to_speaker_arrangement(format);
-                    return kResultOk;
-                }
-            }
-            BusDirections_::kOutput => {
-                if let Some(format) = main_thread_state.config.layout.outputs.get(index as usize) {
-                    *arr = format_to_speaker_arrangement(format);
-                    return kResultOk;
-                }
-            }
-            _ => {}
+        let bus_index = match dir as BusDirections {
+            BusDirections_::kInput => self.input_bus_map.get(index as usize),
+            BusDirections_::kOutput => self.output_bus_map.get(index as usize),
+            _ => return kInvalidArgument,
         };
+
+        if let Some(&bus_index) = bus_index {
+            if let Some(format) = main_thread_state.config.layout.formats.get(bus_index as usize) {
+                *arr = format_to_speaker_arrangement(format);
+                return kResultOk;
+            }
+        }
 
         kInvalidArgument
     }
@@ -435,6 +442,9 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         let data = &*data;
 
         let Ok(buffers) = process_state.scratch_buffers.get_buffers(
+            &self.info.buses,
+            &self.input_bus_map,
+            &self.output_bus_map,
             &process_state.config,
             &process_state.inputs_active,
             &process_state.outputs_active,

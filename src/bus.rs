@@ -1,11 +1,17 @@
+#[derive(Copy, Clone)]
+pub enum BusDir {
+    In,
+    Out,
+}
+
 pub struct BusInfo {
     pub name: String,
+    pub dir: BusDir,
 }
 
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub struct Layout {
-    pub inputs: Vec<Format>,
-    pub outputs: Vec<Format>,
+    pub formats: Vec<Format>,
 }
 
 #[derive(Clone, Eq, PartialEq, Hash)]

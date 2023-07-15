@@ -19,20 +19,22 @@ impl Plugin for Gain {
             vendor: "Vendor".to_string(),
             url: "https://example.com".to_string(),
             email: "example@example.com".to_string(),
-            inputs: vec![BusInfo {
-                name: "Input".to_string(),
-            }],
-            outputs: vec![BusInfo {
-                name: "Output".to_string(),
-            }],
+            buses: vec![
+                BusInfo {
+                    name: "Input".to_string(),
+                    dir: BusDir::In,
+                },
+                BusInfo {
+                    name: "Output".to_string(),
+                    dir: BusDir::Out,
+                },
+            ],
             layouts: vec![
                 Layout {
-                    inputs: vec![Format::Stereo],
-                    outputs: vec![Format::Stereo],
+                    formats: vec![Format::Stereo, Format::Stereo],
                 },
                 Layout {
-                    inputs: vec![Format::Mono],
-                    outputs: vec![Format::Mono],
+                    formats: vec![Format::Mono, Format::Mono],
                 },
             ],
             params: vec![ParamInfo {
@@ -120,9 +122,13 @@ impl Processor for GainProcessor {
             }
         }
 
-        let (inputs, outputs) = buffers.split();
-        let input = inputs.get(0).unwrap();
-        let mut output = outputs.get(0).unwrap();
+        let mut buses = buffers.into_iter();
+        let Some(BufferDir::In(input)) = buses.next() else {
+            unreachable!();
+        };
+        let Some(BufferDir::Out(mut output)) = buses.next() else {
+            unreachable!();
+        };
 
         for i in 0..input.channel_count() {
             for (in_sample, out_sample) in input[i].iter().zip(&mut output[i]) {

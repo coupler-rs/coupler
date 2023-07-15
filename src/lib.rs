@@ -20,8 +20,7 @@ pub struct PluginInfo {
     pub vendor: String,
     pub url: String,
     pub email: String,
-    pub inputs: Vec<BusInfo>,
-    pub outputs: Vec<BusInfo>,
+    pub buses: Vec<BusInfo>,
     pub layouts: Vec<Layout>,
     pub params: Vec<ParamInfo>,
 }
