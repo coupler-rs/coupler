@@ -78,6 +78,10 @@ impl<P: Plugin> Component<P> {
             match bus.dir {
                 BusDir::In => input_bus_map.push(index),
                 BusDir::Out => output_bus_map.push(index),
+                BusDir::InOut => {
+                    input_bus_map.push(index);
+                    output_bus_map.push(index);
+                }
             }
         }
 
@@ -352,6 +356,14 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
             let arrangement = match bus.dir {
                 BusDir::In => *inputs.next().unwrap(),
                 BusDir::Out => *outputs.next().unwrap(),
+                BusDir::InOut => {
+                    let input_arrangement = *inputs.next().unwrap();
+                    let output_arrangement = *outputs.next().unwrap();
+                    if input_arrangement != output_arrangement {
+                        return kResultFalse;
+                    }
+                    output_arrangement
+                }
             };
 
             if let Some(format) = speaker_arrangement_to_format(arrangement) {
@@ -442,7 +454,6 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         let data = &*data;
 
         let Ok(buffers) = process_state.scratch_buffers.get_buffers(
-            &self.info.buses,
             &self.input_bus_map,
             &self.output_bus_map,
             &process_state.config,

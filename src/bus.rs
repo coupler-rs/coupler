@@ -1,7 +1,8 @@
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub enum BusDir {
     In,
     Out,
+    InOut,
 }
 
 pub struct BusInfo {

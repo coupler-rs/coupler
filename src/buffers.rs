@@ -7,6 +7,7 @@ use crate::bus::BusDir;
 pub enum BufferDir<'a, 'b> {
     In(Buffer<'a, 'b>),
     Out(BufferMut<'a, 'b>),
+    InOut(BufferMut<'a, 'b>),
 }
 
 impl<'a, 'b> BufferDir<'a, 'b> {
@@ -18,6 +19,7 @@ impl<'a, 'b> BufferDir<'a, 'b> {
         match dir {
             BusDir::In => BufferDir::In(Buffer::from_raw_parts(ptrs, len)),
             BusDir::Out => BufferDir::Out(BufferMut::from_raw_parts(ptrs, len)),
+            BusDir::InOut => BufferDir::InOut(BufferMut::from_raw_parts(ptrs, len)),
         }
     }
 }
