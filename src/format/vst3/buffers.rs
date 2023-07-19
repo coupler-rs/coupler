@@ -15,6 +15,7 @@ pub struct ScratchBuffers {
     buffers: Vec<f32>,
     silence: Vec<f32>,
     output_ptrs: Vec<*mut f32>,
+    moves: Vec<(*const f32, *mut f32)>,
 }
 
 impl ScratchBuffers {
@@ -25,6 +26,7 @@ impl ScratchBuffers {
             buffers: Vec::new(),
             silence: Vec::new(),
             output_ptrs: Vec::new(),
+            moves: Vec::new(),
         }
     }
 
@@ -32,6 +34,7 @@ impl ScratchBuffers {
         self.buses.clear();
         let mut total_channels = 0;
         let mut output_channels = 0;
+        let mut in_out_channels = 0;
         for (info, format) in zip(buses, &config.layout.formats) {
             let channel_count = format.channel_count();
 
@@ -45,11 +48,17 @@ impl ScratchBuffers {
             if info.dir == BusDir::Out || info.dir == BusDir::InOut {
                 output_channels += channel_count;
             }
+            if info.dir == BusDir::InOut {
+                in_out_channels += channel_count;
+            }
         }
 
-        // Each input buffer can be aliased by an output buffer, and each output buffer can belong
-        // to an inactive output bus.
-        let scratch_space = config.max_buffer_size * total_channels;
+        self.ptrs.resize(total_channels, NonNull::dangling().as_ptr());
+
+        // Each input buffer can be aliased by an output buffer, each output buffer can belong to an
+        // inactive bus, and each input provided to an in-out bus might need to be copied to
+        // scratch space temporarily while copying inputs to outputs.
+        let scratch_space = config.max_buffer_size * (total_channels + in_out_channels);
         self.buffers.resize(scratch_space, 0.0);
 
         // Silence buffer, to be used for inactive input buses
@@ -58,7 +67,8 @@ impl ScratchBuffers {
         self.output_ptrs.clear();
         self.output_ptrs.reserve(output_channels);
 
-        self.ptrs.resize(total_channels, NonNull::dangling().as_ptr());
+        self.moves.clear();
+        self.moves.reserve(in_out_channels);
     }
 
     pub unsafe fn get_buffers(
@@ -104,6 +114,7 @@ impl ScratchBuffers {
         }
 
         // Set up output pointers.
+        self.output_ptrs.clear();
         for (output_index, &bus_index) in output_bus_map.iter().enumerate() {
             let bus_data = &self.buses[bus_index];
             if outputs_active[output_index] {
@@ -114,6 +125,7 @@ impl ScratchBuffers {
                 );
 
                 self.ptrs[bus_data.start..bus_data.end].copy_from_slice(channels);
+                self.output_ptrs.extend_from_slice(&channels);
             } else {
                 // For inactive output buses, allocate a scratch buffer for each channel.
                 for ptr in &mut self.ptrs[bus_data.start..bus_data.end] {
@@ -125,67 +137,47 @@ impl ScratchBuffers {
             }
         }
 
+        // Sort the list of output pointers so that we can use binary search to check if input
+        // pointers are alised by output pointers.
+        self.output_ptrs.sort_unstable();
+
         // Set up input pointers.
-        let has_inputs = self.buses.iter().any(|bus| bus.dir == BusDir::In);
-        if has_inputs {
-            // Build a sorted list of output pointers, so that we can check for each input pointer
-            // whether it is aliased by an output pointer.
-            self.output_ptrs.clear();
-            for (output_index, output) in outputs.iter().enumerate() {
-                if outputs_active[output_index] {
+        for (input_index, &bus_index) in input_bus_map.iter().enumerate() {
+            let bus_data = &self.buses[bus_index];
+            if bus_data.dir == BusDir::In {
+                if inputs_active[input_index] {
+                    let input = &inputs[input_index];
                     let channels = slice_from_raw_parts_checked(
-                        output.__field0.channelBuffers32,
-                        output.numChannels as usize,
+                        input.__field0.channelBuffers32,
+                        input.numChannels as usize,
                     );
-                    self.output_ptrs.extend_from_slice(&channels);
-                }
-            }
-            self.output_ptrs.sort_unstable();
 
-            for (input_index, &bus_index) in input_bus_map.iter().enumerate() {
-                let bus_data = &self.buses[bus_index];
-                if bus_data.dir == BusDir::In {
-                    if inputs_active[input_index] {
-                        let input = &inputs[input_index];
-                        let channels = slice_from_raw_parts_checked(
-                            input.__field0.channelBuffers32,
-                            input.numChannels as usize,
-                        );
+                    let ptrs = &mut self.ptrs[bus_data.start..bus_data.end];
+                    for (&channel, ptr) in zip(channels, ptrs) {
+                        // If an input buffer is aliased by some output buffer, copy its contents to
+                        // a scratch buffer.
+                        if self.output_ptrs.binary_search(&channel).is_ok() {
+                            let (first, rest) = scratch.split_at_mut(len);
+                            scratch = rest;
 
-                        let ptrs = &mut self.ptrs[bus_data.start..bus_data.end];
-                        for (channel, ptr) in zip(channels, ptrs) {
-                            // If an input buffer is aliased by some output buffer, copy its
-                            // contents to a scratch buffer.
-                            if self.output_ptrs.binary_search(channel).is_err() {
-                                *ptr = *channel;
-                            } else {
-                                let (first, rest) = scratch.split_at_mut(len);
-                                scratch = rest;
-
-                                let input_slice = slice::from_raw_parts(*channel, len);
-                                first.copy_from_slice(input_slice);
-                                *ptr = first.as_mut_ptr();
-                            }
+                            let input_slice = slice::from_raw_parts(channel, len);
+                            first.copy_from_slice(input_slice);
+                            *ptr = first.as_mut_ptr();
+                        } else {
+                            *ptr = channel;
                         }
-                    } else {
-                        // For inactive input buses, provide pointers to the silence buffer.
-                        let silence = self.silence.as_ptr() as *mut f32;
-                        self.ptrs[bus_data.start..bus_data.end].fill(silence);
                     }
+                } else {
+                    // For inactive input buses, provide pointers to the silence buffer.
+                    let silence = self.silence.as_ptr() as *mut f32;
+                    self.ptrs[bus_data.start..bus_data.end].fill(silence);
                 }
             }
-
-            self.output_ptrs.clear();
         }
 
-        // For in-out buses, copy input buffers to corresponding output buffers where necessary.
-        //
-        // TODO: Detect the case where input buffers are aliased by non-corresponding output
-        // buffers. This can happen when the host is attempting to do in-place processing but the
-        // host and the plugin disagree on which input channels map to which output channels.
-        //
-        // When this is the case, we have to be careful to perform copies in the correct order such
-        // that inputs don't get overwritten. In the general case, this requires scratch space.
+        // If the host has passed us separate input and output buffers for an in-out bus, copy
+        // inputs to outputs.
+        self.moves.clear();
         for (input_index, &bus_index) in input_bus_map.iter().enumerate() {
             let bus_data = &self.buses[bus_index];
             if bus_data.dir == BusDir::InOut {
@@ -197,21 +189,42 @@ impl ScratchBuffers {
                     );
 
                     let ptrs = &self.ptrs[bus_data.start..bus_data.end];
-                    for (src, dst) in zip(channels, ptrs) {
+                    for (&src, &dst) in zip(channels, ptrs) {
+                        // Only perform a copy if input and output pointers are not equal.
                         if src != dst {
-                            let src = slice::from_raw_parts(*src, len);
-                            let dst = slice::from_raw_parts_mut(*dst, len);
-                            dst.copy_from_slice(src);
+                            // If an input buffer is aliased by an output buffer, we might overwrite
+                            // it when performing copies, so save its contents in a scratch
+                            // buffer.
+                            if self.output_ptrs.binary_search(&src).is_ok() {
+                                let (first, rest) = scratch.split_at_mut(len);
+                                scratch = rest;
+
+                                let input_slice = slice::from_raw_parts(src, len);
+                                first.copy_from_slice(input_slice);
+                                self.moves.push((first.as_ptr(), dst));
+                            } else {
+                                self.moves.push((src, dst));
+                            }
                         }
                     }
                 } else {
-                    for dst in &self.ptrs[bus_data.start..bus_data.end] {
-                        let dst = slice::from_raw_parts_mut(*dst, len);
-                        dst.fill(0.0);
+                    // For inactive input buses, copy from the silence buffer.
+                    for &dst in &self.ptrs[bus_data.start..bus_data.end] {
+                        self.moves.push((self.silence.as_ptr(), dst));
                     }
                 }
             }
         }
+
+        // Now that any aliased input buffers have been copied to scratch space, actually perform
+        // the copies.
+        for (src, dst) in self.moves.drain(..) {
+            let src = slice::from_raw_parts(src, len);
+            let dst = slice::from_raw_parts_mut(dst, len);
+            dst.copy_from_slice(src);
+        }
+
+        self.output_ptrs.clear();
 
         Ok(Buffers::from_raw_parts(&self.buses, &self.ptrs, len))
     }
