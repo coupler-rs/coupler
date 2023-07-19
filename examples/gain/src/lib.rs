@@ -19,12 +19,10 @@ impl Plugin for Gain {
             vendor: "Vendor".to_string(),
             url: "https://example.com".to_string(),
             email: "example@example.com".to_string(),
-            buses: vec![
-                BusInfo {
-                    name: "Main".to_string(),
-                    dir: BusDir::InOut,
-                },
-            ],
+            buses: vec![BusInfo {
+                name: "Main".to_string(),
+                dir: BusDir::InOut,
+            }],
             layouts: vec![
                 Layout {
                     formats: vec![Format::Stereo],
