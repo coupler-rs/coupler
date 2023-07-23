@@ -30,7 +30,10 @@ impl State {
     }
 }
 
-pub fn triple_buffer<T: Clone>(value: &T) -> (Writer<T>, Reader<T>) {
+pub fn triple_buffer<T, F>(f: F) -> (Writer<T>, Reader<T>)
+where
+    F: Fn() -> T,
+{
     let state = State::to_bits(State {
         unread: false,
         index: 2,
@@ -38,7 +41,7 @@ pub fn triple_buffer<T: Clone>(value: &T) -> (Writer<T>, Reader<T>) {
 
     let inner = Arc::new(Inner {
         state: AtomicU8::new(state),
-        data: array::from_fn(|_| UnsafeCell::new(value.clone())),
+        data: array::from_fn(|_| UnsafeCell::new(f())),
     });
 
     let writer = Writer {
