@@ -6,6 +6,8 @@ pub mod events;
 pub mod format;
 pub mod param;
 
+mod sync;
+
 use buffers::Buffers;
 use bus::{BusInfo, Layout};
 use events::Events;
