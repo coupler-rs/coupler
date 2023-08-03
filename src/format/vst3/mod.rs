@@ -7,6 +7,7 @@ use vst3_bindgen::{ComWrapper, Steinberg::IPluginFactory};
 mod buffers;
 mod component;
 mod factory;
+mod params;
 mod util;
 
 use crate::Plugin;

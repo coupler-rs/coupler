@@ -7,6 +7,7 @@ use std::sync::Arc;
 use vst3_bindgen::{Class, ComRef, Steinberg::Vst::*, Steinberg::*};
 
 use super::buffers::ScratchBuffers;
+use super::params::ParamValues;
 use super::util::{copy_wstring, slice_from_raw_parts_checked, utf16_from_ptr};
 use crate::bus::{BusDir, Format, Layout};
 use crate::events::{Data, Event, Events};
@@ -63,6 +64,7 @@ pub struct Component<P: Plugin> {
     output_bus_map: Vec<usize>,
     layout_set: HashSet<Layout>,
     param_map: HashMap<ParamId, usize>,
+    param_values: ParamValues,
     // References to MainThreadState may only be formed from the main thread.
     main_thread_state: UnsafeCell<MainThreadState<P>>,
     // When the audio processor is *not* active, references to ProcessState may only be formed from
@@ -110,6 +112,7 @@ impl<P: Plugin> Component<P> {
             output_bus_map,
             layout_set,
             param_map,
+            param_values: ParamValues::new(&info.params),
             main_thread_state: UnsafeCell::new(MainThreadState {
                 config: config.clone(),
                 plugin: P::new(Host {}),
@@ -257,6 +260,8 @@ impl<P: Plugin> IComponentTrait for Component<P> {
         let main_thread_state = &mut *self.main_thread_state.get();
         let process_state = &mut *self.process_state.get();
 
+        self.param_values.sync_plugin(&self.info.params, &mut main_thread_state.plugin);
+
         if state == 0 {
             process_state.processor = None;
         } else {
@@ -292,9 +297,12 @@ impl<P: Plugin> IComponentTrait for Component<P> {
         if let Some(state) = ComRef::from_raw(state) {
             let main_thread_state = &mut *self.main_thread_state.get();
 
+            self.param_values.sync_plugin(&self.info.params, &mut main_thread_state.plugin);
+
             if let Ok(_) = main_thread_state.plugin.load(&mut StreamReader(state)) {
                 for (index, param) in self.info.params.iter().enumerate() {
                     let value = main_thread_state.plugin.get_param(param.id);
+                    self.param_values.set_from_plugin(index, value);
                     main_thread_state.editor_params[index] = value;
                 }
 
@@ -330,7 +338,9 @@ impl<P: Plugin> IComponentTrait for Component<P> {
         }
 
         if let Some(state) = ComRef::from_raw(state) {
-            let main_thread_state = &*self.main_thread_state.get();
+            let main_thread_state = &mut *self.main_thread_state.get();
+
+            self.param_values.sync_plugin(&self.info.params, &mut main_thread_state.plugin);
 
             if let Ok(_) = main_thread_state.plugin.save(&mut StreamWriter(state)) {
                 return kResultOk;
@@ -426,6 +436,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
     unsafe fn getLatencySamples(&self) -> uint32 {
         let main_thread_state = &mut *self.main_thread_state.get();
 
+        self.param_values.sync_plugin(&self.info.params, &mut main_thread_state.plugin);
         main_thread_state.plugin.latency(&main_thread_state.config) as uint32
     }
 
@@ -442,15 +453,16 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
     unsafe fn setProcessing(&self, state: TBool) -> tresult {
         let process_state = &mut *self.process_state.get();
 
-        if let Some(processor) = &mut process_state.processor {
-            if state == 0 {
-                processor.reset();
-            }
+        let Some(processor) = &mut process_state.processor else {
+            return kNotInitialized;
+        };
 
-            return kResultOk;
+        if state == 0 {
+            self.param_values.sync_processor(&self.info.params, processor);
+            processor.reset();
         }
 
-        kNotInitialized
+        kResultOk
     }
 
     unsafe fn process(&self, data: *mut ProcessData) -> tresult {
@@ -459,6 +471,8 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         let Some(processor) = &mut process_state.processor else {
             return kNotInitialized;
         };
+
+        self.param_values.sync_processor(&self.info.params, processor);
 
         let data = &*data;
 
@@ -500,10 +514,13 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
                     }
 
                     let value = map_param(param, value_normalized);
+
                     process_state.events.push(Event {
                         time: offset as i64,
                         data: Data::ParamChange { id, value },
                     });
+
+                    self.param_values.set_from_processor(param_index, value);
                 }
             }
         }
