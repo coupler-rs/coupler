@@ -45,6 +45,7 @@ fn unmap_param(param: &ParamInfo, value: ParamValue) -> ParamValue {
 struct MainThreadState<P> {
     config: Config,
     plugin: P,
+    editor_params: Vec<f64>,
 }
 
 struct ProcessState<P: Plugin> {
@@ -98,6 +99,8 @@ impl<P: Plugin> Component<P> {
             max_buffer_size: 0,
         };
 
+        let editor_params = info.params.iter().map(|p| p.default).collect();
+
         let inputs_active = vec![true; input_bus_map.len()];
         let outputs_active = vec![true; output_bus_map.len()];
 
@@ -110,6 +113,7 @@ impl<P: Plugin> Component<P> {
             main_thread_state: UnsafeCell::new(MainThreadState {
                 config: config.clone(),
                 plugin: P::new(Host {}),
+                editor_params,
             }),
             process_state: UnsafeCell::new(ProcessState {
                 config,
@@ -289,6 +293,11 @@ impl<P: Plugin> IComponentTrait for Component<P> {
             let main_thread_state = &mut *self.main_thread_state.get();
 
             if let Ok(_) = main_thread_state.plugin.load(&mut StreamReader(state)) {
+                for (index, param) in self.info.params.iter().enumerate() {
+                    let value = main_thread_state.plugin.get_param(param.id);
+                    main_thread_state.editor_params[index] = value;
+                }
+
                 return kResultOk;
             }
         }
@@ -621,7 +630,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
 
         if let Some(&index) = self.param_map.get(&id) {
             let param = &self.info.params[index];
-            let value = main_thread_state.plugin.get_param(id);
+            let value = main_thread_state.editor_params[index];
             return unmap_param(param, value);
         }
 
@@ -634,7 +643,8 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         if let Some(&index) = self.param_map.get(&id) {
             let param = &self.info.params[index];
             let mapped = map_param(param, value);
-            main_thread_state.plugin.set_param(id, mapped);
+            main_thread_state.editor_params[index] = mapped;
+
             return kResultOk;
         }
 
