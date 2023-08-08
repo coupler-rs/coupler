@@ -1,18 +1,19 @@
 use std::cell::UnsafeCell;
 use std::collections::{HashMap, HashSet};
-use std::ffi::c_void;
+use std::ffi::{c_void, CStr};
 use std::ptr;
 use std::sync::{Arc, Mutex};
 
-use vst3::{Class, ComRef, Steinberg::Vst::*, Steinberg::*};
+use vst3::{Class, ComRef, ComWrapper, Steinberg::Vst::*, Steinberg::*};
 
 use super::buffers::ScratchBuffers;
 use super::params::ParamValues;
 use super::util::{copy_wstring, slice_from_raw_parts_checked, utf16_from_ptr};
+use super::view::View;
 use crate::bus::{BusDir, Format, Layout};
 use crate::events::{Data, Event, Events};
 use crate::param::{ParamInfo, Range};
-use crate::{Config, Host, ParamId, Plugin, PluginInfo, Processor};
+use crate::{Config, Editor, Host, ParamId, Plugin, PluginInfo, Processor};
 
 fn format_to_speaker_arrangement(format: &Format) -> SpeakerArrangement {
     match format {
@@ -43,10 +44,10 @@ fn unmap_param(param: &ParamInfo, value: ParamValue) -> ParamValue {
     }
 }
 
-struct MainThreadState<P> {
-    config: Config,
-    plugin: P,
-    editor_params: Vec<f64>,
+pub struct MainThreadState<P> {
+    pub config: Config,
+    pub plugin: P,
+    pub editor_params: Vec<f64>,
 }
 
 struct ProcessState<P: Plugin> {
@@ -664,7 +665,16 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         kResultOk
     }
 
-    unsafe fn createView(&self, _name: FIDString) -> *mut IPlugView {
-        ptr::null_mut()
+    unsafe fn createView(&self, name: FIDString) -> *mut IPlugView {
+        if !P::Editor::exists() {
+            return ptr::null_mut();
+        }
+
+        if CStr::from_ptr(name) != CStr::from_ptr(ViewType::kEditor) {
+            return ptr::null_mut();
+        }
+
+        let view = ComWrapper::new(View::new(&self.main_thread_state));
+        return view.to_com_ptr::<IPlugView>().unwrap().into_raw();
     }
 }

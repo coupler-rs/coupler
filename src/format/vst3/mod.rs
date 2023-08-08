@@ -9,6 +9,7 @@ mod component;
 mod factory;
 mod params;
 mod util;
+mod view;
 
 use crate::Plugin;
 use factory::Factory;
