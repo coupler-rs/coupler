@@ -132,7 +132,10 @@ pub struct GainEditor {}
 
 impl Editor for GainEditor {
     fn size(&self) -> Size {
-        Size {}
+        Size {
+            width: 320.0,
+            height: 240.0,
+        }
     }
 
     fn set_param(&mut self, _id: ParamId, _value: ParamValue) {}

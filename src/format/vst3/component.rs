@@ -44,10 +44,11 @@ fn unmap_param(param: &ParamInfo, value: ParamValue) -> ParamValue {
     }
 }
 
-pub struct MainThreadState<P> {
+pub struct MainThreadState<P: Plugin> {
     pub config: Config,
     pub plugin: P,
     pub editor_params: Vec<f64>,
+    pub editor: Option<P::Editor>,
 }
 
 struct ProcessState<P: Plugin> {
@@ -114,6 +115,7 @@ impl<P: Plugin> Component<P> {
                 config: config.clone(),
                 plugin: P::new(Host {}),
                 editor_params,
+                editor: None,
             })),
             process_state: UnsafeCell::new(ProcessState {
                 config,

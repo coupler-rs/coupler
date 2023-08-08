@@ -1,12 +1,13 @@
-use std::ffi::c_void;
+use std::ffi::{c_void, CStr};
 use std::sync::{Arc, Mutex};
 
 use vst3::{Class, Steinberg::*};
 
 use super::component::MainThreadState;
-use crate::Plugin;
+use crate::parent::{Parent, RawParent};
+use crate::{Editor, Plugin};
 
-pub struct View<P> {
+pub struct View<P: Plugin> {
     main_thread_state: Arc<Mutex<MainThreadState<P>>>,
 }
 
@@ -23,16 +24,53 @@ impl<P: Plugin> Class for View<P> {
 }
 
 impl<P: Plugin> IPlugViewTrait for View<P> {
-    unsafe fn isPlatformTypeSupported(&self, _type_: FIDString) -> tresult {
-        kNotImplemented
+    unsafe fn isPlatformTypeSupported(&self, type_: FIDString) -> tresult {
+        #[cfg(target_os = "windows")]
+        if CStr::from_ptr(type_) == CStr::from_ptr(kPlatformTypeHWND) {
+            return kResultTrue;
+        }
+
+        #[cfg(target_os = "macos")]
+        if CStr::from_ptr(type_) == CStr::from_ptr(kPlatformTypeNSView) {
+            return kResultTrue;
+        }
+
+        #[cfg(target_os = "linux")]
+        if CStr::from_ptr(type_) == CStr::from_ptr(kPlatformTypeX11EmbedWindowID) {
+            return kResultTrue;
+        }
+
+        kResultFalse
     }
 
-    unsafe fn attached(&self, _parent: *mut c_void, _type_: FIDString) -> tresult {
-        kNotImplemented
+    unsafe fn attached(&self, parent: *mut c_void, type_: FIDString) -> tresult {
+        if self.isPlatformTypeSupported(type_) != kResultTrue {
+            return kResultFalse;
+        }
+
+        #[cfg(target_os = "windows")]
+        let raw_parent = RawParent::Win32(parent);
+
+        #[cfg(target_os = "macos")]
+        let raw_parent = RawParent::Cocoa(parent);
+
+        #[cfg(target_os = "linux")]
+        let raw_parent = RawParent::X11(parent as std::ffi::c_ulong);
+
+        let mut main_thread_state = self.main_thread_state.lock().unwrap();
+
+        let editor = main_thread_state.plugin.editor(Parent::from_raw(raw_parent));
+        main_thread_state.editor = Some(editor);
+
+        kResultOk
     }
 
     unsafe fn removed(&self) -> tresult {
-        kNotImplemented
+        let mut main_thread_state = self.main_thread_state.lock().unwrap();
+
+        main_thread_state.editor = None;
+
+        kResultOk
     }
 
     unsafe fn onWheel(&self, _distance: f32) -> tresult {
@@ -47,8 +85,26 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
         kResultFalse
     }
 
-    unsafe fn getSize(&self, _size: *mut ViewRect) -> tresult {
-        kNotImplemented
+    unsafe fn getSize(&self, size: *mut ViewRect) -> tresult {
+        if size.is_null() {
+            return kResultFalse;
+        }
+
+        let main_thread_state = self.main_thread_state.lock().unwrap();
+
+        if let Some(editor) = &main_thread_state.editor {
+            let editor_size = editor.size();
+
+            let rect = &mut *size;
+            rect.left = 0;
+            rect.top = 0;
+            rect.right = editor_size.width.round() as int32;
+            rect.bottom = editor_size.height.round() as int32;
+
+            return kResultOk;
+        }
+
+        kResultFalse
     }
 
     unsafe fn onSize(&self, _newSize: *mut ViewRect) -> tresult {

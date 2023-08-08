@@ -63,7 +63,10 @@ pub trait Processor: Send + Sized + 'static {
     fn process(&mut self, buffers: Buffers, events: Events);
 }
 
-pub struct Size {}
+pub struct Size {
+    pub width: f64,
+    pub height: f64,
+}
 
 pub trait Editor: Sized + 'static {
     fn exists() -> bool {
