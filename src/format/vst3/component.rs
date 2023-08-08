@@ -4,7 +4,7 @@ use std::ffi::c_void;
 use std::ptr;
 use std::sync::Arc;
 
-use vst3_bindgen::{Class, ComRef, Steinberg::Vst::*, Steinberg::*};
+use vst3::{Class, ComRef, Steinberg::Vst::*, Steinberg::*};
 
 use super::buffers::ScratchBuffers;
 use super::params::ParamValues;

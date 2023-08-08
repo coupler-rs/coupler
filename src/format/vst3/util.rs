@@ -2,7 +2,7 @@ use std::ffi::CString;
 use std::os::raw::c_char;
 use std::slice;
 
-use vst3_bindgen::Steinberg::char16;
+use vst3::Steinberg::char16;
 
 pub fn copy_cstring(src: &str, dst: &mut [c_char]) {
     let c_string = CString::new(src).unwrap_or_else(|_| CString::default());

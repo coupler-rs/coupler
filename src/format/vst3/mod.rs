@@ -2,7 +2,7 @@
 
 use std::ffi::c_void;
 
-use vst3_bindgen::{ComWrapper, Steinberg::IPluginFactory};
+use vst3::{ComWrapper, Steinberg::IPluginFactory};
 
 mod buffers;
 mod component;

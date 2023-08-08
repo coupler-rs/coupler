@@ -2,7 +2,7 @@ use std::iter::zip;
 use std::ptr::NonNull;
 use std::slice;
 
-use vst3_bindgen::Steinberg::Vst::ProcessData;
+use vst3::Steinberg::Vst::ProcessData;
 
 use super::util::slice_from_raw_parts_checked;
 use crate::buffers::{Buffers, BusData};

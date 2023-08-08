@@ -2,7 +2,7 @@ use std::ffi::{c_void, CStr};
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use vst3_bindgen::{uid, Class, ComWrapper, Steinberg::Vst::*, Steinberg::*};
+use vst3::{uid, Class, ComWrapper, Steinberg::Vst::*, Steinberg::*};
 
 use super::component::Component;
 use super::util::{copy_cstring, copy_wstring};
