@@ -36,15 +36,15 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
     }
 
     unsafe fn onWheel(&self, _distance: f32) -> tresult {
-        kNotImplemented
+        kResultFalse
     }
 
     unsafe fn onKeyDown(&self, _key: char16, _keyCode: int16, _modifiers: int16) -> tresult {
-        kNotImplemented
+        kResultFalse
     }
 
     unsafe fn onKeyUp(&self, _key: char16, _keyCode: int16, _modifiers: int16) -> tresult {
-        kNotImplemented
+        kResultFalse
     }
 
     unsafe fn getSize(&self, _size: *mut ViewRect) -> tresult {
@@ -56,7 +56,7 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
     }
 
     unsafe fn onFocus(&self, _state: TBool) -> tresult {
-        kNotImplemented
+        kResultFalse
     }
 
     unsafe fn setFrame(&self, _frame: *mut IPlugFrame) -> tresult {
