@@ -1,7 +1,7 @@
 use std::io::{self, Read, Write};
 
 use coupler::format::vst3::*;
-use coupler::{buffers::*, bus::*, events::*, param::*, *};
+use coupler::{buffers::*, bus::*, events::*, param::*, parent::*, *};
 
 const GAIN: ParamId = 0;
 
@@ -79,7 +79,7 @@ impl Plugin for Gain {
         }
     }
 
-    fn editor(&self, _container: Container) -> GainEditor {
+    fn editor(&self, _parent: Parent) -> GainEditor {
         GainEditor {}
     }
 }
