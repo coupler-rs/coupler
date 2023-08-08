@@ -10,6 +10,8 @@ use crate::bus::{BusDir, BusInfo};
 use crate::Config;
 
 pub struct ScratchBuffers {
+    inputs_active: Vec<bool>,
+    outputs_active: Vec<bool>,
     buses: Vec<BusData>,
     ptrs: Vec<*mut f32>,
     buffers: Vec<f32>,
@@ -19,8 +21,10 @@ pub struct ScratchBuffers {
 }
 
 impl ScratchBuffers {
-    pub fn new() -> ScratchBuffers {
+    pub fn new(input_count: usize, output_count: usize) -> ScratchBuffers {
         ScratchBuffers {
+            inputs_active: vec![true; input_count],
+            outputs_active: vec![true; output_count],
             buses: Vec::new(),
             ptrs: Vec::new(),
             buffers: Vec::new(),
@@ -28,6 +32,14 @@ impl ScratchBuffers {
             output_ptrs: Vec::new(),
             moves: Vec::new(),
         }
+    }
+
+    pub fn set_input_active(&mut self, index: usize, active: bool) {
+        self.inputs_active[index] = active;
+    }
+
+    pub fn set_output_active(&mut self, index: usize, active: bool) {
+        self.outputs_active[index] = active;
     }
 
     pub fn resize(&mut self, buses: &[BusInfo], config: &Config) {
@@ -76,8 +88,6 @@ impl ScratchBuffers {
         input_bus_map: &[usize],
         output_bus_map: &[usize],
         config: &Config,
-        inputs_active: &[bool],
-        outputs_active: &[bool],
         data: &ProcessData,
     ) -> Result<Buffers, ()> {
         let len = data.numSamples as usize;
@@ -117,7 +127,7 @@ impl ScratchBuffers {
         self.output_ptrs.clear();
         for (output_index, &bus_index) in output_bus_map.iter().enumerate() {
             let bus_data = &self.buses[bus_index];
-            if outputs_active[output_index] {
+            if self.outputs_active[output_index] {
                 let output = &outputs[output_index];
                 let channels = slice_from_raw_parts_checked(
                     output.__field0.channelBuffers32,
@@ -138,14 +148,14 @@ impl ScratchBuffers {
         }
 
         // Sort the list of output pointers so that we can use binary search to check if input
-        // pointers are alised by output pointers.
+        // pointers are aliased by output pointers.
         self.output_ptrs.sort_unstable();
 
         // Set up input pointers.
         for (input_index, &bus_index) in input_bus_map.iter().enumerate() {
             let bus_data = &self.buses[bus_index];
             if bus_data.dir == BusDir::In {
-                if inputs_active[input_index] {
+                if self.inputs_active[input_index] {
                     let input = &inputs[input_index];
                     let channels = slice_from_raw_parts_checked(
                         input.__field0.channelBuffers32,
@@ -181,7 +191,7 @@ impl ScratchBuffers {
         for (input_index, &bus_index) in input_bus_map.iter().enumerate() {
             let bus_data = &self.buses[bus_index];
             if bus_data.dir == BusDir::InOut {
-                if inputs_active[input_index] {
+                if self.inputs_active[input_index] {
                     let input = &inputs[input_index];
                     let channels = slice_from_raw_parts_checked(
                         input.__field0.channelBuffers32,

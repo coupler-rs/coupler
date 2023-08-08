@@ -51,8 +51,6 @@ struct MainThreadState<P> {
 
 struct ProcessState<P: Plugin> {
     config: Config,
-    inputs_active: Vec<bool>,
-    outputs_active: Vec<bool>,
     scratch_buffers: ScratchBuffers,
     events: Vec<Event>,
     processor: Option<P::Processor>,
@@ -103,8 +101,7 @@ impl<P: Plugin> Component<P> {
 
         let editor_params = info.params.iter().map(|p| p.default).collect();
 
-        let inputs_active = vec![true; input_bus_map.len()];
-        let outputs_active = vec![true; output_bus_map.len()];
+        let scratch_buffers = ScratchBuffers::new(input_bus_map.len(), output_bus_map.len());
 
         Component {
             info: info.clone(),
@@ -120,9 +117,7 @@ impl<P: Plugin> Component<P> {
             }),
             process_state: UnsafeCell::new(ProcessState {
                 config,
-                inputs_active,
-                outputs_active,
-                scratch_buffers: ScratchBuffers::new(),
+                scratch_buffers,
                 events: Vec::with_capacity(4096),
                 processor: None,
             }),
@@ -236,14 +231,14 @@ impl<P: Plugin> IComponentTrait for Component<P> {
         match type_ as MediaTypes {
             MediaTypes_::kAudio => match dir as BusDirections {
                 BusDirections_::kInput => {
-                    if let Some(active) = process_state.inputs_active.get_mut(index as usize) {
-                        *active = state != 0;
+                    if self.input_bus_map.get(index as usize).is_some() {
+                        process_state.scratch_buffers.set_input_active(index as usize, state != 0);
                         return kResultOk;
                     }
                 }
                 BusDirections_::kOutput => {
-                    if let Some(active) = process_state.outputs_active.get_mut(index as usize) {
-                        *active = state != 0;
+                    if self.output_bus_map.get(index as usize).is_some() {
+                        process_state.scratch_buffers.set_output_active(index as usize, state != 0);
                         return kResultOk;
                     }
                 }
@@ -480,8 +475,6 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
             &self.input_bus_map,
             &self.output_bus_map,
             &process_state.config,
-            &process_state.inputs_active,
-            &process_state.outputs_active,
             &data,
         ) else {
             return kInvalidArgument;
