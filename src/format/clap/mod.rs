@@ -3,6 +3,7 @@ use std::ffi::{c_char, c_void};
 use clap_sys::{entry::*, version::*};
 
 mod factory;
+mod instance;
 
 #[doc(hidden)]
 pub use factory::Factory;
