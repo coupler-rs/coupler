@@ -8,6 +8,7 @@ pub mod param;
 pub mod parent;
 
 mod sync;
+mod util;
 
 use buffers::Buffers;
 use bus::{BusInfo, Layout};

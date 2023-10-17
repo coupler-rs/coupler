@@ -5,8 +5,9 @@ use std::sync::Arc;
 use vst3::{uid, Class, ComWrapper, Steinberg::Vst::*, Steinberg::*};
 
 use super::component::Component;
-use super::util::{copy_cstring, copy_wstring};
+use super::util::copy_wstring;
 use super::{Uuid, Vst3Info, Vst3Plugin};
+use crate::util::copy_cstring;
 use crate::{Plugin, PluginInfo};
 
 fn uuid_to_tuid(uuid: &Uuid) -> TUID {
