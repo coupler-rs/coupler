@@ -1,5 +1,6 @@
+use std::cell::UnsafeCell;
 use std::ffi::{c_void, CStr};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use vst3::{Class, Steinberg::*};
 
@@ -8,11 +9,11 @@ use crate::parent::{Parent, RawParent};
 use crate::{Editor, Plugin};
 
 pub struct View<P: Plugin> {
-    main_thread_state: Arc<Mutex<MainThreadState<P>>>,
+    main_thread_state: Arc<UnsafeCell<MainThreadState<P>>>,
 }
 
 impl<P: Plugin> View<P> {
-    pub fn new(main_thread_state: &Arc<Mutex<MainThreadState<P>>>) -> View<P> {
+    pub fn new(main_thread_state: &Arc<UnsafeCell<MainThreadState<P>>>) -> View<P> {
         View {
             main_thread_state: main_thread_state.clone(),
         }
@@ -57,7 +58,7 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
         #[cfg(target_os = "linux")]
         let raw_parent = RawParent::X11(parent as std::ffi::c_ulong);
 
-        let mut main_thread_state = self.main_thread_state.lock().unwrap();
+        let mut main_thread_state = &mut *self.main_thread_state.get();
 
         let editor = main_thread_state.plugin.editor(Parent::from_raw(raw_parent));
         main_thread_state.editor = Some(editor);
@@ -66,7 +67,7 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
     }
 
     unsafe fn removed(&self) -> tresult {
-        let mut main_thread_state = self.main_thread_state.lock().unwrap();
+        let mut main_thread_state = &mut *self.main_thread_state.get();
 
         main_thread_state.editor = None;
 
@@ -90,7 +91,7 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
             return kResultFalse;
         }
 
-        let main_thread_state = self.main_thread_state.lock().unwrap();
+        let main_thread_state = &*self.main_thread_state.get();
 
         if let Some(editor) = &main_thread_state.editor {
             let editor_size = editor.size();
