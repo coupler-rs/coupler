@@ -1,14 +1,16 @@
 use std::cell::UnsafeCell;
+use std::collections::HashMap;
 use std::ffi::{c_char, c_void, CStr};
-use std::ptr;
 use std::sync::Arc;
+use std::{ptr, slice};
 
-use clap_sys::ext::{audio_ports::*, audio_ports_config::*};
-use clap_sys::{id::*, plugin::*, process::*};
+use clap_sys::ext::{audio_ports::*, audio_ports_config::*, params::*};
+use clap_sys::{events::*, id::*, plugin::*, process::*};
 
 use crate::bus::{BusDir, Format};
+use crate::param::Range;
 use crate::util::copy_cstring;
-use crate::{Host, Plugin, PluginInfo};
+use crate::{Host, ParamId, Plugin, PluginInfo};
 
 fn port_type_from_format(format: &Format) -> &'static CStr {
     match format {
@@ -29,6 +31,7 @@ pub struct Instance<P> {
     info: Arc<PluginInfo>,
     input_bus_map: Vec<usize>,
     output_bus_map: Vec<usize>,
+    param_map: HashMap<ParamId, usize>,
     main_thread_state: UnsafeCell<MainThreadState<P>>,
 }
 
@@ -49,6 +52,11 @@ impl<P: Plugin> Instance<P> {
             }
         }
 
+        let mut param_map = HashMap::new();
+        for (index, param) in info.params.iter().enumerate() {
+            param_map.insert(param.id, index);
+        }
+
         Instance {
             clap_plugin: clap_plugin {
                 desc,
@@ -67,6 +75,7 @@ impl<P: Plugin> Instance<P> {
             info: info.clone(),
             input_bus_map,
             output_bus_map,
+            param_map,
             main_thread_state: UnsafeCell::new(MainThreadState {
                 layout_index: 0,
                 plugin: P::new(Host {}),
@@ -120,6 +129,10 @@ impl<P: Plugin> Instance<P> {
 
         if id == CLAP_EXT_AUDIO_PORTS_CONFIG {
             return &Self::AUDIO_PORTS_CONFIG as *const _ as *const c_void;
+        }
+
+        if id == CLAP_EXT_PARAMS {
+            return &Self::PARAMS as *const _ as *const c_void;
         }
 
         ptr::null()
@@ -269,5 +282,138 @@ impl<P: Plugin> Instance<P> {
         }
 
         false
+    }
+}
+
+impl<P: Plugin> Instance<P> {
+    const PARAMS: clap_plugin_params = clap_plugin_params {
+        count: Some(Self::params_count),
+        get_info: Some(Self::params_get_info),
+        get_value: Some(Self::params_get_value),
+        value_to_text: Some(Self::params_value_to_text),
+        text_to_value: Some(Self::params_text_to_value),
+        flush: Some(Self::params_flush),
+    };
+
+    unsafe extern "C" fn params_count(plugin: *const clap_plugin) -> u32 {
+        let instance = &*(plugin as *const Self);
+
+        instance.info.params.len() as u32
+    }
+
+    unsafe extern "C" fn params_get_info(
+        plugin: *const clap_plugin,
+        param_index: u32,
+        param_info: *mut clap_param_info,
+    ) -> bool {
+        let instance = &*(plugin as *const Self);
+
+        if let Some(param) = instance.info.params.get(param_index as usize) {
+            let param_info = &mut *param_info;
+
+            param_info.id = param.id;
+            param_info.flags = CLAP_PARAM_IS_AUTOMATABLE;
+            param_info.cookie = ptr::null_mut();
+            copy_cstring(&param.name, &mut param_info.name);
+            copy_cstring("", &mut param_info.module);
+            match &param.range {
+                Range::Continuous { min, max } => {
+                    param_info.min_value = *min;
+                    param_info.max_value = *max;
+                }
+                Range::Discrete { steps } => {
+                    param_info.flags |= CLAP_PARAM_IS_STEPPED;
+                    param_info.min_value = 0.0;
+                    param_info.max_value = ((*steps).max(2) - 1) as f64;
+                }
+            }
+            param_info.default_value = param.default;
+
+            return true;
+        }
+
+        false
+    }
+
+    unsafe extern "C" fn params_get_value(
+        plugin: *const clap_plugin,
+        param_id: clap_id,
+        value: *mut f64,
+    ) -> bool {
+        let instance = &*(plugin as *const Self);
+        let main_thread_state = &mut *instance.main_thread_state.get();
+
+        if instance.param_map.contains_key(&param_id) {
+            *value = main_thread_state.plugin.get_param(param_id);
+            return true;
+        }
+
+        false
+    }
+
+    unsafe extern "C" fn params_value_to_text(
+        plugin: *const clap_plugin,
+        param_id: clap_id,
+        value: f64,
+        display: *mut c_char,
+        size: u32,
+    ) -> bool {
+        let instance = &*(plugin as *const Self);
+
+        if let Some(&index) = instance.param_map.get(&param_id) {
+            let mut text = String::new();
+            instance.info.params[index].display.display(value, &mut text);
+
+            let dst = slice::from_raw_parts_mut(display, size as usize);
+            copy_cstring(&text, dst);
+
+            return true;
+        }
+
+        false
+    }
+
+    unsafe extern "C" fn params_text_to_value(
+        plugin: *const clap_plugin,
+        param_id: clap_id,
+        display: *const c_char,
+        value: *mut f64,
+    ) -> bool {
+        let instance = &*(plugin as *const Self);
+
+        if let Some(&index) = instance.param_map.get(&param_id) {
+            if let Ok(text) = CStr::from_ptr(display).to_str() {
+                if let Some(out) = instance.info.params[index].display.parse(text) {
+                    *value = out;
+                    return true;
+                }
+            }
+
+            return true;
+        }
+
+        false
+    }
+
+    unsafe extern "C" fn params_flush(
+        plugin: *const clap_plugin,
+        in_: *const clap_input_events,
+        _out: *const clap_output_events,
+    ) {
+        let instance = &*(plugin as *const Self);
+        let main_thread_state = &mut *instance.main_thread_state.get();
+
+        let size = (*in_).size.unwrap()(in_);
+        for i in 0..size {
+            let event = (*in_).get.unwrap()(in_, i);
+
+            if (*event).type_ == CLAP_EVENT_PARAM_VALUE {
+                let event = &*(event as *const clap_event_param_value);
+
+                if instance.param_map.contains_key(&event.param_id) {
+                    main_thread_state.plugin.set_param(event.param_id, event.value);
+                }
+            }
+        }
     }
 }
