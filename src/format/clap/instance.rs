@@ -2,10 +2,10 @@ use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::ffi::{c_char, c_void, CStr};
 use std::sync::Arc;
-use std::{ptr, slice};
+use std::{io, ptr, slice};
 
-use clap_sys::ext::{audio_ports::*, audio_ports_config::*, params::*};
-use clap_sys::{events::*, id::*, plugin::*, process::*};
+use clap_sys::ext::{audio_ports::*, audio_ports_config::*, params::*, state::*};
+use clap_sys::{events::*, id::*, plugin::*, process::*, stream::*};
 
 use crate::bus::{BusDir, Format};
 use crate::param::Range;
@@ -133,6 +133,10 @@ impl<P: Plugin> Instance<P> {
 
         if id == CLAP_EXT_PARAMS {
             return &Self::PARAMS as *const _ as *const c_void;
+        }
+
+        if id == CLAP_EXT_STATE {
+            return &Self::STATE as *const _ as *const c_void;
         }
 
         ptr::null()
@@ -415,5 +419,84 @@ impl<P: Plugin> Instance<P> {
                 }
             }
         }
+    }
+}
+
+impl<P: Plugin> Instance<P> {
+    const STATE: clap_plugin_state = clap_plugin_state {
+        save: Some(Self::state_save),
+        load: Some(Self::state_load),
+    };
+
+    unsafe extern "C" fn state_save(
+        plugin: *const clap_plugin,
+        stream: *const clap_ostream,
+    ) -> bool {
+        struct StreamWriter(*const clap_ostream);
+
+        impl io::Write for StreamWriter {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                let result = unsafe {
+                    (*self.0).write.unwrap()(
+                        self.0,
+                        buf.as_ptr() as *const c_void,
+                        buf.len() as u64,
+                    )
+                };
+
+                if result == -1 {
+                    Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "failed to write to stream",
+                    ))
+                } else {
+                    io::Result::Ok(result as usize)
+                }
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let instance = &*(plugin as *const Self);
+        let main_thread_state = &mut *instance.main_thread_state.get();
+
+        let result = main_thread_state.plugin.save(&mut StreamWriter(stream));
+        result.is_ok()
+    }
+
+    unsafe extern "C" fn state_load(
+        plugin: *const clap_plugin,
+        stream: *const clap_istream,
+    ) -> bool {
+        struct StreamReader(*const clap_istream);
+
+        impl io::Read for StreamReader {
+            fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+                let result = unsafe {
+                    (*self.0).read.unwrap()(
+                        self.0,
+                        buf.as_mut_ptr() as *mut c_void,
+                        buf.len() as u64,
+                    )
+                };
+
+                if result == -1 {
+                    Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "failed to read from stream",
+                    ))
+                } else {
+                    io::Result::Ok(result as usize)
+                }
+            }
+        }
+
+        let instance = &*(plugin as *const Self);
+        let main_thread_state = &mut *instance.main_thread_state.get();
+
+        let result = main_thread_state.plugin.load(&mut StreamReader(stream));
+        result.is_ok()
     }
 }
