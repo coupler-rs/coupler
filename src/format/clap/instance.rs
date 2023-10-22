@@ -10,7 +10,7 @@ use clap_sys::{events::*, id::*, plugin::*, process::*, stream::*};
 use crate::bus::{BusDir, Format};
 use crate::param::Range;
 use crate::util::copy_cstring;
-use crate::{Host, ParamId, Plugin, PluginInfo};
+use crate::{Config, Host, ParamId, Plugin, PluginInfo, Processor};
 
 fn port_type_from_format(format: &Format) -> &'static CStr {
     match format {
@@ -24,8 +24,12 @@ struct MainThreadState<P> {
     plugin: P,
 }
 
+struct ProcessState<P: Plugin> {
+    processor: Option<P::Processor>,
+}
+
 #[repr(C)]
-pub struct Instance<P> {
+pub struct Instance<P: Plugin> {
     #[allow(unused)]
     clap_plugin: clap_plugin,
     info: Arc<PluginInfo>,
@@ -33,9 +37,10 @@ pub struct Instance<P> {
     output_bus_map: Vec<usize>,
     param_map: HashMap<ParamId, usize>,
     main_thread_state: UnsafeCell<MainThreadState<P>>,
+    process_state: UnsafeCell<ProcessState<P>>,
 }
 
-unsafe impl<P> Sync for Instance<P> {}
+unsafe impl<P: Plugin> Sync for Instance<P> {}
 
 impl<P: Plugin> Instance<P> {
     pub fn new(desc: *const clap_plugin_descriptor, info: &Arc<PluginInfo>) -> Self {
@@ -80,6 +85,7 @@ impl<P: Plugin> Instance<P> {
                 layout_index: 0,
                 plugin: P::new(Host {}),
             }),
+            process_state: UnsafeCell::new(ProcessState { processor: None }),
         }
     }
 
@@ -92,15 +98,31 @@ impl<P: Plugin> Instance<P> {
     }
 
     unsafe extern "C" fn activate(
-        _plugin: *const clap_plugin,
-        _sample_rate: f64,
+        plugin: *const clap_plugin,
+        sample_rate: f64,
         _min_frames_count: u32,
-        _max_frames_count: u32,
+        max_frames_count: u32,
     ) -> bool {
+        let instance = &*(plugin as *const Self);
+        let main_thread_state = &mut *instance.main_thread_state.get();
+        let process_state = &mut *instance.process_state.get();
+
+        let config = Config {
+            layout: instance.info.layouts[main_thread_state.layout_index].clone(),
+            sample_rate,
+            max_buffer_size: max_frames_count as usize,
+        };
+        process_state.processor = Some(main_thread_state.plugin.processor(config));
+
         true
     }
 
-    unsafe extern "C" fn deactivate(_plugin: *const clap_plugin) {}
+    unsafe extern "C" fn deactivate(plugin: *const clap_plugin) {
+        let instance = &*(plugin as *const Self);
+        let process_state = &mut *instance.process_state.get();
+
+        process_state.processor = None;
+    }
 
     unsafe extern "C" fn start_processing(_plugin: *const clap_plugin) -> bool {
         true
@@ -108,7 +130,14 @@ impl<P: Plugin> Instance<P> {
 
     unsafe extern "C" fn stop_processing(_plugin: *const clap_plugin) {}
 
-    unsafe extern "C" fn reset(_plugin: *const clap_plugin) {}
+    unsafe extern "C" fn reset(plugin: *const clap_plugin) {
+        let instance = &*(plugin as *const Self);
+        let process_state = &mut *instance.process_state.get();
+
+        if let Some(processor) = &mut process_state.processor {
+            processor.reset();
+        }
+    }
 
     unsafe extern "C" fn process(
         _plugin: *const clap_plugin,
