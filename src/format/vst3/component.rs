@@ -8,11 +8,12 @@ use vst3::{Class, ComRef, ComWrapper, Steinberg::Vst::*, Steinberg::*};
 
 use super::buffers::ScratchBuffers;
 use super::params::ParamValues;
-use super::util::{copy_wstring, slice_from_raw_parts_checked, utf16_from_ptr};
+use super::util::{copy_wstring, utf16_from_ptr};
 use super::view::View;
 use crate::bus::{BusDir, Format, Layout};
 use crate::events::{Data, Event, Events};
 use crate::param::{ParamInfo, Range};
+use crate::util::slice_from_raw_parts_checked;
 use crate::{Config, Editor, Host, ParamId, Plugin, PluginInfo, Processor};
 
 fn format_to_speaker_arrangement(format: &Format) -> SpeakerArrangement {

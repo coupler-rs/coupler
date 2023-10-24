@@ -1,15 +1,19 @@
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::ffi::{c_char, c_void, CStr};
+use std::iter::zip;
+use std::ptr::NonNull;
 use std::sync::Arc;
 use std::{io, ptr, slice};
 
 use clap_sys::ext::{audio_ports::*, audio_ports_config::*, params::*, state::*};
 use clap_sys::{events::*, id::*, plugin::*, process::*, stream::*};
 
+use crate::buffers::{Buffers, BusData};
 use crate::bus::{BusDir, Format};
+use crate::events::{Data, Event, Events};
 use crate::param::Range;
-use crate::util::copy_cstring;
+use crate::util::{copy_cstring, slice_from_raw_parts_checked};
 use crate::{Config, Host, ParamId, Plugin, PluginInfo, Processor};
 
 fn port_type_from_format(format: &Format) -> &'static CStr {
@@ -25,6 +29,9 @@ struct MainThreadState<P> {
 }
 
 struct ProcessState<P: Plugin> {
+    buses: Vec<BusData>,
+    buffer_ptrs: Vec<*mut f32>,
+    events: Vec<Event>,
     processor: Option<P::Processor>,
 }
 
@@ -85,7 +92,12 @@ impl<P: Plugin> Instance<P> {
                 layout_index: 0,
                 plugin: P::new(Host {}),
             }),
-            process_state: UnsafeCell::new(ProcessState { processor: None }),
+            process_state: UnsafeCell::new(ProcessState {
+                buses: Vec::new(),
+                buffer_ptrs: Vec::new(),
+                events: Vec::with_capacity(4096),
+                processor: None,
+            }),
         }
     }
 
@@ -107,8 +119,26 @@ impl<P: Plugin> Instance<P> {
         let main_thread_state = &mut *instance.main_thread_state.get();
         let process_state = &mut *instance.process_state.get();
 
+        let layout = &instance.info.layouts[main_thread_state.layout_index];
+
+        process_state.buses.clear();
+        let mut total_channels = 0;
+        for (info, format) in zip(&instance.info.buses, &layout.formats) {
+            let channel_count = format.channel_count();
+
+            process_state.buses.push(BusData {
+                start: total_channels,
+                end: total_channels + channel_count,
+                dir: info.dir,
+            });
+
+            total_channels += channel_count;
+        }
+
+        process_state.buffer_ptrs.resize(total_channels, NonNull::dangling().as_ptr());
+
         let config = Config {
-            layout: instance.info.layouts[main_thread_state.layout_index].clone(),
+            layout: layout.clone(),
             sample_rate,
             max_buffer_size: max_frames_count as usize,
         };
@@ -140,9 +170,100 @@ impl<P: Plugin> Instance<P> {
     }
 
     unsafe extern "C" fn process(
-        _plugin: *const clap_plugin,
-        _process: *const clap_process,
+        plugin: *const clap_plugin,
+        process: *const clap_process,
     ) -> clap_process_status {
+        let instance = &*(plugin as *const Self);
+        let process_state = &mut *instance.process_state.get();
+
+        let Some(processor) = &mut process_state.processor else {
+            return CLAP_PROCESS_ERROR;
+        };
+
+        let process = &*process;
+
+        let len = process.frames_count as usize;
+
+        let input_count = process.audio_inputs_count as usize;
+        let output_count = process.audio_outputs_count as usize;
+        if input_count != instance.input_bus_map.len()
+            || output_count != instance.output_bus_map.len()
+        {
+            return CLAP_PROCESS_ERROR;
+        }
+
+        let inputs = slice_from_raw_parts_checked(process.audio_inputs, input_count);
+        let outputs = slice_from_raw_parts_checked(process.audio_outputs, output_count);
+
+        for (&bus_index, output) in zip(&instance.output_bus_map, outputs) {
+            let bus_data = &process_state.buses[bus_index];
+
+            let channel_count = output.channel_count as usize;
+            if channel_count != bus_data.end - bus_data.start {
+                return CLAP_PROCESS_ERROR;
+            }
+
+            let channels =
+                slice_from_raw_parts_checked(output.data32 as *const *mut f32, channel_count);
+            process_state.buffer_ptrs[bus_data.start..bus_data.end].copy_from_slice(channels);
+        }
+
+        for (&bus_index, input) in zip(&instance.input_bus_map, inputs) {
+            let bus_data = &process_state.buses[bus_index];
+
+            let channel_count = input.channel_count as usize;
+            if channel_count != bus_data.end - bus_data.start {
+                return CLAP_PROCESS_ERROR;
+            }
+
+            let channels =
+                slice_from_raw_parts_checked(input.data32 as *const *mut f32, channel_count);
+            let ptrs = &mut process_state.buffer_ptrs[bus_data.start..bus_data.end];
+
+            match bus_data.dir {
+                BusDir::In => {
+                    ptrs.copy_from_slice(channels);
+                }
+                BusDir::InOut => {
+                    for (&src, &mut dst) in zip(channels, ptrs) {
+                        if src != dst {
+                            let src = slice::from_raw_parts(src, len);
+                            let dst = slice::from_raw_parts_mut(dst, len);
+                            dst.copy_from_slice(src);
+                        }
+                    }
+                }
+                BusDir::Out => unreachable!(),
+            }
+        }
+
+        process_state.events.clear();
+
+        let in_events = process.in_events;
+        let size = (*in_events).size.unwrap()(in_events);
+        for i in 0..size {
+            let event = (*in_events).get.unwrap()(in_events, i);
+
+            if (*event).type_ == CLAP_EVENT_PARAM_VALUE {
+                let event = &*(event as *const clap_event_param_value);
+
+                if instance.param_map.contains_key(&event.param_id) {
+                    process_state.events.push(Event {
+                        time: event.header.time as i64,
+                        data: Data::ParamChange {
+                            id: event.param_id,
+                            value: event.value,
+                        },
+                    });
+                }
+            }
+        }
+
+        processor.process(
+            Buffers::from_raw_parts(&process_state.buses, &process_state.buffer_ptrs, len),
+            Events::new(&process_state.events),
+        );
+
         CLAP_PROCESS_CONTINUE
     }
 

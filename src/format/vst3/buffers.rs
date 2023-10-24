@@ -4,9 +4,9 @@ use std::slice;
 
 use vst3::Steinberg::Vst::ProcessData;
 
-use super::util::slice_from_raw_parts_checked;
 use crate::buffers::{Buffers, BusData};
 use crate::bus::{BusDir, BusInfo};
+use crate::util::slice_from_raw_parts_checked;
 use crate::Config;
 
 pub struct ScratchBuffers {
