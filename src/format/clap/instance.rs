@@ -555,17 +555,37 @@ impl<P: Plugin> Instance<P> {
         _out: *const clap_output_events,
     ) {
         let instance = &*(plugin as *const Self);
-        let main_thread_state = &mut *instance.main_thread_state.get();
+        let process_state = &mut *instance.process_state.get();
 
-        let size = (*in_).size.unwrap()(in_);
-        for i in 0..size {
-            let event = (*in_).get.unwrap()(in_, i);
+        // If we are in the active state, flush will be called on the audio thread.
+        if let Some(processor) = &mut process_state.processor {
+            let size = (*in_).size.unwrap()(in_);
+            for i in 0..size {
+                let event = (*in_).get.unwrap()(in_, i);
 
-            if (*event).type_ == CLAP_EVENT_PARAM_VALUE {
-                let event = &*(event as *const clap_event_param_value);
+                if (*event).type_ == CLAP_EVENT_PARAM_VALUE {
+                    let event = &*(event as *const clap_event_param_value);
 
-                if instance.param_map.contains_key(&event.param_id) {
-                    main_thread_state.plugin.set_param(event.param_id, event.value);
+                    if instance.param_map.contains_key(&event.param_id) {
+                        processor.set_param(event.param_id, event.value);
+                    }
+                }
+            }
+        }
+        // Otherwise, flush will be called on the main thread.
+        else {
+            let main_thread_state = &mut *instance.main_thread_state.get();
+
+            let size = (*in_).size.unwrap()(in_);
+            for i in 0..size {
+                let event = (*in_).get.unwrap()(in_, i);
+
+                if (*event).type_ == CLAP_EVENT_PARAM_VALUE {
+                    let event = &*(event as *const clap_event_param_value);
+
+                    if instance.param_map.contains_key(&event.param_id) {
+                        main_thread_state.plugin.set_param(event.param_id, event.value);
+                    }
                 }
             }
         }
