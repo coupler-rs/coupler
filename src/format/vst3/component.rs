@@ -486,8 +486,6 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
             return kNotInitialized;
         };
 
-        self.sync_processor(processor);
-
         let data = &*data;
 
         let Ok(buffers) = process_state.scratch_buffers.get_buffers(
@@ -537,6 +535,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
             }
         }
 
+        self.sync_processor(processor);
         processor.process(buffers, Events::new(&process_state.events));
 
         kResultOk
