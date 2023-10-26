@@ -96,7 +96,7 @@ impl<P: Plugin> IPluginFactory2Trait for Factory<P> {
             info.classFlags = 0;
             copy_cstring("Fx", &mut info.subCategories);
             copy_cstring(&self.info.vendor, &mut info.vendor);
-            copy_cstring("", &mut info.version);
+            copy_cstring(&self.info.version, &mut info.version);
             let version_str = CStr::from_ptr(SDKVersionString).to_str().unwrap();
             copy_cstring(version_str, &mut info.sdkVersion);
 
@@ -119,7 +119,7 @@ impl<P: Plugin> IPluginFactory3Trait for Factory<P> {
             info.classFlags = 0;
             copy_cstring("Fx", &mut info.subCategories);
             copy_wstring(&self.info.vendor, &mut info.vendor);
-            copy_wstring("", &mut info.version);
+            copy_wstring(&self.info.version, &mut info.version);
             let version_str = CStr::from_ptr(SDKVersionString).to_str().unwrap();
             copy_wstring(version_str, &mut info.sdkVersion);
 

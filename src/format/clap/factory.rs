@@ -47,6 +47,7 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
         let name = CString::new(&*info.name).unwrap().into_raw();
         let vendor = CString::new(&*info.vendor).unwrap().into_raw();
         let url = CString::new(&*info.url).unwrap().into_raw();
+        let version = CString::new(&*info.version).unwrap().into_raw();
 
         const EMPTY: &'static CStr = unsafe { CStr::from_bytes_with_nul_unchecked(b"\0") };
         const FEATURES: &'static [*const c_char] = &[ptr::null()];
@@ -60,7 +61,7 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
                 url,
                 manual_url: EMPTY.as_ptr(),
                 support_url: EMPTY.as_ptr(),
-                version: EMPTY.as_ptr(),
+                version,
                 description: EMPTY.as_ptr(),
                 features: FEATURES.as_ptr(),
             },
@@ -76,6 +77,7 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
             drop(CString::from_raw(state.descriptor.name as *mut c_char));
             drop(CString::from_raw(state.descriptor.vendor as *mut c_char));
             drop(CString::from_raw(state.descriptor.url as *mut c_char));
+            drop(CString::from_raw(state.descriptor.version as *mut c_char));
         }
     }
 

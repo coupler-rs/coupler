@@ -22,6 +22,7 @@ pub type ParamValue = f64;
 
 pub struct PluginInfo {
     pub name: String,
+    pub version: String,
     pub vendor: String,
     pub url: String,
     pub email: String,
