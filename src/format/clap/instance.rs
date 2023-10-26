@@ -6,7 +6,7 @@ use std::ptr::NonNull;
 use std::sync::Arc;
 use std::{io, ptr, slice};
 
-use clap_sys::ext::{audio_ports::*, audio_ports_config::*, params::*, state::*};
+use clap_sys::ext::{audio_ports::*, audio_ports_config::*, gui::*, params::*, state::*};
 use clap_sys::{events::*, id::*, plugin::*, process::*, stream::*};
 
 use crate::buffers::{Buffers, BusData};
@@ -15,7 +15,7 @@ use crate::events::{Data, Event, Events};
 use crate::param::Range;
 use crate::sync::params::ParamValues;
 use crate::util::{copy_cstring, slice_from_raw_parts_checked};
-use crate::{Config, Host, ParamId, Plugin, PluginInfo, Processor};
+use crate::{Config, Editor, Host, ParamId, Plugin, PluginInfo, Processor};
 
 fn port_type_from_format(format: &Format) -> &'static CStr {
     match format {
@@ -24,12 +24,13 @@ fn port_type_from_format(format: &Format) -> &'static CStr {
     }
 }
 
-struct MainThreadState<P> {
-    layout_index: usize,
-    plugin: P,
+pub struct MainThreadState<P: Plugin> {
+    pub layout_index: usize,
+    pub plugin: P,
+    pub editor: Option<P::Editor>,
 }
 
-struct ProcessState<P: Plugin> {
+pub struct ProcessState<P: Plugin> {
     buses: Vec<BusData>,
     buffer_ptrs: Vec<*mut f32>,
     events: Vec<Event>,
@@ -39,15 +40,15 @@ struct ProcessState<P: Plugin> {
 #[repr(C)]
 pub struct Instance<P: Plugin> {
     #[allow(unused)]
-    clap_plugin: clap_plugin,
-    info: Arc<PluginInfo>,
-    input_bus_map: Vec<usize>,
-    output_bus_map: Vec<usize>,
-    param_map: HashMap<ParamId, usize>,
-    plugin_params: ParamValues,
-    processor_params: ParamValues,
-    main_thread_state: UnsafeCell<MainThreadState<P>>,
-    process_state: UnsafeCell<ProcessState<P>>,
+    pub clap_plugin: clap_plugin,
+    pub info: Arc<PluginInfo>,
+    pub input_bus_map: Vec<usize>,
+    pub output_bus_map: Vec<usize>,
+    pub param_map: HashMap<ParamId, usize>,
+    pub plugin_params: ParamValues,
+    pub processor_params: ParamValues,
+    pub main_thread_state: UnsafeCell<MainThreadState<P>>,
+    pub process_state: UnsafeCell<ProcessState<P>>,
 }
 
 unsafe impl<P: Plugin> Sync for Instance<P> {}
@@ -96,6 +97,7 @@ impl<P: Plugin> Instance<P> {
             main_thread_state: UnsafeCell::new(MainThreadState {
                 layout_index: 0,
                 plugin: P::new(Host {}),
+                editor: None,
             }),
             process_state: UnsafeCell::new(ProcessState {
                 buses: Vec::new(),
@@ -316,6 +318,12 @@ impl<P: Plugin> Instance<P> {
 
         if id == CLAP_EXT_STATE {
             return &Self::STATE as *const _ as *const c_void;
+        }
+
+        if P::Editor::exists() {
+            if id == CLAP_EXT_GUI {
+                return &Self::GUI as *const _ as *const c_void;
+            }
         }
 
         ptr::null()
