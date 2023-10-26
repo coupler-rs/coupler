@@ -274,14 +274,14 @@ impl<P: Plugin> IComponentTrait for Component<P> {
         let main_thread_state = &mut *self.main_thread_state.get();
         let process_state = &mut *self.process_state.get();
 
-        self.sync_plugin(&mut main_thread_state.plugin);
-
         if state == 0 {
             process_state.processor = None;
         } else {
             let config = main_thread_state.config.clone();
             process_state.config = config.clone();
             process_state.scratch_buffers.resize(&self.info.buses, &config);
+
+            self.sync_plugin(&mut main_thread_state.plugin);
             process_state.processor = Some(main_thread_state.plugin.processor(config));
         }
 
