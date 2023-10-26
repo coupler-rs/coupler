@@ -7,12 +7,12 @@ use std::sync::Arc;
 use vst3::{Class, ComRef, ComWrapper, Steinberg::Vst::*, Steinberg::*};
 
 use super::buffers::ScratchBuffers;
-use super::params::ParamValues;
 use super::util::{copy_wstring, utf16_from_ptr};
 use super::view::View;
 use crate::bus::{BusDir, Format, Layout};
 use crate::events::{Data, Event, Events};
 use crate::param::{ParamInfo, Range};
+use crate::sync::params::ParamValues;
 use crate::util::slice_from_raw_parts_checked;
 use crate::{Config, Editor, Host, ParamId, Plugin, PluginInfo, Processor};
 
@@ -65,7 +65,8 @@ pub struct Component<P: Plugin> {
     output_bus_map: Vec<usize>,
     layout_set: HashSet<Layout>,
     param_map: HashMap<ParamId, usize>,
-    param_values: ParamValues,
+    plugin_params: ParamValues,
+    processor_params: ParamValues,
     main_thread_state: Arc<UnsafeCell<MainThreadState<P>>>,
     // When the audio processor is *not* active, references to ProcessState may only be formed from
     // the main thread. When the audio processor *is* active, references to ProcessState may only
@@ -111,7 +112,8 @@ impl<P: Plugin> Component<P> {
             output_bus_map,
             layout_set,
             param_map,
-            param_values: ParamValues::new(&info.params),
+            plugin_params: ParamValues::new(&info.params),
+            processor_params: ParamValues::new(&info.params),
             main_thread_state: Arc::new(UnsafeCell::new(MainThreadState {
                 config: config.clone(),
                 plugin: P::new(Host {}),
@@ -124,6 +126,20 @@ impl<P: Plugin> Component<P> {
                 events: Vec::with_capacity(4096),
                 processor: None,
             }),
+        }
+    }
+
+    fn sync_plugin(&self, plugin: &mut P) {
+        for (index, value) in self.plugin_params.poll() {
+            let id = self.info.params[index].id;
+            plugin.set_param(id, value);
+        }
+    }
+
+    fn sync_processor(&self, processor: &mut P::Processor) {
+        for (index, value) in self.processor_params.poll() {
+            let id = self.info.params[index].id;
+            processor.set_param(id, value);
         }
     }
 }
@@ -258,7 +274,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
         let main_thread_state = &mut *self.main_thread_state.get();
         let process_state = &mut *self.process_state.get();
 
-        self.param_values.sync_plugin(&self.info.params, &mut main_thread_state.plugin);
+        self.sync_plugin(&mut main_thread_state.plugin);
 
         if state == 0 {
             process_state.processor = None;
@@ -295,12 +311,12 @@ impl<P: Plugin> IComponentTrait for Component<P> {
         if let Some(state) = ComRef::from_raw(state) {
             let main_thread_state = &mut *self.main_thread_state.get();
 
-            self.param_values.sync_plugin(&self.info.params, &mut main_thread_state.plugin);
+            self.sync_plugin(&mut main_thread_state.plugin);
 
             if let Ok(_) = main_thread_state.plugin.load(&mut StreamReader(state)) {
                 for (index, param) in self.info.params.iter().enumerate() {
                     let value = main_thread_state.plugin.get_param(param.id);
-                    self.param_values.set_from_plugin(index, value);
+                    self.processor_params.set(index, value);
                     main_thread_state.editor_params[index] = value;
                 }
 
@@ -338,7 +354,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
         if let Some(state) = ComRef::from_raw(state) {
             let main_thread_state = &mut *self.main_thread_state.get();
 
-            self.param_values.sync_plugin(&self.info.params, &mut main_thread_state.plugin);
+            self.sync_plugin(&mut main_thread_state.plugin);
 
             if let Ok(_) = main_thread_state.plugin.save(&mut StreamWriter(state)) {
                 return kResultOk;
@@ -434,7 +450,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
     unsafe fn getLatencySamples(&self) -> uint32 {
         let main_thread_state = &mut *self.main_thread_state.get();
 
-        self.param_values.sync_plugin(&self.info.params, &mut main_thread_state.plugin);
+        self.sync_plugin(&mut main_thread_state.plugin);
         main_thread_state.plugin.latency(&main_thread_state.config) as uint32
     }
 
@@ -456,7 +472,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         };
 
         if state == 0 {
-            self.param_values.sync_processor(&self.info.params, processor);
+            self.sync_processor(processor);
             processor.reset();
         }
 
@@ -470,7 +486,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
             return kNotInitialized;
         };
 
-        self.param_values.sync_processor(&self.info.params, processor);
+        self.sync_processor(processor);
 
         let data = &*data;
 
@@ -516,7 +532,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
                         data: Data::ParamChange { id, value },
                     });
 
-                    self.param_values.set_from_processor(param_index, value);
+                    self.plugin_params.set(param_index, value);
                 }
             }
         }

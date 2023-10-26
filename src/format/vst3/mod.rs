@@ -7,7 +7,6 @@ use vst3::{ComWrapper, Steinberg::IPluginFactory};
 mod buffers;
 mod component;
 mod factory;
-mod params;
 mod util;
 mod view;
 
