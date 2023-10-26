@@ -268,7 +268,9 @@ impl<P: Plugin> Instance<P> {
         for i in 0..size {
             let event = (*in_events).get.unwrap()(in_events, i);
 
-            if (*event).type_ == CLAP_EVENT_PARAM_VALUE {
+            if (*event).space_id == CLAP_CORE_EVENT_SPACE_ID
+                && (*event).type_ == CLAP_EVENT_PARAM_VALUE
+            {
                 let event = &*(event as *const clap_event_param_value);
 
                 if let Some(&param_index) = instance.param_map.get(&event.param_id) {
@@ -593,7 +595,9 @@ impl<P: Plugin> Instance<P> {
             for i in 0..size {
                 let event = (*in_).get.unwrap()(in_, i);
 
-                if (*event).type_ == CLAP_EVENT_PARAM_VALUE {
+                if (*event).space_id == CLAP_CORE_EVENT_SPACE_ID
+                    && (*event).type_ == CLAP_EVENT_PARAM_VALUE
+                {
                     let event = &*(event as *const clap_event_param_value);
 
                     if let Some(&param_index) = instance.param_map.get(&event.param_id) {
@@ -613,7 +617,9 @@ impl<P: Plugin> Instance<P> {
             for i in 0..size {
                 let event = (*in_).get.unwrap()(in_, i);
 
-                if (*event).type_ == CLAP_EVENT_PARAM_VALUE {
+                if (*event).space_id == CLAP_CORE_EVENT_SPACE_ID
+                    && (*event).type_ == CLAP_EVENT_PARAM_VALUE
+                {
                     let event = &*(event as *const clap_event_param_value);
 
                     if let Some(&param_index) = instance.param_map.get(&event.param_id) {
