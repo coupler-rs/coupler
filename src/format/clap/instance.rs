@@ -13,6 +13,7 @@ use crate::buffers::{Buffers, BusData};
 use crate::bus::{BusDir, Format};
 use crate::events::{Data, Event, Events};
 use crate::param::Range;
+use crate::sync::params::ParamValues;
 use crate::util::{copy_cstring, slice_from_raw_parts_checked};
 use crate::{Config, Host, ParamId, Plugin, PluginInfo, Processor};
 
@@ -43,6 +44,8 @@ pub struct Instance<P: Plugin> {
     input_bus_map: Vec<usize>,
     output_bus_map: Vec<usize>,
     param_map: HashMap<ParamId, usize>,
+    plugin_params: ParamValues,
+    processor_params: ParamValues,
     main_thread_state: UnsafeCell<MainThreadState<P>>,
     process_state: UnsafeCell<ProcessState<P>>,
 }
@@ -88,6 +91,8 @@ impl<P: Plugin> Instance<P> {
             input_bus_map,
             output_bus_map,
             param_map,
+            plugin_params: ParamValues::new(&info.params),
+            processor_params: ParamValues::new(&info.params),
             main_thread_state: UnsafeCell::new(MainThreadState {
                 layout_index: 0,
                 plugin: P::new(Host {}),
@@ -101,6 +106,22 @@ impl<P: Plugin> Instance<P> {
         }
     }
 
+    fn sync_plugin(&self, plugin: &mut P) {
+        for (index, value) in self.plugin_params.poll() {
+            let id = self.info.params[index].id;
+            plugin.set_param(id, value);
+        }
+    }
+
+    fn sync_processor(&self, processor: &mut P::Processor) {
+        for (index, value) in self.processor_params.poll() {
+            let id = self.info.params[index].id;
+            processor.set_param(id, value);
+        }
+    }
+}
+
+impl<P: Plugin> Instance<P> {
     unsafe extern "C" fn init(_plugin: *const clap_plugin) -> bool {
         true
     }
@@ -142,6 +163,8 @@ impl<P: Plugin> Instance<P> {
             sample_rate,
             max_buffer_size: max_frames_count as usize,
         };
+
+        instance.sync_plugin(&mut main_thread_state.plugin);
         process_state.processor = Some(main_thread_state.plugin.processor(config));
 
         true
@@ -165,6 +188,7 @@ impl<P: Plugin> Instance<P> {
         let process_state = &mut *instance.process_state.get();
 
         if let Some(processor) = &mut process_state.processor {
+            instance.sync_processor(processor);
             processor.reset();
         }
     }
@@ -247,7 +271,7 @@ impl<P: Plugin> Instance<P> {
             if (*event).type_ == CLAP_EVENT_PARAM_VALUE {
                 let event = &*(event as *const clap_event_param_value);
 
-                if instance.param_map.contains_key(&event.param_id) {
+                if let Some(&param_index) = instance.param_map.get(&event.param_id) {
                     process_state.events.push(Event {
                         time: event.header.time as i64,
                         data: Data::ParamChange {
@@ -255,10 +279,13 @@ impl<P: Plugin> Instance<P> {
                             value: event.value,
                         },
                     });
+
+                    instance.plugin_params.set(param_index, event.value);
                 }
             }
         }
 
+        instance.sync_processor(processor);
         processor.process(
             Buffers::from_raw_parts(&process_state.buses, &process_state.buffer_ptrs, len),
             Events::new(&process_state.events),
@@ -498,6 +525,7 @@ impl<P: Plugin> Instance<P> {
         let main_thread_state = &mut *instance.main_thread_state.get();
 
         if instance.param_map.contains_key(&param_id) {
+            instance.sync_plugin(&mut main_thread_state.plugin);
             *value = main_thread_state.plugin.get_param(param_id);
             return true;
         }
@@ -559,6 +587,8 @@ impl<P: Plugin> Instance<P> {
 
         // If we are in the active state, flush will be called on the audio thread.
         if let Some(processor) = &mut process_state.processor {
+            instance.sync_processor(processor);
+
             let size = (*in_).size.unwrap()(in_);
             for i in 0..size {
                 let event = (*in_).get.unwrap()(in_, i);
@@ -566,8 +596,9 @@ impl<P: Plugin> Instance<P> {
                 if (*event).type_ == CLAP_EVENT_PARAM_VALUE {
                     let event = &*(event as *const clap_event_param_value);
 
-                    if instance.param_map.contains_key(&event.param_id) {
+                    if let Some(&param_index) = instance.param_map.get(&event.param_id) {
                         processor.set_param(event.param_id, event.value);
+                        instance.plugin_params.set(param_index, event.value);
                     }
                 }
             }
@@ -576,6 +607,8 @@ impl<P: Plugin> Instance<P> {
         else {
             let main_thread_state = &mut *instance.main_thread_state.get();
 
+            instance.sync_plugin(&mut main_thread_state.plugin);
+
             let size = (*in_).size.unwrap()(in_);
             for i in 0..size {
                 let event = (*in_).get.unwrap()(in_, i);
@@ -583,8 +616,9 @@ impl<P: Plugin> Instance<P> {
                 if (*event).type_ == CLAP_EVENT_PARAM_VALUE {
                     let event = &*(event as *const clap_event_param_value);
 
-                    if instance.param_map.contains_key(&event.param_id) {
+                    if let Some(&param_index) = instance.param_map.get(&event.param_id) {
                         main_thread_state.plugin.set_param(event.param_id, event.value);
+                        instance.processor_params.set(param_index, event.value);
                     }
                 }
             }
@@ -632,6 +666,7 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
         let main_thread_state = &mut *instance.main_thread_state.get();
 
+        instance.sync_plugin(&mut main_thread_state.plugin);
         let result = main_thread_state.plugin.save(&mut StreamWriter(stream));
         result.is_ok()
     }
@@ -666,7 +701,16 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
         let main_thread_state = &mut *instance.main_thread_state.get();
 
-        let result = main_thread_state.plugin.load(&mut StreamReader(stream));
-        result.is_ok()
+        instance.sync_plugin(&mut main_thread_state.plugin);
+        if let Ok(_) = main_thread_state.plugin.load(&mut StreamReader(stream)) {
+            for (index, param) in instance.info.params.iter().enumerate() {
+                let value = main_thread_state.plugin.get_param(param.id);
+                instance.processor_params.set(index, value);
+            }
+
+            return true;
+        }
+
+        false
     }
 }
