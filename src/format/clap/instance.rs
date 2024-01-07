@@ -512,10 +512,10 @@ impl<P: Plugin> Instance<P> {
                     param_info.min_value = *min;
                     param_info.max_value = *max;
                 }
-                Range::Discrete { steps } => {
+                Range::Discrete { min, max } => {
                     param_info.flags |= CLAP_PARAM_IS_STEPPED;
-                    param_info.min_value = 0.0;
-                    param_info.max_value = ((*steps).max(2) - 1) as f64;
+                    param_info.min_value = *min as f64;
+                    param_info.max_value = *max as f64;
                 }
             }
             param_info.default_value = param.default;

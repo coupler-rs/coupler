@@ -34,14 +34,14 @@ fn speaker_arrangement_to_format(speaker_arrangement: SpeakerArrangement) -> Opt
 fn map_param(param: &ParamInfo, value: ParamValue) -> ParamValue {
     match param.range {
         Range::Continuous { min, max } => (1.0 - value) * min + value * max,
-        Range::Discrete { steps } => value * steps as f64,
+        Range::Discrete { min, max } => (1.0 - value) * min as f64 + value * max as f64,
     }
 }
 
 fn unmap_param(param: &ParamInfo, value: ParamValue) -> ParamValue {
     match param.range {
         Range::Continuous { min, max } => (value - min) / (max - min),
-        Range::Discrete { steps } => value / steps as f64,
+        Range::Discrete { min, max } => (value - min as f64) / ((max - min) as f64),
     }
 }
 
@@ -579,7 +579,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
             copy_wstring("", &mut info.units);
             info.stepCount = match param.range {
                 Range::Continuous { .. } => 0,
-                Range::Discrete { steps } => (steps as int32 - 1).max(1),
+                Range::Discrete { min, max } => (max - min).max(1),
             };
             info.defaultNormalizedValue = map_param(param, param.default);
             info.unitId = 0;

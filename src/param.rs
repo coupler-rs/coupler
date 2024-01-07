@@ -12,7 +12,7 @@ pub struct ParamInfo {
 
 pub enum Range {
     Continuous { min: f64, max: f64 },
-    Discrete { steps: u64 },
+    Discrete { min: i32, max: i32 },
 }
 
 pub trait Display {
