@@ -148,11 +148,11 @@ impl FromStr for Target {
             }),
             "x86_64-pc-windows-gnu" => Ok(Target {
                 arch: Arch::X86_64,
-                os: Os::MacOs,
+                os: Os::Windows,
             }),
             "x86_64-pc-windows-msvc" => Ok(Target {
                 arch: Arch::X86_64,
-                os: Os::MacOs,
+                os: Os::Windows,
             }),
             "x86_64-unknown-linux-gnu" => Ok(Target {
                 arch: Arch::X86_64,
