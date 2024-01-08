@@ -103,33 +103,61 @@ impl FromStr for Format {
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 enum Arch {
-    X86,
+    Aarch64,
+    I686,
     X86_64,
-}
-
-impl FromStr for Arch {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "x86" => Ok(Arch::X86),
-            "x86_64" => Ok(Arch::X86_64),
-            _ => Err(()),
-        }
-    }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 enum Os {
+    Linux,
+    MacOs,
     Windows,
 }
 
-impl FromStr for Os {
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+struct Target {
+    arch: Arch,
+    os: Os,
+}
+
+impl FromStr for Target {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "windows" => Ok(Os::Windows),
+            "aarch64-apple-darwin" => Ok(Target {
+                arch: Arch::Aarch64,
+                os: Os::MacOs,
+            }),
+            "i686-pc-windows-gnu" => Ok(Target {
+                arch: Arch::I686,
+                os: Os::Windows,
+            }),
+            "i686-pc-windows-msvc" => Ok(Target {
+                arch: Arch::I686,
+                os: Os::Windows,
+            }),
+            "i686-unknown-linux-gnu" => Ok(Target {
+                arch: Arch::I686,
+                os: Os::Linux,
+            }),
+            "x86_64-apple-darwin" => Ok(Target {
+                arch: Arch::X86_64,
+                os: Os::MacOs,
+            }),
+            "x86_64-pc-windows-gnu" => Ok(Target {
+                arch: Arch::X86_64,
+                os: Os::MacOs,
+            }),
+            "x86_64-pc-windows-msvc" => Ok(Target {
+                arch: Arch::X86_64,
+                os: Os::MacOs,
+            }),
+            "x86_64-unknown-linux-gnu" => Ok(Target {
+                arch: Arch::X86_64,
+                os: Os::Linux,
+            }),
             _ => Err(()),
         }
     }
@@ -148,7 +176,7 @@ fn main() {
         Coupler::Bundle(cmd) => {
             // Query `rustc` for host target if no --target argument was given
 
-            let target = if let Some(target) = &cmd.target {
+            let target_str = if let Some(target) = &cmd.target {
                 target.clone()
             } else {
                 let rustc_path =
@@ -188,23 +216,10 @@ fn main() {
 
             // Extract arch and OS from target triple
 
-            let triple: Vec<&str> = target.split('-').collect();
-            if !(triple.len() == 3 || triple.len() == 4) {
-                eprintln!("error: malformed target triple `{}`", &target);
-                process::exit(1);
-            }
-
-            let arch = if let Ok(arch) = Arch::from_str(triple[0]) {
-                arch
+            let target = if let Ok(target) = Target::from_str(&target_str) {
+                target
             } else {
-                eprintln!("error: unsupported target `{}`", &target);
-                process::exit(1);
-            };
-
-            let os = if let Ok(os) = Os::from_str(triple[2]) {
-                os
-            } else {
-                eprintln!("error: unsupported target `{}`", &target);
+                eprintln!("error: unsupported target `{}`", &target_str);
                 process::exit(1);
             };
 
@@ -212,7 +227,7 @@ fn main() {
 
             let mut command = MetadataCommand::new();
 
-            command.other_options(vec!["--filter-platform".to_string(), target.clone()]);
+            command.other_options(vec!["--filter-platform".to_string(), target_str.clone()]);
 
             if let Some(manifest_path) = &cmd.manifest_path {
                 command.manifest_path(manifest_path);
@@ -490,25 +505,32 @@ fn main() {
                             let mut dst_dir = bundle_path.clone();
                             dst_dir.push("Contents");
 
-                            let arch_str = match arch {
-                                Arch::X86 => "x64",
+                            let arch_str = match target.arch {
+                                Arch::Aarch64 => unimplemented!(),
+                                Arch::I686 => "x86",
                                 Arch::X86_64 => "x86_64",
                             };
-                            let os_str = match os {
+                            let os_str = match target.os {
+                                Os::Linux => unimplemented!(),
+                                Os::MacOs => unimplemented!(),
                                 Os::Windows => "win",
                             };
                             dst_dir.push(format!("{}-{}", arch_str, os_str));
 
                             fs::create_dir_all(&dst_dir).unwrap();
 
-                            let src_filename = match os {
+                            let src_filename = match target.os {
+                                Os::Linux => unimplemented!(),
+                                Os::MacOs => unimplemented!(),
                                 Os::Windows => {
                                     format!("{}.dll", &metadata.packages[package_info.index].name)
                                 }
                             };
                             let src = binary_dir.join(&src_filename);
 
-                            let dst_filename = match os {
+                            let dst_filename = match target.os {
+                                Os::Linux => unimplemented!(),
+                                Os::MacOs => unimplemented!(),
                                 Os::Windows => format!("{}.vst3", &package_info.name),
                             };
                             let dst = dst_dir.join(&dst_filename);
