@@ -485,57 +485,86 @@ fn main() {
                 "dev"
             };
 
-            let mut binary_dir = PathBuf::from(target_dir);
+            let mut out_dir = PathBuf::from(target_dir);
             if let Some(target) = &cmd.target {
-                binary_dir.push(target);
+                out_dir.push(target);
             }
-            binary_dir.push(if profile == "dev" { "debug" } else { profile });
+            out_dir.push(if profile == "dev" { "debug" } else { profile });
 
             for package_info in &packages_to_build {
                 for format in &package_info.formats {
                     match format {
                         Format::Vst3 => {
-                            let mut bundle_path = binary_dir.join("bundle");
-                            bundle_path.push(format!("{}.vst3", &package_info.name));
+                            let package_name = &metadata.packages[package_info.index].name;
+                            let crate_name = package_name.replace('-', "_");
+                            let src = match target.os {
+                                Os::Linux => out_dir.join(format!("lib{crate_name}.so")),
+                                Os::MacOs => out_dir.join(format!("lib{crate_name}.dylib")),
+                                Os::Windows => out_dir.join(format!("{crate_name}.dll")),
+                            };
+
+                            let name = &package_info.name;
+                            let bundle_path = out_dir.join(format!("bundle/{name}.vst3"));
+
+                            let dst = match target.os {
+                                Os::Linux => {
+                                    let arch_str = match target.arch {
+                                        Arch::Aarch64 => "aarch64",
+                                        Arch::I686 => "i386",
+                                        Arch::X86_64 => "x86_64",
+                                    };
+
+                                    bundle_path.join(format!("Contents/{arch_str}-linux/{name}.so"))
+                                }
+                                Os::MacOs => bundle_path.join(format!("Contents/MacOS/{name}")),
+                                Os::Windows => {
+                                    let arch_str = match target.arch {
+                                        Arch::Aarch64 => "arm64",
+                                        Arch::I686 => "x86",
+                                        Arch::X86_64 => "x86_64",
+                                    };
+
+                                    bundle_path.join(format!("Contents/{arch_str}-win/{name}.vst3"))
+                                }
+                            };
 
                             if bundle_path.exists() {
                                 fs::remove_dir_all(&bundle_path).unwrap();
                             }
 
-                            let mut dst_dir = bundle_path.clone();
-                            dst_dir.push("Contents");
-
-                            let arch_str = match target.arch {
-                                Arch::Aarch64 => unimplemented!(),
-                                Arch::I686 => "x86",
-                                Arch::X86_64 => "x86_64",
-                            };
-                            let os_str = match target.os {
-                                Os::Linux => unimplemented!(),
-                                Os::MacOs => unimplemented!(),
-                                Os::Windows => "win",
-                            };
-                            dst_dir.push(format!("{}-{}", arch_str, os_str));
-
-                            fs::create_dir_all(&dst_dir).unwrap();
-
-                            let src_filename = match target.os {
-                                Os::Linux => unimplemented!(),
-                                Os::MacOs => unimplemented!(),
-                                Os::Windows => {
-                                    format!("{}.dll", &metadata.packages[package_info.index].name)
-                                }
-                            };
-                            let src = binary_dir.join(&src_filename);
-
-                            let dst_filename = match target.os {
-                                Os::Linux => unimplemented!(),
-                                Os::MacOs => unimplemented!(),
-                                Os::Windows => format!("{}.vst3", &package_info.name),
-                            };
-                            let dst = dst_dir.join(&dst_filename);
-
+                            fs::create_dir_all(dst.parent().unwrap()).unwrap();
                             fs::copy(&src, &dst).unwrap();
+
+                            if target.os == Os::MacOs {
+                                let plist = format!(
+                                    r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>English</string>
+    <key>CFBundleExecutable</key>
+    <string>{name}</string>
+    <key>CFBundleIdentifier</key>
+    <string></string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundlePackageType</key>
+    <string>BNDL</string>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+    <key>CFBundleVersion</key>
+    <string>1.0.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+</dict>
+</plist>"#
+                                );
+
+                                fs::write(bundle_path.join("Contents/Info.plist"), plist).unwrap();
+                                fs::write(bundle_path.join("Contents/PkgInfo"), "BNDL????")
+                                    .unwrap();
+                            }
                         }
                     }
                 }
