@@ -171,6 +171,16 @@ struct PackageInfo {
     formats: Vec<Format>,
 }
 
+fn main() {
+    let Cargo::Coupler(cmd) = Cargo::parse();
+
+    match cmd {
+        Coupler::Bundle(cmd) => {
+            bundle(&cmd);
+        }
+    }
+}
+
 fn bundle(cmd: &Bundle) {
     // Query `rustc` for host target if no --target argument was given
 
@@ -612,14 +622,4 @@ fn macos_bundle_info(package_info: &PackageInfo, bundle_path: &Path) {
 
     fs::write(bundle_path.join("Contents/Info.plist"), plist).unwrap();
     fs::write(bundle_path.join("Contents/PkgInfo"), "BNDL????").unwrap();
-}
-
-fn main() {
-    let Cargo::Coupler(cmd) = Cargo::parse();
-
-    match cmd {
-        Coupler::Bundle(cmd) => {
-            bundle(&cmd);
-        }
-    }
 }
