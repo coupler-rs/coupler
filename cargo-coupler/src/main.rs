@@ -1,4 +1,4 @@
-use cargo_metadata::{CargoOpt, MetadataCommand};
+use cargo_metadata::{CargoOpt, Metadata, MetadataCommand};
 use clap::{AppSettings, Args, Parser, Subcommand};
 use serde::Deserialize;
 
@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{self, Command};
 use std::str::{self, FromStr};
 
@@ -169,375 +169,378 @@ struct PackageInfo {
     formats: Vec<Format>,
 }
 
-fn main() {
-    let Cargo::Coupler(cmd) = Cargo::parse();
+fn bundle(cmd: &Bundle) {
+    // Query `rustc` for host target if no --target argument was given
 
-    match cmd {
-        Coupler::Bundle(cmd) => {
-            // Query `rustc` for host target if no --target argument was given
+    let target_str = if let Some(target) = &cmd.target {
+        target.clone()
+    } else {
+        let rustc_path =
+            env::var("RUSTC").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("rustc"));
+        let mut rustc = Command::new(rustc_path);
+        rustc.args(&["--version", "--verbose"]);
 
-            let target_str = if let Some(target) = &cmd.target {
-                target.clone()
+        let result = rustc.output();
+        if let Err(error) = result {
+            eprintln!(
+                "error: failed to invoke `rustc` to query host information: {}",
+                error
+            );
+            process::exit(1);
+        }
+
+        let output = result.unwrap();
+        if !output.status.success() {
+            eprintln!("error: failed to invoke `rustc` to query host information");
+            eprintln!();
+            io::stderr().write_all(&output.stderr).unwrap();
+            process::exit(1);
+        }
+
+        const HOST_FIELD: &str = "host: ";
+        let output_str = str::from_utf8(&output.stdout).unwrap();
+        let host = output_str
+            .lines()
+            .find(|l| l.starts_with(HOST_FIELD))
+            .map(|l| &l[HOST_FIELD.len()..]);
+        if host.is_none() {
+            eprintln!("error: failed to invoke `rustc` to query host information");
+            process::exit(1);
+        }
+        host.unwrap().to_string()
+    };
+
+    // Extract arch and OS from target triple
+
+    let target = if let Ok(target) = Target::from_str(&target_str) {
+        target
+    } else {
+        eprintln!("error: unsupported target `{}`", &target_str);
+        process::exit(1);
+    };
+
+    // Invoke `cargo metadata`
+
+    let mut command = MetadataCommand::new();
+
+    command.other_options(vec!["--filter-platform".to_string(), target_str.clone()]);
+
+    if let Some(manifest_path) = &cmd.manifest_path {
+        command.manifest_path(manifest_path);
+    }
+
+    if cmd.no_default_features {
+        command.features(CargoOpt::NoDefaultFeatures);
+    }
+    if cmd.all_features {
+        command.features(CargoOpt::AllFeatures);
+    }
+    if !cmd.features.is_empty() {
+        command.features(CargoOpt::SomeFeatures(cmd.features.clone()));
+    }
+
+    if cmd.frozen {
+        command.other_options(vec!["--frozen".to_string()]);
+    }
+    if cmd.locked {
+        command.other_options(vec!["--locked".to_string()]);
+    }
+    if cmd.offline {
+        command.other_options(vec!["--offline".to_string()]);
+    }
+
+    let metadata = match command.exec() {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            match error {
+                cargo_metadata::Error::CargoMetadata { stderr } => {
+                    eprint!("{}", stderr);
+                }
+                _ => {
+                    eprintln!("error: failed to invoke `cargo metadata`: {}", error);
+                }
+            }
+
+            process::exit(1);
+        }
+    };
+
+    if !cmd.workspace && !cmd.exclude.is_empty() {
+        eprintln!("error: --exclude can only be used together with --workspace");
+        process::exit(1);
+    }
+
+    let mut packages_by_id = HashMap::new();
+    for (index, package) in metadata.packages.iter().enumerate() {
+        packages_by_id.insert(package.id.clone(), index);
+    }
+
+    // Build a list of candidate packages for bundling
+
+    let mut candidates = Vec::new();
+    if cmd.workspace {
+        let mut exclude = HashSet::new();
+        for package_name in &cmd.exclude {
+            exclude.insert(package_name);
+        }
+
+        for package_id in &metadata.workspace_members {
+            let package_index = packages_by_id[package_id];
+            if !exclude.contains(&metadata.packages[package_index].name) {
+                candidates.push(package_index);
+            }
+        }
+    } else if !cmd.package.is_empty() {
+        // Build an index of packages in the current workspace by name
+        let mut packages_by_name = HashMap::new();
+        for package_id in &metadata.workspace_members {
+            let package_index = packages_by_id[package_id];
+            packages_by_name.insert(metadata.packages[package_index].name.clone(), package_index);
+        }
+
+        for package_name in &cmd.package {
+            if let Some(&package_index) = packages_by_name.get(package_name) {
+                candidates.push(package_index);
             } else {
-                let rustc_path =
-                    env::var("RUSTC").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("rustc"));
-                let mut rustc = Command::new(rustc_path);
-                rustc.args(&["--version", "--verbose"]);
+                eprintln!(
+                    "error: package `{}` not found in workspace `{}`",
+                    package_name, &metadata.workspace_root
+                );
+                process::exit(1);
+            }
+        }
+    } else if let Some(root) = &metadata.resolve.as_ref().unwrap().root {
+        // If neither --workspace nor --package is specified and there is a
+        // root package, just try to build the root
+        candidates.push(packages_by_id[root]);
+    } else {
+        // If there is no root package, search the entire workspace
+        for package_id in &metadata.workspace_members {
+            candidates.push(packages_by_id[package_id]);
+        }
+    }
 
-                let result = rustc.output();
-                if let Err(error) = result {
+    let mut formats = Vec::new();
+    for format_str in &cmd.format {
+        if let Ok(format) = Format::from_str(format_str) {
+            formats.push(format);
+        } else {
+            eprintln!("error: invalid format `{}`", format_str);
+            process::exit(1);
+        }
+    }
+
+    // Build the actual list of packages to bundle
+
+    let mut packages_to_build = Vec::new();
+    for &candidate in &candidates {
+        let package = &metadata.packages[candidate];
+
+        let has_cdylib =
+            package.targets.iter().any(|t| t.crate_types.iter().any(|c| c == "cdylib"));
+
+        let package_metadata: Option<PackageMetadata> =
+            match serde_json::from_value(package.metadata.clone()) {
+                Ok(package_metadata) => package_metadata,
+                Err(err) => {
                     eprintln!(
-                        "error: failed to invoke `rustc` to query host information: {}",
-                        error
+                        "error: unable to parse [package.metadata.coupler] section: {}",
+                        err
                     );
                     process::exit(1);
                 }
-
-                let output = result.unwrap();
-                if !output.status.success() {
-                    eprintln!("error: failed to invoke `rustc` to query host information");
-                    eprintln!();
-                    io::stderr().write_all(&output.stderr).unwrap();
-                    process::exit(1);
-                }
-
-                const HOST_FIELD: &str = "host: ";
-                let output_str = str::from_utf8(&output.stdout).unwrap();
-                let host = output_str
-                    .lines()
-                    .find(|l| l.starts_with(HOST_FIELD))
-                    .map(|l| &l[HOST_FIELD.len()..]);
-                if host.is_none() {
-                    eprintln!("error: failed to invoke `rustc` to query host information");
-                    process::exit(1);
-                }
-                host.unwrap().to_string()
             };
 
-            // Extract arch and OS from target triple
-
-            let target = if let Ok(target) = Target::from_str(&target_str) {
-                target
-            } else {
-                eprintln!("error: unsupported target `{}`", &target_str);
-                process::exit(1);
-            };
-
-            // Invoke `cargo metadata`
-
-            let mut command = MetadataCommand::new();
-
-            command.other_options(vec!["--filter-platform".to_string(), target_str.clone()]);
-
-            if let Some(manifest_path) = &cmd.manifest_path {
-                command.manifest_path(manifest_path);
-            }
-
-            if cmd.no_default_features {
-                command.features(CargoOpt::NoDefaultFeatures);
-            }
-            if cmd.all_features {
-                command.features(CargoOpt::AllFeatures);
-            }
-            if !cmd.features.is_empty() {
-                command.features(CargoOpt::SomeFeatures(cmd.features.clone()));
-            }
-
-            if cmd.frozen {
-                command.other_options(vec!["--frozen".to_string()]);
-            }
-            if cmd.locked {
-                command.other_options(vec!["--locked".to_string()]);
-            }
-            if cmd.offline {
-                command.other_options(vec!["--offline".to_string()]);
-            }
-
-            let metadata = match command.exec() {
-                Ok(metadata) => metadata,
-                Err(error) => {
-                    match error {
-                        cargo_metadata::Error::CargoMetadata { stderr } => {
-                            eprint!("{}", stderr);
-                        }
-                        _ => {
-                            eprintln!("error: failed to invoke `cargo metadata`: {}", error);
-                        }
-                    }
-
-                    process::exit(1);
-                }
-            };
-
-            if !cmd.workspace && !cmd.exclude.is_empty() {
-                eprintln!("error: --exclude can only be used together with --workspace");
+        if let Some(coupler_metadata) = package_metadata.and_then(|m| m.coupler) {
+            if !has_cdylib {
+                eprintln!("error: package `{}` has a [package.metadata.coupler] section but does not have a lib target of type cdylib", &package.name);
                 process::exit(1);
             }
 
-            let mut packages_by_id = HashMap::new();
-            for (index, package) in metadata.packages.iter().enumerate() {
-                packages_by_id.insert(package.id.clone(), index);
+            if coupler_metadata.formats.is_empty() {
+                eprintln!(
+                    "warning: package `{}` does not specify any formats",
+                    &package.name
+                );
+                continue;
             }
 
-            // Build a list of candidate packages for bundling
-
-            let mut candidates = Vec::new();
-            if cmd.workspace {
-                let mut exclude = HashSet::new();
-                for package_name in &cmd.exclude {
-                    exclude.insert(package_name);
-                }
-
-                for package_id in &metadata.workspace_members {
-                    let package_index = packages_by_id[package_id];
-                    if !exclude.contains(&metadata.packages[package_index].name) {
-                        candidates.push(package_index);
-                    }
-                }
-            } else if !cmd.package.is_empty() {
-                // Build an index of packages in the current workspace by name
-                let mut packages_by_name = HashMap::new();
-                for package_id in &metadata.workspace_members {
-                    let package_index = packages_by_id[package_id];
-                    packages_by_name
-                        .insert(metadata.packages[package_index].name.clone(), package_index);
-                }
-
-                for package_name in &cmd.package {
-                    if let Some(&package_index) = packages_by_name.get(package_name) {
-                        candidates.push(package_index);
-                    } else {
-                        eprintln!(
-                            "error: package `{}` not found in workspace `{}`",
-                            package_name, &metadata.workspace_root
-                        );
-                        process::exit(1);
-                    }
-                }
-            } else if let Some(root) = &metadata.resolve.as_ref().unwrap().root {
-                // If neither --workspace nor --package is specified and there is a
-                // root package, just try to build the root
-                candidates.push(packages_by_id[root]);
-            } else {
-                // If there is no root package, search the entire workspace
-                for package_id in &metadata.workspace_members {
-                    candidates.push(packages_by_id[package_id]);
-                }
-            }
-
-            let mut formats = Vec::new();
-            for format_str in &cmd.format {
-                if let Ok(format) = Format::from_str(format_str) {
-                    formats.push(format);
+            let mut package_formats = Vec::new();
+            for format_str in &coupler_metadata.formats {
+                let format = if let Ok(format) = Format::from_str(format_str) {
+                    format
                 } else {
-                    eprintln!("error: invalid format `{}`", format_str);
+                    eprintln!(
+                        "error: package `{}` specifies invalid format `{}`",
+                        &package.name, format_str
+                    );
                     process::exit(1);
+                };
+
+                if formats.is_empty() || formats.contains(&format) {
+                    package_formats.push(format);
                 }
             }
 
-            // Build the actual list of packages to bundle
+            if !package_formats.is_empty() {
+                packages_to_build.push(PackageInfo {
+                    index: candidate,
+                    name: coupler_metadata.name.as_ref().unwrap_or(&package.name).clone(),
+                    formats: package_formats,
+                });
+            }
+        }
+    }
 
-            let mut packages_to_build = Vec::new();
-            for &candidate in &candidates {
-                let package = &metadata.packages[candidate];
+    if packages_to_build.is_empty() {
+        eprintln!("error: no packages to bundle");
+        process::exit(1);
+    }
 
-                let has_cdylib =
-                    package.targets.iter().any(|t| t.crate_types.iter().any(|c| c == "cdylib"));
+    // Invoke `cargo build`
 
-                let package_metadata: Option<PackageMetadata> =
-                    match serde_json::from_value(package.metadata.clone()) {
-                        Ok(package_metadata) => package_metadata,
-                        Err(err) => {
-                            eprintln!(
-                                "error: unable to parse [package.metadata.coupler] section: {}",
-                                err
-                            );
-                            process::exit(1);
-                        }
-                    };
+    let cargo_path =
+        env::var("CARGO").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("cargo"));
+    let mut cargo = Command::new(cargo_path);
+    cargo.arg("build");
 
-                if let Some(coupler_metadata) = package_metadata.and_then(|m| m.coupler) {
-                    if !has_cdylib {
-                        eprintln!("error: package `{}` has a [package.metadata.coupler] section but does not have a lib target of type cdylib", &package.name);
-                        process::exit(1);
-                    }
+    for package_info in &packages_to_build {
+        cargo.args(&["--package", &metadata.packages[package_info.index].name]);
+    }
 
-                    if coupler_metadata.formats.is_empty() {
-                        eprintln!(
-                            "warning: package `{}` does not specify any formats",
-                            &package.name
-                        );
-                        continue;
-                    }
+    cargo.arg("--lib");
 
-                    let mut package_formats = Vec::new();
-                    for format_str in &coupler_metadata.formats {
-                        let format = if let Ok(format) = Format::from_str(format_str) {
-                            format
-                        } else {
-                            eprintln!(
-                                "error: package `{}` specifies invalid format `{}`",
-                                &package.name, format_str
-                            );
-                            process::exit(1);
-                        };
+    if cmd.release {
+        cargo.arg("--release");
+    }
+    if let Some(profile) = &cmd.profile {
+        cargo.args(&["--profile", profile]);
+    }
 
-                        if formats.is_empty() || formats.contains(&format) {
-                            package_formats.push(format);
-                        }
-                    }
+    if !cmd.features.is_empty() {
+        cargo.arg("--features");
+        for feature in &cmd.features {
+            cargo.arg(feature);
+        }
+    }
+    if cmd.all_features {
+        cargo.arg("--all-features");
+    }
+    if cmd.no_default_features {
+        cargo.arg("--no-default-features");
+    }
 
-                    if !package_formats.is_empty() {
-                        packages_to_build.push(PackageInfo {
-                            index: candidate,
-                            name: coupler_metadata.name.as_ref().unwrap_or(&package.name).clone(),
-                            formats: package_formats,
-                        });
-                    }
+    if let Some(target) = &cmd.target {
+        cargo.args(&["--target", target]);
+    }
+
+    if let Some(target_dir) = &cmd.target_dir {
+        cargo.arg("--target-dir");
+        cargo.arg(target_dir);
+    }
+
+    if let Some(manifest_path) = &cmd.manifest_path {
+        cargo.arg("--manifest-path");
+        cargo.arg(manifest_path);
+    }
+
+    if cmd.frozen {
+        cargo.arg("--frozen");
+    }
+    if cmd.locked {
+        cargo.arg("--locked");
+    }
+    if cmd.offline {
+        cargo.arg("--offline");
+    }
+
+    let result = cargo.spawn().and_then(|mut child| child.wait());
+    if let Err(error) = result {
+        eprintln!("error: failed to invoke `cargo build`: {}", error);
+        process::exit(1);
+    }
+
+    if !result.unwrap().success() {
+        process::exit(1);
+    }
+
+    // Create bundles
+
+    let target_dir = if let Some(target_dir) = &cmd.target_dir {
+        target_dir
+    } else {
+        metadata.target_directory.as_std_path()
+    };
+
+    let profile = if let Some(profile) = &cmd.profile {
+        profile
+    } else if cmd.release {
+        "release"
+    } else {
+        "dev"
+    };
+
+    let mut out_dir = PathBuf::from(target_dir);
+    if let Some(target) = &cmd.target {
+        out_dir.push(target);
+    }
+    out_dir.push(if profile == "dev" { "debug" } else { profile });
+
+    for package_info in &packages_to_build {
+        for format in &package_info.formats {
+            match format {
+                Format::Vst3 => {
+                    bundle_vst3(package_info, &out_dir, &target, &metadata);
                 }
             }
+        }
+    }
+}
 
-            if packages_to_build.is_empty() {
-                eprintln!("error: no packages to bundle");
-                process::exit(1);
-            }
+fn bundle_vst3(package_info: &PackageInfo, out_dir: &Path, target: &Target, metadata: &Metadata) {
+    let package_name = &metadata.packages[package_info.index].name;
+    let crate_name = package_name.replace('-', "_");
+    let src = match target.os {
+        Os::Linux => out_dir.join(format!("lib{crate_name}.so")),
+        Os::MacOs => out_dir.join(format!("lib{crate_name}.dylib")),
+        Os::Windows => out_dir.join(format!("{crate_name}.dll")),
+    };
 
-            // Invoke `cargo build`
+    let name = &package_info.name;
+    let bundle_path = out_dir.join(format!("bundle/{name}.vst3"));
 
-            let cargo_path =
-                env::var("CARGO").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("cargo"));
-            let mut cargo = Command::new(cargo_path);
-            cargo.arg("build");
-
-            for package_info in &packages_to_build {
-                cargo.args(&["--package", &metadata.packages[package_info.index].name]);
-            }
-
-            cargo.arg("--lib");
-
-            if cmd.release {
-                cargo.arg("--release");
-            }
-            if let Some(profile) = &cmd.profile {
-                cargo.args(&["--profile", profile]);
-            }
-
-            if !cmd.features.is_empty() {
-                cargo.arg("--features");
-                for feature in cmd.features {
-                    cargo.arg(feature);
-                }
-            }
-            if cmd.all_features {
-                cargo.arg("--all-features");
-            }
-            if cmd.no_default_features {
-                cargo.arg("--no-default-features");
-            }
-
-            if let Some(target) = &cmd.target {
-                cargo.args(&["--target", target]);
-            }
-
-            if let Some(target_dir) = &cmd.target_dir {
-                cargo.arg("--target-dir");
-                cargo.arg(target_dir);
-            }
-
-            if let Some(manifest_path) = &cmd.manifest_path {
-                cargo.arg("--manifest-path");
-                cargo.arg(manifest_path);
-            }
-
-            if cmd.frozen {
-                cargo.arg("--frozen");
-            }
-            if cmd.locked {
-                cargo.arg("--locked");
-            }
-            if cmd.offline {
-                cargo.arg("--offline");
-            }
-
-            let result = cargo.spawn().and_then(|mut child| child.wait());
-            if let Err(error) = result {
-                eprintln!("error: failed to invoke `cargo build`: {}", error);
-                process::exit(1);
-            }
-
-            if !result.unwrap().success() {
-                process::exit(1);
-            }
-
-            // Create bundles
-
-            let target_dir = if let Some(target_dir) = &cmd.target_dir {
-                target_dir
-            } else {
-                metadata.target_directory.as_std_path()
+    let dst = match target.os {
+        Os::Linux => {
+            let arch_str = match target.arch {
+                Arch::Aarch64 => "aarch64",
+                Arch::I686 => "i386",
+                Arch::X86_64 => "x86_64",
             };
 
-            let profile = if let Some(profile) = &cmd.profile {
-                profile
-            } else if cmd.release {
-                "release"
-            } else {
-                "dev"
+            bundle_path.join(format!("Contents/{arch_str}-linux/{name}.so"))
+        }
+        Os::MacOs => bundle_path.join(format!("Contents/MacOS/{name}")),
+        Os::Windows => {
+            let arch_str = match target.arch {
+                Arch::Aarch64 => "arm64",
+                Arch::I686 => "x86",
+                Arch::X86_64 => "x86_64",
             };
 
-            let mut out_dir = PathBuf::from(target_dir);
-            if let Some(target) = &cmd.target {
-                out_dir.push(target);
-            }
-            out_dir.push(if profile == "dev" { "debug" } else { profile });
+            bundle_path.join(format!("Contents/{arch_str}-win/{name}.vst3"))
+        }
+    };
 
-            for package_info in &packages_to_build {
-                for format in &package_info.formats {
-                    match format {
-                        Format::Vst3 => {
-                            let package_name = &metadata.packages[package_info.index].name;
-                            let crate_name = package_name.replace('-', "_");
-                            let src = match target.os {
-                                Os::Linux => out_dir.join(format!("lib{crate_name}.so")),
-                                Os::MacOs => out_dir.join(format!("lib{crate_name}.dylib")),
-                                Os::Windows => out_dir.join(format!("{crate_name}.dll")),
-                            };
+    if bundle_path.exists() {
+        fs::remove_dir_all(&bundle_path).unwrap();
+    }
 
-                            let name = &package_info.name;
-                            let bundle_path = out_dir.join(format!("bundle/{name}.vst3"));
+    fs::create_dir_all(dst.parent().unwrap()).unwrap();
+    fs::copy(&src, &dst).unwrap();
 
-                            let dst = match target.os {
-                                Os::Linux => {
-                                    let arch_str = match target.arch {
-                                        Arch::Aarch64 => "aarch64",
-                                        Arch::I686 => "i386",
-                                        Arch::X86_64 => "x86_64",
-                                    };
-
-                                    bundle_path.join(format!("Contents/{arch_str}-linux/{name}.so"))
-                                }
-                                Os::MacOs => bundle_path.join(format!("Contents/MacOS/{name}")),
-                                Os::Windows => {
-                                    let arch_str = match target.arch {
-                                        Arch::Aarch64 => "arm64",
-                                        Arch::I686 => "x86",
-                                        Arch::X86_64 => "x86_64",
-                                    };
-
-                                    bundle_path.join(format!("Contents/{arch_str}-win/{name}.vst3"))
-                                }
-                            };
-
-                            if bundle_path.exists() {
-                                fs::remove_dir_all(&bundle_path).unwrap();
-                            }
-
-                            fs::create_dir_all(dst.parent().unwrap()).unwrap();
-                            fs::copy(&src, &dst).unwrap();
-
-                            if target.os == Os::MacOs {
-                                let plist = format!(
-                                    r#"<?xml version="1.0" encoding="UTF-8"?>
+    if target.os == Os::MacOs {
+        let plist = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -559,16 +562,19 @@ fn main() {
     <string>1.0.0</string>
 </dict>
 </plist>"#
-                                );
+        );
 
-                                fs::write(bundle_path.join("Contents/Info.plist"), plist).unwrap();
-                                fs::write(bundle_path.join("Contents/PkgInfo"), "BNDL????")
-                                    .unwrap();
-                            }
-                        }
-                    }
-                }
-            }
+        fs::write(bundle_path.join("Contents/Info.plist"), plist).unwrap();
+        fs::write(bundle_path.join("Contents/PkgInfo"), "BNDL????").unwrap();
+    }
+}
+
+fn main() {
+    let Cargo::Coupler(cmd) = Cargo::parse();
+
+    match cmd {
+        Coupler::Bundle(cmd) => {
+            bundle(&cmd);
         }
     }
 }
