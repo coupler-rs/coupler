@@ -87,6 +87,7 @@ struct CouplerMetadata {
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 enum Format {
+    Clap,
     Vst3,
 }
 
@@ -95,6 +96,7 @@ impl FromStr for Format {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
+            "clap" => Ok(Format::Clap),
             "vst3" => Ok(Format::Vst3),
             _ => Err(()),
         }
@@ -489,10 +491,47 @@ fn bundle(cmd: &Bundle) {
     for package_info in &packages_to_build {
         for format in &package_info.formats {
             match format {
+                Format::Clap => {
+                    bundle_clap(package_info, &out_dir, &target, &metadata);
+                }
                 Format::Vst3 => {
                     bundle_vst3(package_info, &out_dir, &target, &metadata);
                 }
             }
+        }
+    }
+}
+
+fn bundle_clap(package_info: &PackageInfo, out_dir: &Path, target: &Target, metadata: &Metadata) {
+    let package_name = &metadata.packages[package_info.index].name;
+    let crate_name = package_name.replace('-', "_");
+    let src = match target.os {
+        Os::Linux => out_dir.join(format!("lib{crate_name}.so")),
+        Os::MacOs => out_dir.join(format!("lib{crate_name}.dylib")),
+        Os::Windows => out_dir.join(format!("{crate_name}.dll")),
+    };
+
+    let name = &package_info.name;
+    let bundle_path = out_dir.join(format!("bundle/{name}.clap"));
+
+    match target.os {
+        Os::Linux | Os::Windows => {
+            let dst = bundle_path;
+
+            fs::create_dir_all(dst.parent().unwrap()).unwrap();
+            fs::copy(&src, &dst).unwrap();
+        }
+        Os::MacOs => {
+            if bundle_path.exists() {
+                fs::remove_dir_all(&bundle_path).unwrap();
+            }
+
+            let dst = bundle_path.join(format!("Contents/MacOS/{name}"));
+
+            fs::create_dir_all(dst.parent().unwrap()).unwrap();
+            fs::copy(&src, &dst).unwrap();
+
+            macos_bundle_info(package_info, &bundle_path);
         }
     }
 }
@@ -539,8 +578,15 @@ fn bundle_vst3(package_info: &PackageInfo, out_dir: &Path, target: &Target, meta
     fs::copy(&src, &dst).unwrap();
 
     if target.os == Os::MacOs {
-        let plist = format!(
-            r#"<?xml version="1.0" encoding="UTF-8"?>
+        macos_bundle_info(package_info, &bundle_path);
+    }
+}
+
+fn macos_bundle_info(package_info: &PackageInfo, bundle_path: &Path) {
+    let name = &package_info.name;
+
+    let plist = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -562,11 +608,10 @@ fn bundle_vst3(package_info: &PackageInfo, out_dir: &Path, target: &Target, meta
     <string>1.0.0</string>
 </dict>
 </plist>"#
-        );
+    );
 
-        fs::write(bundle_path.join("Contents/Info.plist"), plist).unwrap();
-        fs::write(bundle_path.join("Contents/PkgInfo"), "BNDL????").unwrap();
-    }
+    fs::write(bundle_path.join("Contents/Info.plist"), plist).unwrap();
+    fs::write(bundle_path.join("Contents/PkgInfo"), "BNDL????").unwrap();
 }
 
 fn main() {
