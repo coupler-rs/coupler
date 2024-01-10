@@ -1,4 +1,4 @@
-use cargo_metadata::{CargoOpt, MetadataCommand};
+use cargo_metadata::{CargoOpt, Metadata, MetadataCommand};
 use clap::{AppSettings, Args, Parser, Subcommand};
 use serde::Deserialize;
 
@@ -120,6 +120,7 @@ enum Arch {
     Aarch64,
     I686,
     X86_64,
+    Aarch64X86_64, // Universal binary containing both aarch64 and x86_64
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -142,6 +143,10 @@ impl FromStr for Target {
         match s {
             "aarch64-apple-darwin" => Ok(Target {
                 arch: Arch::Aarch64,
+                os: Os::MacOs,
+            }),
+            "aarch64-x86_64-apple-darwin" => Ok(Target {
+                arch: Arch::Aarch64X86_64,
                 os: Os::MacOs,
             }),
             "i686-pc-windows-gnu" => Ok(Target {
@@ -192,6 +197,30 @@ fn main() {
             bundle(&cmd);
         }
     }
+}
+
+fn out_dir_for_target(cmd: &Bundle, metadata: &Metadata, target: Option<&str>) -> PathBuf {
+    let target_dir = if let Some(target_dir) = &cmd.target_dir {
+        target_dir
+    } else {
+        metadata.target_directory.as_std_path()
+    };
+    let mut out_dir = PathBuf::from(target_dir);
+
+    if let Some(target) = target {
+        out_dir.push(target);
+    }
+
+    let profile = if let Some(profile) = &cmd.profile {
+        profile
+    } else if cmd.release {
+        "release"
+    } else {
+        "debug"
+    };
+    out_dir.push(profile);
+
+    out_dir
 }
 
 fn bundle(cmd: &Bundle) {
@@ -248,7 +277,16 @@ fn bundle(cmd: &Bundle) {
 
     let mut command = MetadataCommand::new();
 
-    command.other_options(vec!["--filter-platform".to_string(), target_str.clone()]);
+    if target.arch == Arch::Aarch64X86_64 {
+        command.other_options(vec![
+            "--filter-platform".to_string(),
+            "aarch64-apple-darwin".to_string(),
+            "--filter-platform".to_string(),
+            "x86_64-apple-darwin".to_string(),
+        ]);
+    } else {
+        command.other_options(vec!["--filter-platform".to_string(), target_str.clone()]);
+    }
 
     if let Some(manifest_path) = &cmd.manifest_path {
         command.manifest_path(manifest_path);
@@ -441,14 +479,76 @@ fn bundle(cmd: &Bundle) {
         process::exit(1);
     }
 
+    let out_dir = out_dir_for_target(cmd, &metadata, cmd.target.as_deref());
+
     // Invoke `cargo build`
 
+    if target.arch == Arch::Aarch64X86_64 {
+        build_universal(
+            cmd,
+            &metadata,
+            &["aarch64-apple-darwin", "x86_64-apple-darwin"],
+            &packages_to_build,
+            &out_dir,
+        );
+    } else {
+        build(cmd, cmd.target.as_deref(), &packages_to_build);
+    }
+
+    // Create bundles
+
+    for package_info in &packages_to_build {
+        match package_info.format {
+            Format::Clap => {
+                bundle_clap(package_info, &out_dir, &target);
+            }
+            Format::Vst3 => {
+                bundle_vst3(package_info, &out_dir, &target);
+            }
+        }
+    }
+}
+
+fn build_universal(
+    cmd: &Bundle,
+    metadata: &Metadata,
+    targets: &[&str],
+    packages: &[PackageInfo],
+    out_dir: &Path,
+) {
+    for target in targets {
+        build(cmd, Some(target), packages);
+    }
+
+    fs::create_dir_all(&out_dir).unwrap();
+
+    for package_info in packages {
+        let out_lib = out_dir.join(&package_info.lib_name);
+
+        let mut lipo = Command::new("lipo");
+        lipo.arg("-create").arg("-output").arg(out_lib);
+
+        for target in targets {
+            let lib_name = &package_info.lib_name;
+            let input_lib = out_dir_for_target(cmd, metadata, Some(target)).join(lib_name);
+            lipo.arg(input_lib);
+        }
+
+        let result = lipo.spawn().and_then(|mut child| child.wait());
+        if let Err(error) = result {
+            eprintln!("error: failed to invoke `lipo`: {error}");
+            process::exit(1);
+        }
+    }
+}
+
+fn build(cmd: &Bundle, target: Option<&str>, packages: &[PackageInfo]) {
     let cargo_path =
         env::var("CARGO").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("cargo"));
     let mut cargo = Command::new(cargo_path);
     cargo.arg("build");
 
-    for package_info in &packages_to_build {
+    for package_info in packages {
         cargo.args(&["--package", &package_info.package_name]);
     }
 
@@ -474,7 +574,7 @@ fn bundle(cmd: &Bundle) {
         cargo.arg("--no-default-features");
     }
 
-    if let Some(target) = &cmd.target {
+    if let Some(target) = target {
         cargo.args(&["--target", target]);
     }
 
@@ -506,39 +606,6 @@ fn bundle(cmd: &Bundle) {
 
     if !result.unwrap().success() {
         process::exit(1);
-    }
-
-    // Create bundles
-
-    let target_dir = if let Some(target_dir) = &cmd.target_dir {
-        target_dir
-    } else {
-        metadata.target_directory.as_std_path()
-    };
-
-    let profile = if let Some(profile) = &cmd.profile {
-        profile
-    } else if cmd.release {
-        "release"
-    } else {
-        "dev"
-    };
-
-    let mut out_dir = PathBuf::from(target_dir);
-    if let Some(target) = &cmd.target {
-        out_dir.push(target);
-    }
-    out_dir.push(if profile == "dev" { "debug" } else { profile });
-
-    for package_info in &packages_to_build {
-        match package_info.format {
-            Format::Clap => {
-                bundle_clap(package_info, &out_dir, &target);
-            }
-            Format::Vst3 => {
-                bundle_vst3(package_info, &out_dir, &target);
-            }
-        }
     }
 }
 
@@ -582,6 +649,7 @@ fn bundle_vst3(package_info: &PackageInfo, out_dir: &Path, target: &Target) {
                 Arch::Aarch64 => "aarch64",
                 Arch::I686 => "i386",
                 Arch::X86_64 => "x86_64",
+                Arch::Aarch64X86_64 => unreachable!(),
             };
 
             bundle_path.join(format!("Contents/{arch_str}-linux/{name}.so"))
@@ -592,6 +660,7 @@ fn bundle_vst3(package_info: &PackageInfo, out_dir: &Path, target: &Target) {
                 Arch::Aarch64 => "arm64",
                 Arch::I686 => "x86",
                 Arch::X86_64 => "x86_64",
+                Arch::Aarch64X86_64 => unreachable!(),
             };
 
             bundle_path.join(format!("Contents/{arch_str}-win/{name}.vst3"))
