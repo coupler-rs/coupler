@@ -5,5 +5,8 @@ authors = ["Micah Johnston <micah@photophore.systems>"]
 edition = "2021"
 publish = false
 
+[package.metadata.coupler]
+formats = ["clap", "vst3"]
+
 [dependencies]
 coupler = { workspace = true }
