@@ -8,7 +8,7 @@ publish = false
 [dependencies]
 coupler-derive = { path = "coupler-derive", optional = true }
 clap-sys = "0.3.0"
-vst3 = "0.1.0"
+vst3 = "0.1.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 auv2-sys = { git = "https://github.com/coupler-rs/auv2-sys", rev = "92dc1ad40c09ca486ee97a78d22b05755ab1cc22" }
