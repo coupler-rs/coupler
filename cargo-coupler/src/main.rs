@@ -179,6 +179,7 @@ impl FromStr for Target {
 
 struct PackageInfo {
     package_name: String,
+    lib_name: String,
     name: String,
     format: Format,
 }
@@ -418,8 +419,16 @@ fn bundle(cmd: &Bundle) {
                     process::exit(1);
                 }
 
+                let crate_name = package_name.replace('-', "_");
+                let lib_name = match target.os {
+                    Os::Linux => format!("lib{crate_name}.so"),
+                    Os::MacOs => format!("lib{crate_name}.dylib"),
+                    Os::Windows => format!("{crate_name}.dll"),
+                };
+
                 packages_to_build.push(PackageInfo {
                     package_name,
+                    lib_name,
                     name: coupler_metadata.name.as_ref().unwrap_or(&package.name).clone(),
                     format,
                 });
@@ -534,13 +543,7 @@ fn bundle(cmd: &Bundle) {
 }
 
 fn bundle_clap(package_info: &PackageInfo, out_dir: &Path, target: &Target) {
-    let package_name = &package_info.package_name;
-    let crate_name = package_name.replace('-', "_");
-    let src = match target.os {
-        Os::Linux => out_dir.join(format!("lib{crate_name}.so")),
-        Os::MacOs => out_dir.join(format!("lib{crate_name}.dylib")),
-        Os::Windows => out_dir.join(format!("{crate_name}.dll")),
-    };
+    let src = out_dir.join(&package_info.lib_name);
 
     let name = &package_info.name;
     let bundle_path = out_dir.join(format!("bundle/{name}.clap"));
@@ -568,13 +571,7 @@ fn bundle_clap(package_info: &PackageInfo, out_dir: &Path, target: &Target) {
 }
 
 fn bundle_vst3(package_info: &PackageInfo, out_dir: &Path, target: &Target) {
-    let package_name = &package_info.package_name;
-    let crate_name = package_name.replace('-', "_");
-    let src = match target.os {
-        Os::Linux => out_dir.join(format!("lib{crate_name}.so")),
-        Os::MacOs => out_dir.join(format!("lib{crate_name}.dylib")),
-        Os::Windows => out_dir.join(format!("{crate_name}.dll")),
-    };
+    let src = out_dir.join(&package_info.lib_name);
 
     let name = &package_info.name;
     let bundle_path = out_dir.join(format!("bundle/{name}.vst3"));
