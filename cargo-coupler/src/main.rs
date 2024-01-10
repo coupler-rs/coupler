@@ -1,4 +1,4 @@
-use cargo_metadata::{CargoOpt, Metadata, MetadataCommand};
+use cargo_metadata::{CargoOpt, MetadataCommand};
 use clap::{AppSettings, Args, Parser, Subcommand};
 use serde::Deserialize;
 
@@ -178,7 +178,7 @@ impl FromStr for Target {
 }
 
 struct PackageInfo {
-    index: usize,
+    package_name: String,
     name: String,
     format: Format,
 }
@@ -419,7 +419,7 @@ fn bundle(cmd: &Bundle) {
                 }
 
                 packages_to_build.push(PackageInfo {
-                    index,
+                    package_name,
                     name: coupler_metadata.name.as_ref().unwrap_or(&package.name).clone(),
                     format,
                 });
@@ -440,7 +440,7 @@ fn bundle(cmd: &Bundle) {
     cargo.arg("build");
 
     for package_info in &packages_to_build {
-        cargo.args(&["--package", &metadata.packages[package_info.index].name]);
+        cargo.args(&["--package", &package_info.package_name]);
     }
 
     cargo.arg("--lib");
@@ -524,17 +524,17 @@ fn bundle(cmd: &Bundle) {
     for package_info in &packages_to_build {
         match package_info.format {
             Format::Clap => {
-                bundle_clap(package_info, &out_dir, &target, &metadata);
+                bundle_clap(package_info, &out_dir, &target);
             }
             Format::Vst3 => {
-                bundle_vst3(package_info, &out_dir, &target, &metadata);
+                bundle_vst3(package_info, &out_dir, &target);
             }
         }
     }
 }
 
-fn bundle_clap(package_info: &PackageInfo, out_dir: &Path, target: &Target, metadata: &Metadata) {
-    let package_name = &metadata.packages[package_info.index].name;
+fn bundle_clap(package_info: &PackageInfo, out_dir: &Path, target: &Target) {
+    let package_name = &package_info.package_name;
     let crate_name = package_name.replace('-', "_");
     let src = match target.os {
         Os::Linux => out_dir.join(format!("lib{crate_name}.so")),
@@ -567,8 +567,8 @@ fn bundle_clap(package_info: &PackageInfo, out_dir: &Path, target: &Target, meta
     }
 }
 
-fn bundle_vst3(package_info: &PackageInfo, out_dir: &Path, target: &Target, metadata: &Metadata) {
-    let package_name = &metadata.packages[package_info.index].name;
+fn bundle_vst3(package_info: &PackageInfo, out_dir: &Path, target: &Target) {
+    let package_name = &package_info.package_name;
     let crate_name = package_name.replace('-', "_");
     let src = match target.os {
         Os::Linux => out_dir.join(format!("lib{crate_name}.so")),
