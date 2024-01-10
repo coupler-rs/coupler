@@ -4,6 +4,7 @@ use serde::Deserialize;
 
 use std::collections::{HashMap, HashSet};
 use std::env;
+use std::fmt::{self, Display};
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -91,6 +92,17 @@ enum Format {
     Vst3,
 }
 
+impl Display for Format {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match *self {
+            Format::Clap => "clap",
+            Format::Vst3 => "vst3",
+        };
+
+        f.write_str(name)
+    }
+}
+
 impl FromStr for Format {
     type Err = ();
 
@@ -168,7 +180,7 @@ impl FromStr for Target {
 struct PackageInfo {
     index: usize,
     name: String,
-    formats: Vec<Format>,
+    format: Format,
 }
 
 fn main() {
@@ -287,6 +299,12 @@ fn bundle(cmd: &Bundle) {
         packages_by_id.insert(package.id.clone(), index);
     }
 
+    let mut packages_by_name = HashMap::new();
+    for package_id in &metadata.workspace_members {
+        let package_index = packages_by_id[package_id];
+        packages_by_name.insert(metadata.packages[package_index].name.clone(), package_index);
+    }
+
     // Build a list of candidate packages for bundling
 
     let mut candidates = Vec::new();
@@ -303,13 +321,6 @@ fn bundle(cmd: &Bundle) {
             }
         }
     } else if !cmd.package.is_empty() {
-        // Build an index of packages in the current workspace by name
-        let mut packages_by_name = HashMap::new();
-        for package_id in &metadata.workspace_members {
-            let package_index = packages_by_id[package_id];
-            packages_by_name.insert(metadata.packages[package_index].name.clone(), package_index);
-        }
-
         for package_name in &cmd.package {
             if let Some(&package_index) = packages_by_name.get(package_name) {
                 candidates.push(package_index);
@@ -348,9 +359,6 @@ fn bundle(cmd: &Bundle) {
     for &candidate in &candidates {
         let package = &metadata.packages[candidate];
 
-        let has_cdylib =
-            package.targets.iter().any(|t| t.crate_types.iter().any(|c| c == "cdylib"));
-
         let package_metadata: Option<PackageMetadata> =
             match serde_json::from_value(package.metadata.clone()) {
                 Ok(package_metadata) => package_metadata,
@@ -364,11 +372,6 @@ fn bundle(cmd: &Bundle) {
             };
 
         if let Some(coupler_metadata) = package_metadata.and_then(|m| m.coupler) {
-            if !has_cdylib {
-                eprintln!("error: package `{}` has a [package.metadata.coupler] section but does not have a lib target of type cdylib", &package.name);
-                process::exit(1);
-            }
-
             if coupler_metadata.formats.is_empty() {
                 eprintln!(
                     "warning: package `{}` does not specify any formats",
@@ -377,7 +380,6 @@ fn bundle(cmd: &Bundle) {
                 continue;
             }
 
-            let mut package_formats = Vec::new();
             for format_str in &coupler_metadata.formats {
                 let format = if let Ok(format) = Format::from_str(format_str) {
                     format
@@ -389,16 +391,37 @@ fn bundle(cmd: &Bundle) {
                     process::exit(1);
                 };
 
-                if formats.is_empty() || formats.contains(&format) {
-                    package_formats.push(format);
+                if !formats.is_empty() && !formats.contains(&format) {
+                    continue;
                 }
-            }
 
-            if !package_formats.is_empty() {
+                let package_name = format!("{}-{}", &package.name, format);
+                let index = if let Some(&index) = packages_by_name.get(&package_name) {
+                    index
+                } else {
+                    eprintln!(
+                        "error: package `{}` specifies format `{}`, but no package named `{}` was found in workspace `{}`",
+                        &package.name, format, package_name, &metadata.workspace_root
+                    );
+                    process::exit(1);
+                };
+
+                let has_cdylib = metadata.packages[index]
+                    .targets
+                    .iter()
+                    .any(|t| t.crate_types.iter().any(|c| c == "cdylib"));
+                if !has_cdylib {
+                    eprintln!(
+                        "error: package `{}` does not have a lib target of type cdylib",
+                        package_name
+                    );
+                    process::exit(1);
+                }
+
                 packages_to_build.push(PackageInfo {
-                    index: candidate,
+                    index,
                     name: coupler_metadata.name.as_ref().unwrap_or(&package.name).clone(),
-                    formats: package_formats,
+                    format,
                 });
             }
         }
@@ -499,14 +522,12 @@ fn bundle(cmd: &Bundle) {
     out_dir.push(if profile == "dev" { "debug" } else { profile });
 
     for package_info in &packages_to_build {
-        for format in &package_info.formats {
-            match format {
-                Format::Clap => {
-                    bundle_clap(package_info, &out_dir, &target, &metadata);
-                }
-                Format::Vst3 => {
-                    bundle_vst3(package_info, &out_dir, &target, &metadata);
-                }
+        match package_info.format {
+            Format::Clap => {
+                bundle_clap(package_info, &out_dir, &target, &metadata);
+            }
+            Format::Vst3 => {
+                bundle_vst3(package_info, &out_dir, &target, &metadata);
             }
         }
     }
