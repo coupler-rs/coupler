@@ -423,7 +423,7 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
 
         if let Some(layout) = instance.info.layouts.get(index as usize) {
-            let mut config = &mut *config;
+            let config = &mut *config;
 
             config.id = index;
             copy_cstring("", &mut config.name);

@@ -27,13 +27,13 @@ impl<P: Plugin> Instance<P> {
     };
 
     #[cfg(target_os = "windows")]
-    const API: &CStr = CLAP_WINDOW_API_WIN32;
+    const API: &'static CStr = CLAP_WINDOW_API_WIN32;
 
     #[cfg(target_os = "macos")]
-    const API: &CStr = CLAP_WINDOW_API_COCOA;
+    const API: &'static CStr = CLAP_WINDOW_API_COCOA;
 
     #[cfg(target_os = "linux")]
-    const API: &CStr = CLAP_WINDOW_API_X11;
+    const API: &'static CStr = CLAP_WINDOW_API_X11;
 
     unsafe extern "C" fn gui_is_api_supported(
         _plugin: *const clap_plugin,

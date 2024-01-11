@@ -58,7 +58,7 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
         #[cfg(target_os = "linux")]
         let raw_parent = RawParent::X11(parent as std::ffi::c_ulong);
 
-        let mut main_thread_state = &mut *self.main_thread_state.get();
+        let main_thread_state = &mut *self.main_thread_state.get();
 
         let editor = main_thread_state.plugin.editor(Parent::from_raw(raw_parent));
         main_thread_state.editor = Some(editor);
@@ -67,7 +67,7 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
     }
 
     unsafe fn removed(&self) -> tresult {
-        let mut main_thread_state = &mut *self.main_thread_state.get();
+        let main_thread_state = &mut *self.main_thread_state.get();
 
         main_thread_state.editor = None;
 
