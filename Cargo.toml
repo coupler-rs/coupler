@@ -26,5 +26,5 @@ members = [
 
 [workspace.dependencies]
 coupler = { path = "." }
-portlight = { git = "https://github.com/coupler-rs/portlight", rev = "b2a925745733445adae8c6442ac66224527adea8" }
-flicker = { git = "https://github.com/coupler-rs/flicker", rev = "81202ff098b661e117da96f0556531986871e596" }
+portlight = { git = "https://github.com/coupler-rs/portlight", rev = "6348cd97a320269638c7497a21ebc7fd786dafd6" }
+flicker = { git = "https://github.com/coupler-rs/flicker", rev = "b7a25fa3a970f8c24e50b50364d239e743c72c6f" }
