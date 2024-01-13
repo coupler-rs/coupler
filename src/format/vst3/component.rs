@@ -11,7 +11,6 @@ use super::util::{copy_wstring, utf16_from_ptr};
 use super::view::View;
 use crate::bus::{BusDir, Format, Layout};
 use crate::events::{Data, Event, Events};
-use crate::param::{ParamInfo, Range};
 use crate::sync::params::ParamValues;
 use crate::util::slice_from_raw_parts_checked;
 use crate::{Config, Editor, Host, ParamId, Plugin, PluginInfo, Processor};
@@ -28,20 +27,6 @@ fn speaker_arrangement_to_format(speaker_arrangement: SpeakerArrangement) -> Opt
         SpeakerArr::kMono => Some(Format::Mono),
         SpeakerArr::kStereo => Some(Format::Stereo),
         _ => None,
-    }
-}
-
-fn map_param(param: &ParamInfo, value: ParamValue) -> ParamValue {
-    match param.range {
-        Range::Continuous { min, max } => (1.0 - value) * min + value * max,
-        Range::Discrete { min, max } => (1.0 - value) * min as f64 + value * max as f64,
-    }
-}
-
-fn unmap_param(param: &ParamInfo, value: ParamValue) -> ParamValue {
-    match param.range {
-        Range::Continuous { min, max } => (value - min) / (max - min),
-        Range::Discrete { min, max } => (value - min as f64) / ((max - min) as f64),
     }
 }
 
@@ -512,18 +497,15 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
                 let Some(&param_index) = self.param_map.get(&id) else {
                     continue;
                 };
-                let param = &self.info.params[param_index];
 
                 for index in 0..point_count {
                     let mut offset = 0;
-                    let mut value_normalized = 0.0;
-                    let result = param_data.getPoint(index, &mut offset, &mut value_normalized);
+                    let mut value = 0.0;
+                    let result = param_data.getPoint(index, &mut offset, &mut value);
 
                     if result != kResultOk {
                         continue;
                     }
-
-                    let value = map_param(param, value_normalized);
 
                     process_state.events.push(Event {
                         time: offset as i64,
@@ -577,11 +559,12 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
             copy_wstring(&param.name, &mut info.title);
             copy_wstring(&param.name, &mut info.shortTitle);
             copy_wstring("", &mut info.units);
-            info.stepCount = match param.range {
-                Range::Continuous { .. } => 0,
-                Range::Discrete { min, max } => (max - min).max(1),
+            info.stepCount = if let Some(steps) = param.steps {
+                (steps.max(2) - 1) as int32
+            } else {
+                0
             };
-            info.defaultNormalizedValue = map_param(param, param.default);
+            info.defaultNormalizedValue = param.default;
             info.unitId = 0;
             info.flags = ParameterInfo_::ParameterFlags_::kCanAutomate as int32;
 
@@ -601,8 +584,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
             let param = &self.info.params[index];
 
             let mut display = String::new();
-            let value = map_param(param, valueNormalized);
-            param.display.display(value, &mut display);
+            (param.display)(valueNormalized, &mut display);
             copy_wstring(&display, &mut *string);
 
             return kResultOk;
@@ -621,8 +603,8 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
             let param = &self.info.params[index];
 
             if let Ok(display) = String::from_utf16(utf16_from_ptr(string)) {
-                if let Some(value) = param.display.parse(&display) {
-                    *valueNormalized = unmap_param(param, value);
+                if let Some(value) = (param.parse)(&display) {
+                    *valueNormalized = value;
                     return kResultOk;
                 }
             }
@@ -633,33 +615,21 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
 
     unsafe fn normalizedParamToPlain(
         &self,
-        id: ParamID,
+        _id: ParamID,
         valueNormalized: ParamValue,
     ) -> ParamValue {
-        if let Some(&index) = self.param_map.get(&id) {
-            let param = &self.info.params[index];
-            return map_param(param, valueNormalized);
-        }
-
-        0.0
+        valueNormalized
     }
 
-    unsafe fn plainParamToNormalized(&self, id: ParamID, plainValue: ParamValue) -> ParamValue {
-        if let Some(&index) = self.param_map.get(&id) {
-            let param = &self.info.params[index];
-            return unmap_param(param, plainValue);
-        }
-
-        0.0
+    unsafe fn plainParamToNormalized(&self, _id: ParamID, plainValue: ParamValue) -> ParamValue {
+        plainValue
     }
 
     unsafe fn getParamNormalized(&self, id: ParamID) -> ParamValue {
         let main_thread_state = &*self.main_thread_state.get();
 
         if let Some(&index) = self.param_map.get(&id) {
-            let param = &self.info.params[index];
-            let value = main_thread_state.editor_params[index];
-            return unmap_param(param, value);
+            return main_thread_state.editor_params[index];
         }
 
         0.0
@@ -669,9 +639,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         let main_thread_state = &mut *self.main_thread_state.get();
 
         if let Some(&index) = self.param_map.get(&id) {
-            let param = &self.info.params[index];
-            let mapped = map_param(param, value);
-            main_thread_state.editor_params[index] = mapped;
+            main_thread_state.editor_params[index] = value;
 
             return kResultOk;
         }

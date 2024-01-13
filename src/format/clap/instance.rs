@@ -12,15 +12,31 @@ use clap_sys::{events::*, id::*, plugin::*, process::*, stream::*};
 use crate::buffers::{Buffers, BusData};
 use crate::bus::{BusDir, Format};
 use crate::events::{Data, Event, Events};
-use crate::param::Range;
+use crate::param::ParamInfo;
 use crate::sync::params::ParamValues;
 use crate::util::{copy_cstring, slice_from_raw_parts_checked};
-use crate::{Config, Editor, Host, ParamId, Plugin, PluginInfo, Processor};
+use crate::{Config, Editor, Host, ParamId, ParamValue, Plugin, PluginInfo, Processor};
 
 fn port_type_from_format(format: &Format) -> &'static CStr {
     match format {
         Format::Mono => CLAP_PORT_MONO,
         Format::Stereo => CLAP_PORT_STEREO,
+    }
+}
+
+fn map_param_in(param: &ParamInfo, value: f64) -> ParamValue {
+    if let Some(steps) = param.steps {
+        (value + 0.5) / steps as f64
+    } else {
+        value
+    }
+}
+
+fn map_param_out(param: &ParamInfo, value: ParamValue) -> f64 {
+    if let Some(steps) = param.steps {
+        (value * steps as f64).floor()
+    } else {
+        value
     }
 }
 
@@ -275,16 +291,18 @@ impl<P: Plugin> Instance<P> {
             {
                 let event = &*(event as *const clap_event_param_value);
 
-                if let Some(&param_index) = instance.param_map.get(&event.param_id) {
+                if let Some(&index) = instance.param_map.get(&event.param_id) {
+                    let value = map_param_in(&instance.info.params[index], event.value);
+
                     process_state.events.push(Event {
                         time: event.header.time as i64,
                         data: Data::ParamChange {
                             id: event.param_id,
-                            value: event.value,
+                            value,
                         },
                     });
 
-                    instance.plugin_params.set(param_index, event.value);
+                    instance.plugin_params.set(index, value);
                 }
             }
         }
@@ -507,18 +525,15 @@ impl<P: Plugin> Instance<P> {
             param_info.cookie = ptr::null_mut();
             copy_cstring(&param.name, &mut param_info.name);
             copy_cstring("", &mut param_info.module);
-            match &param.range {
-                Range::Continuous { min, max } => {
-                    param_info.min_value = *min;
-                    param_info.max_value = *max;
-                }
-                Range::Discrete { min, max } => {
-                    param_info.flags |= CLAP_PARAM_IS_STEPPED;
-                    param_info.min_value = *min as f64;
-                    param_info.max_value = *max as f64;
-                }
+            if let Some(steps) = param.steps {
+                param_info.flags |= CLAP_PARAM_IS_STEPPED;
+                param_info.min_value = 0.0;
+                param_info.max_value = (steps.max(2) - 1) as f64;
+            } else {
+                param_info.min_value = 0.0;
+                param_info.max_value = 1.0;
             }
-            param_info.default_value = param.default;
+            param_info.default_value = map_param_out(&param, param.default);
 
             return true;
         }
@@ -534,9 +549,11 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
         let main_thread_state = &mut *instance.main_thread_state.get();
 
-        if instance.param_map.contains_key(&param_id) {
+        if let Some(&index) = instance.param_map.get(&param_id) {
             instance.sync_plugin(&mut main_thread_state.plugin);
-            *value = main_thread_state.plugin.get_param(param_id);
+
+            let param = &instance.info.params[index];
+            *value = map_param_out(param, main_thread_state.plugin.get_param(param_id));
             return true;
         }
 
@@ -553,8 +570,10 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
 
         if let Some(&index) = instance.param_map.get(&param_id) {
+            let param = &instance.info.params[index];
+
             let mut text = String::new();
-            instance.info.params[index].display.display(value, &mut text);
+            (param.display)(map_param_in(param, value), &mut text);
 
             let dst = slice::from_raw_parts_mut(display, size as usize);
             copy_cstring(&text, dst);
@@ -575,8 +594,9 @@ impl<P: Plugin> Instance<P> {
 
         if let Some(&index) = instance.param_map.get(&param_id) {
             if let Ok(text) = CStr::from_ptr(display).to_str() {
-                if let Some(out) = instance.info.params[index].display.parse(text) {
-                    *value = out;
+                let param = &instance.info.params[index];
+                if let Some(out) = (param.parse)(text) {
+                    *value = map_param_out(param, out);
                     return true;
                 }
             }
@@ -608,9 +628,10 @@ impl<P: Plugin> Instance<P> {
                 {
                     let event = &*(event as *const clap_event_param_value);
 
-                    if let Some(&param_index) = instance.param_map.get(&event.param_id) {
-                        processor.set_param(event.param_id, event.value);
-                        instance.plugin_params.set(param_index, event.value);
+                    if let Some(&index) = instance.param_map.get(&event.param_id) {
+                        let value = map_param_in(&instance.info.params[index], event.value);
+                        processor.set_param(event.param_id, value);
+                        instance.plugin_params.set(index, value);
                     }
                 }
             }
@@ -630,9 +651,10 @@ impl<P: Plugin> Instance<P> {
                 {
                     let event = &*(event as *const clap_event_param_value);
 
-                    if let Some(&param_index) = instance.param_map.get(&event.param_id) {
-                        main_thread_state.plugin.set_param(event.param_id, event.value);
-                        instance.processor_params.set(param_index, event.value);
+                    if let Some(&index) = instance.param_map.get(&event.param_id) {
+                        let value = map_param_in(&instance.info.params[index], event.value);
+                        main_thread_state.plugin.set_param(event.param_id, value);
+                        instance.processor_params.set(index, value);
                     }
                 }
             }

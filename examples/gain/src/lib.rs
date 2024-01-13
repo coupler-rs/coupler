@@ -37,8 +37,11 @@ impl Plugin for Gain {
                 id: GAIN,
                 name: "Gain".to_string(),
                 default: 1.0,
-                range: Range::Continuous { min: 0.0, max: 1.0 },
-                display: Box::new(Float),
+                steps: None,
+                parse: Box::new(|s| s.parse().ok()),
+                display: Box::new(|v, w| {
+                    let _ = write!(w, "{:.2}", v);
+                }),
             }],
         }
     }
