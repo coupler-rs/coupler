@@ -4,10 +4,20 @@ use coupler::format::clap::*;
 use coupler::format::vst3::*;
 use coupler::{buffers::*, bus::*, events::*, param::*, parent::*, *};
 
-const GAIN: ParamId = 0;
+#[derive(Params, Clone)]
+struct GainParams {
+    #[param(id = 0, name = "Gain", range = 0.0..1.0)]
+    gain: f32,
+}
+
+impl Default for GainParams {
+    fn default() -> GainParams {
+        GainParams { gain: 1.0 }
+    }
+}
 
 pub struct Gain {
-    gain: f64,
+    params: GainParams,
 }
 
 impl Plugin for Gain {
@@ -33,52 +43,41 @@ impl Plugin for Gain {
                     formats: vec![Format::Mono],
                 },
             ],
-            params: vec![ParamInfo {
-                id: GAIN,
-                name: "Gain".to_string(),
-                default: 1.0,
-                steps: None,
-                parse: Box::new(|s| s.parse().ok()),
-                display: Box::new(|v, f| write!(f, "{:.2}", v)),
-            }],
+            params: GainParams::params(),
         }
     }
 
     fn new(_host: Host) -> Self {
-        Gain { gain: 1.0 }
+        Gain {
+            params: GainParams::default(),
+        }
     }
 
     fn set_param(&mut self, id: ParamId, value: ParamValue) {
-        match id {
-            GAIN => self.gain = value,
-            _ => {}
-        }
+        self.params.set_param(id, value);
     }
 
     fn get_param(&self, id: ParamId) -> ParamValue {
-        match id {
-            GAIN => self.gain,
-            _ => 0.0,
-        }
+        self.params.get_param(id)
     }
 
     fn save(&self, output: &mut impl Write) -> io::Result<()> {
-        output.write(&self.gain.to_le_bytes())?;
+        output.write(&self.params.gain.to_le_bytes())?;
 
         Ok(())
     }
 
     fn load(&mut self, input: &mut impl Read) -> io::Result<()> {
-        let mut buf = [0; std::mem::size_of::<f64>()];
+        let mut buf = [0; std::mem::size_of::<f32>()];
         input.read_exact(&mut buf)?;
-        self.gain = f64::from_le_bytes(buf);
+        self.params.gain = f32::from_le_bytes(buf);
 
         Ok(())
     }
 
     fn processor(&self, _config: Config) -> Self::Processor {
         GainProcessor {
-            gain: self.gain as f32,
+            params: self.params.clone(),
         }
     }
 
@@ -104,15 +103,12 @@ impl ClapPlugin for Gain {
 }
 
 pub struct GainProcessor {
-    gain: f32,
+    params: GainParams,
 }
 
 impl Processor for GainProcessor {
     fn set_param(&mut self, id: ParamId, value: ParamValue) {
-        match id {
-            GAIN => self.gain = value as f32,
-            _ => {}
-        }
+        self.params.set_param(id, value);
     }
 
     fn reset(&mut self) {}
@@ -121,7 +117,7 @@ impl Processor for GainProcessor {
         for event in events {
             match event.data {
                 Data::ParamChange { id, value } => {
-                    self.set_param(id, value);
+                    self.params.set_param(id, value);
                 }
                 _ => {}
             }
@@ -133,7 +129,7 @@ impl Processor for GainProcessor {
 
         for i in 0..main.channel_count() {
             for sample in &mut main[i] {
-                *sample *= self.gain;
+                *sample *= self.params.gain;
             }
         }
     }

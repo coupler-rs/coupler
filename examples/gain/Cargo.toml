@@ -9,4 +9,4 @@ publish = false
 formats = ["clap", "vst3"]
 
 [dependencies]
-coupler = { workspace = true }
+coupler = { workspace = true, features = ["derive"] }
