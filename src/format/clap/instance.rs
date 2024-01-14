@@ -14,7 +14,7 @@ use crate::bus::{BusDir, Format};
 use crate::events::{Data, Event, Events};
 use crate::param::ParamInfo;
 use crate::sync::params::ParamValues;
-use crate::util::{copy_cstring, slice_from_raw_parts_checked};
+use crate::util::{copy_cstring, slice_from_raw_parts_checked, DisplayParam};
 use crate::{Config, Editor, Host, ParamId, ParamValue, Plugin, PluginInfo, Processor};
 
 fn port_type_from_format(format: &Format) -> &'static CStr {
@@ -572,8 +572,7 @@ impl<P: Plugin> Instance<P> {
         if let Some(&index) = instance.param_map.get(&param_id) {
             let param = &instance.info.params[index];
 
-            let mut text = String::new();
-            (param.display)(map_param_in(param, value), &mut text);
+            let text = format!("{}", DisplayParam(param, map_param_in(param, value)));
 
             let dst = slice::from_raw_parts_mut(display, size as usize);
             copy_cstring(&text, dst);

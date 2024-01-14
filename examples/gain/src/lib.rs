@@ -39,9 +39,7 @@ impl Plugin for Gain {
                 default: 1.0,
                 steps: None,
                 parse: Box::new(|s| s.parse().ok()),
-                display: Box::new(|v, w| {
-                    let _ = write!(w, "{:.2}", v);
-                }),
+                display: Box::new(|v, f| write!(f, "{:.2}", v)),
             }],
         }
     }

@@ -1,6 +1,10 @@
 use std::ffi::CString;
+use std::fmt::{self, Display, Formatter};
 use std::os::raw::c_char;
 use std::slice;
+
+use crate::param::ParamInfo;
+use crate::ParamValue;
 
 pub fn copy_cstring(src: &str, dst: &mut [c_char]) {
     let c_string = CString::new(src).unwrap_or_else(|_| CString::default());
@@ -26,5 +30,13 @@ pub unsafe fn slice_from_raw_parts_checked<'a, T>(ptr: *const T, len: usize) -> 
         slice::from_raw_parts(ptr, len)
     } else {
         &[]
+    }
+}
+
+pub struct DisplayParam<'a>(pub &'a ParamInfo, pub ParamValue);
+
+impl<'a> Display for DisplayParam<'a> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+        (self.0.display)(self.1, f)
     }
 }

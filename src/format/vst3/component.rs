@@ -12,7 +12,7 @@ use super::view::View;
 use crate::bus::{BusDir, Format, Layout};
 use crate::events::{Data, Event, Events};
 use crate::sync::params::ParamValues;
-use crate::util::slice_from_raw_parts_checked;
+use crate::util::{slice_from_raw_parts_checked, DisplayParam};
 use crate::{Config, Editor, Host, ParamId, Plugin, PluginInfo, Processor};
 
 fn format_to_speaker_arrangement(format: &Format) -> SpeakerArrangement {
@@ -583,8 +583,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         if let Some(&index) = self.param_map.get(&id) {
             let param = &self.info.params[index];
 
-            let mut display = String::new();
-            (param.display)(valueNormalized, &mut display);
+            let display = format!("{}", DisplayParam(param, valueNormalized));
             copy_wstring(&display, &mut *string);
 
             return kResultOk;
