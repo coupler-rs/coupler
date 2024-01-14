@@ -2,8 +2,8 @@ use std::fmt::Write;
 
 use crate::{ParamId, ParamValue};
 
-type ParseFn = dyn Fn(&str) -> Option<ParamValue> + Send + Sync;
-type DisplayFn = dyn Fn(ParamValue, &mut dyn Write) + Send + Sync;
+pub type ParseFn = dyn Fn(&str) -> Option<ParamValue> + Send + Sync;
+pub type DisplayFn = dyn Fn(ParamValue, &mut dyn Write) + Send + Sync;
 
 pub struct ParamInfo {
     pub id: ParamId,
