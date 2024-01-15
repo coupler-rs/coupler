@@ -1,10 +1,12 @@
 use std::io::{self, Read, Write};
 
+use serde::{Deserialize, Serialize};
+
 use coupler::format::clap::*;
 use coupler::format::vst3::*;
 use coupler::{buffers::*, bus::*, events::*, param::*, parent::*, *};
 
-#[derive(Params, Clone)]
+#[derive(Params, Serialize, Deserialize, Clone)]
 struct GainParams {
     #[param(id = 0, name = "Gain", range = 0.0..1.0, format = "{:.2}")]
     gain: f32,
@@ -62,15 +64,13 @@ impl Plugin for Gain {
     }
 
     fn save(&self, output: &mut impl Write) -> io::Result<()> {
-        output.write(&self.params.gain.to_le_bytes())?;
+        serde_json::to_writer(output, &self.params)?;
 
         Ok(())
     }
 
     fn load(&mut self, input: &mut impl Read) -> io::Result<()> {
-        let mut buf = [0; std::mem::size_of::<f32>()];
-        input.read_exact(&mut buf)?;
-        self.params.gain = f32::from_le_bytes(buf);
+        self.params = serde_json::from_reader(input)?;
 
         Ok(())
     }
