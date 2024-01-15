@@ -113,23 +113,26 @@ impl Processor for GainProcessor {
 
     fn reset(&mut self) {}
 
-    fn process(&mut self, mut block: Block) {
-        for event in block.events {
-            match event.data {
-                Data::ParamChange { id, value } => {
-                    self.params.set_param(id, value);
+    fn process(&mut self, block: Block) {
+        let mut split = block.split_at_events();
+        while let Some(mut block) = split.next() {
+            for event in block.events {
+                match event.data {
+                    Data::ParamChange { id, value } => {
+                        self.params.set_param(id, value);
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
-        }
 
-        let Some(BufferDir::InOut(mut main)) = block.buffers.get(0) else {
-            unreachable!();
-        };
+            let Some(BufferDir::InOut(mut main)) = block.buffers.get(0) else {
+                unreachable!();
+            };
 
-        for i in 0..main.channel_count() {
-            for sample in &mut main[i] {
-                *sample *= self.params.gain;
+            for i in 0..main.channel_count() {
+                for sample in &mut main[i] {
+                    *sample *= self.params.gain;
+                }
             }
         }
     }

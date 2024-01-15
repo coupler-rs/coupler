@@ -1,5 +1,5 @@
 use std::marker::PhantomData;
-use std::ops::{Index, IndexMut};
+use std::ops::{Index, IndexMut, Range};
 use std::slice;
 
 use crate::bus::BusDir;
@@ -79,6 +79,21 @@ impl<'a, 'b> Buffers<'a, 'b> {
             }
         } else {
             None
+        }
+    }
+
+    #[inline]
+    pub fn slice(&mut self, range: Range<usize>) -> Option<Buffers> {
+        if range.start > range.end || range.end > self.len {
+            None
+        } else {
+            Some(Buffers {
+                buses: self.buses,
+                ptrs: self.ptrs,
+                offset: self.offset.checked_add_unsigned(range.start).unwrap(),
+                len: range.end - range.start,
+                _marker: self._marker,
+            })
         }
     }
 }
