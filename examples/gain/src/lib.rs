@@ -6,7 +6,7 @@ use coupler::{buffers::*, bus::*, events::*, param::*, parent::*, *};
 
 #[derive(Params, Clone)]
 struct GainParams {
-    #[param(id = 0, name = "Gain", range = 0.0..1.0)]
+    #[param(id = 0, name = "Gain", range = 0.0..1.0, format = "{:.2}")]
     gain: f32,
 }
 

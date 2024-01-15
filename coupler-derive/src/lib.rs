@@ -8,6 +8,9 @@ struct ParamInfo {
     id: LitInt,
     name: Option<LitStr>,
     range: Option<Expr>,
+    parse: Option<Expr>,
+    display: Option<Expr>,
+    format: Option<LitStr>,
 }
 
 fn parse_struct(input: &DeriveInput) -> Result<Vec<ParamInfo>, Error> {
@@ -48,6 +51,9 @@ fn parse_struct(input: &DeriveInput) -> Result<Vec<ParamInfo>, Error> {
             let mut id = None;
             let mut name = None;
             let mut range = None;
+            let mut parse = None;
+            let mut display = None;
+            let mut format = None;
 
             attr.parse_nested_meta(|meta| {
                 let ident = meta.path.get_ident().ok_or_else(|| {
@@ -80,6 +86,33 @@ fn parse_struct(input: &DeriveInput) -> Result<Vec<ParamInfo>, Error> {
                     }
 
                     range = Some(meta.value()?.parse::<Expr>()?);
+                } else if ident == "parse" {
+                    if parse.is_some() {
+                        return Err(Error::new_spanned(
+                            &meta.path,
+                            "duplicate param attribute `parse`",
+                        ));
+                    }
+
+                    parse = Some(meta.value()?.parse::<Expr>()?);
+                } else if ident == "display" {
+                    if display.is_some() {
+                        return Err(Error::new_spanned(
+                            &meta.path,
+                            "duplicate param attribute `display`",
+                        ));
+                    }
+
+                    display = Some(meta.value()?.parse::<Expr>()?);
+                } else if ident == "format" {
+                    if format.is_some() {
+                        return Err(Error::new_spanned(
+                            &meta.path,
+                            "duplicate param attribute `format`",
+                        ));
+                    }
+
+                    format = Some(meta.value()?.parse::<LitStr>()?);
                 } else {
                     return Err(Error::new_spanned(
                         &meta.path,
@@ -96,12 +129,22 @@ fn parse_struct(input: &DeriveInput) -> Result<Vec<ParamInfo>, Error> {
                 return Err(Error::new_spanned(&attr, "missing `id` attribute"));
             };
 
+            if display.is_some() && format.is_some() {
+                return Err(Error::new_spanned(
+                    &attr,
+                    "`format` attribute cannot be used with `display`",
+                ));
+            }
+
             param_info = Some(ParamInfo {
                 ident: field.ident.clone().unwrap(),
                 ty: field.ty.clone(),
                 id,
                 name,
                 range,
+                parse,
+                display,
+                format,
             });
         }
 
@@ -150,26 +193,40 @@ pub fn derive_params(input: TokenStream) -> TokenStream {
             LitStr::new(&param.ident.to_string(), param.ident.span())
         };
 
+        let encode = quote! { ::coupler::param::Range::<#ty>::encode(&(#range), __value) };
+        let parse = if let Some(parse) = &param.parse {
+            quote! {
+                match (#parse)(__str) {
+                    ::std::option::Option::Some(__value) => ::std::option::Option::Some(#encode),
+                    _ => ::std::option::Option::None,
+                }
+            }
+        } else {
+            quote! {
+                match <#ty as ::std::str::FromStr>::from_str(__str) {
+                    ::std::result::Result::Ok(__value) => ::std::option::Option::Some(#encode),
+                    _ => ::std::option::Option::None,
+                }
+            }
+        };
+
+        let decode = quote! { ::coupler::param::Range::<#ty>::decode(&(#range), __value) };
+        let display = if let Some(display) = &param.display {
+            quote! { (#display)(#decode, __formatter) }
+        } else if let Some(format) = &param.format {
+            quote! { write!(__formatter, #format, #decode) }
+        } else {
+            quote! { write!(__formatter, "{}", #decode) }
+        };
+
         quote! {
             ::coupler::param::ParamInfo {
                 id: #id,
                 name: ::std::string::ToString::to_string(#name),
                 default: ::coupler::param::Range::<#ty>::encode(&(#range), __default.#ident),
                 steps: ::coupler::param::Range::<#ty>::steps(&(#range)),
-                parse: ::std::boxed::Box::new(|__str| {
-                    match <#ty as ::std::str::FromStr>::from_str(__str) {
-                        ::std::result::Result::Ok(__value) => {
-                            Some(::coupler::param::Range::<#ty>::encode(&(#range), __value))
-                        }
-                        ::std::result::Result::Err(_) => None,
-                    }
-                }),
-                display: ::std::boxed::Box::new(|__value, __formatter| {
-                    ::std::fmt::Display::fmt(
-                        &::coupler::param::Range::<#ty>::decode(&(#range), __value),
-                        __formatter
-                    )
-                }),
+                parse: ::std::boxed::Box::new(|__str| #parse),
+                display: ::std::boxed::Box::new(|__value, __formatter| #display),
             }
         }
     });
