@@ -11,6 +11,7 @@ pub enum BufferDir<'a, 'b> {
 }
 
 impl<'a, 'b> BufferDir<'a, 'b> {
+    #[inline]
     pub unsafe fn from_raw_parts(
         dir: BusDir,
         ptrs: &'a [*mut f32],
@@ -102,6 +103,7 @@ impl<'a, 'b> IntoIterator for Buffers<'a, 'b> {
     type Item = BufferDir<'a, 'b>;
     type IntoIter = Buses<'a, 'b>;
 
+    #[inline]
     fn into_iter(self) -> Self::IntoIter {
         Buses {
             iter: self.buses.into_iter(),
@@ -124,6 +126,7 @@ pub struct Buses<'a, 'b> {
 impl<'a, 'b> Iterator for Buses<'a, 'b> {
     type Item = BufferDir<'a, 'b>;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(bus) = self.iter.next() {
             unsafe {
@@ -176,6 +179,7 @@ impl<'a, 'b> Buffer<'a, 'b> {
 impl<'a, 'b> Index<usize> for Buffer<'a, 'b> {
     type Output = [f32];
 
+    #[inline]
     fn index(&self, index: usize) -> &[f32] {
         unsafe { slice::from_raw_parts(self.ptrs[index].offset(self.offset), self.len) }
     }
@@ -217,12 +221,14 @@ impl<'a, 'b> BufferMut<'a, 'b> {
 impl<'a, 'b> Index<usize> for BufferMut<'a, 'b> {
     type Output = [f32];
 
+    #[inline]
     fn index(&self, index: usize) -> &[f32] {
         unsafe { slice::from_raw_parts(self.ptrs[index].offset(self.offset), self.len) }
     }
 }
 
 impl<'a, 'b> IndexMut<usize> for BufferMut<'a, 'b> {
+    #[inline]
     fn index_mut(&mut self, index: usize) -> &mut [f32] {
         unsafe { slice::from_raw_parts_mut(self.ptrs[index].offset(self.offset), self.len) }
     }
