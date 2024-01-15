@@ -4,7 +4,7 @@ pub mod buffers;
 pub mod bus;
 pub mod events;
 pub mod format;
-pub mod param;
+pub mod params;
 pub mod parent;
 
 mod sync;
@@ -13,7 +13,7 @@ mod util;
 use buffers::Buffers;
 use bus::{BusInfo, Layout};
 use events::Events;
-use param::ParamInfo;
+use params::ParamInfo;
 use parent::Parent;
 
 pub type ParamId = u32;

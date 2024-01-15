@@ -177,7 +177,7 @@ pub fn derive_params(input: TokenStream) -> TokenStream {
                 range.to_token_stream()
             } else {
                 let ty = &param.ty;
-                quote! { <#ty as ::coupler::param::DefaultRange>::default_range() }
+                quote! { <#ty as ::coupler::params::DefaultRange>::default_range() }
             }
         })
         .collect();
@@ -193,7 +193,7 @@ pub fn derive_params(input: TokenStream) -> TokenStream {
             LitStr::new(&param.ident.to_string(), param.ident.span())
         };
 
-        let encode = quote! { ::coupler::param::Range::<#ty>::encode(&(#range), __value) };
+        let encode = quote! { ::coupler::params::Range::<#ty>::encode(&(#range), __value) };
         let parse = if let Some(parse) = &param.parse {
             quote! {
                 match (#parse)(__str) {
@@ -210,7 +210,7 @@ pub fn derive_params(input: TokenStream) -> TokenStream {
             }
         };
 
-        let decode = quote! { ::coupler::param::Range::<#ty>::decode(&(#range), __value) };
+        let decode = quote! { ::coupler::params::Range::<#ty>::decode(&(#range), __value) };
         let display = if let Some(display) = &param.display {
             quote! { (#display)(#decode, __formatter) }
         } else if let Some(format) = &param.format {
@@ -220,11 +220,11 @@ pub fn derive_params(input: TokenStream) -> TokenStream {
         };
 
         quote! {
-            ::coupler::param::ParamInfo {
+            ::coupler::params::ParamInfo {
                 id: #id,
                 name: ::std::string::ToString::to_string(#name),
-                default: ::coupler::param::Range::<#ty>::encode(&(#range), __default.#ident),
-                steps: ::coupler::param::Range::<#ty>::steps(&(#range)),
+                default: ::coupler::params::Range::<#ty>::encode(&(#range), __default.#ident),
+                steps: ::coupler::params::Range::<#ty>::steps(&(#range)),
                 parse: ::std::boxed::Box::new(|__str| #parse),
                 display: ::std::boxed::Box::new(|__value, __formatter| #display),
             }
@@ -238,7 +238,7 @@ pub fn derive_params(input: TokenStream) -> TokenStream {
 
         quote! {
             #id => {
-                self.#ident = ::coupler::param::Range::<#ty>::decode(&(#range), __value);
+                self.#ident = ::coupler::params::Range::<#ty>::decode(&(#range), __value);
             }
         }
     });
@@ -250,14 +250,14 @@ pub fn derive_params(input: TokenStream) -> TokenStream {
 
         quote! {
             #id => {
-                ::coupler::param::Range::<#ty>::encode(&(#range), self.#ident)
+                ::coupler::params::Range::<#ty>::encode(&(#range), self.#ident)
             }
         }
     });
 
     let expanded = quote! {
-        impl #impl_generics ::coupler::param::Params for #ident #ty_generics #where_clause {
-            fn params() -> ::std::vec::Vec<::coupler::param::ParamInfo> {
+        impl #impl_generics ::coupler::params::Params for #ident #ty_generics #where_clause {
+            fn params() -> ::std::vec::Vec<::coupler::params::ParamInfo> {
                 let __default: #ident #ty_generics = ::std::default::Default::default();
 
                 ::std::vec![

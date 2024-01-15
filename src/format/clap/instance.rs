@@ -12,7 +12,7 @@ use clap_sys::{events::*, id::*, plugin::*, process::*, stream::*};
 use crate::buffers::{Buffers, BusData};
 use crate::bus::{BusDir, Format};
 use crate::events::{Data, Event, Events};
-use crate::param::ParamInfo;
+use crate::params::ParamInfo;
 use crate::sync::params::ParamValues;
 use crate::util::{copy_cstring, slice_from_raw_parts_checked, DisplayParam};
 use crate::{Config, Editor, Host, ParamId, ParamValue, Plugin, PluginInfo, Processor};
