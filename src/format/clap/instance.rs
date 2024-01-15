@@ -9,6 +9,7 @@ use std::{io, ptr, slice};
 use clap_sys::ext::{audio_ports::*, audio_ports_config::*, gui::*, params::*, state::*};
 use clap_sys::{events::*, id::*, plugin::*, process::*, stream::*};
 
+use crate::block::Block;
 use crate::buffers::{Buffers, BusData};
 use crate::bus::{BusDir, Format};
 use crate::events::{Data, Event, Events};
@@ -308,10 +309,10 @@ impl<P: Plugin> Instance<P> {
         }
 
         instance.sync_processor(processor);
-        processor.process(
-            Buffers::from_raw_parts(&process_state.buses, &process_state.buffer_ptrs, len),
-            Events::new(&process_state.events),
-        );
+        processor.process(Block {
+            buffers: Buffers::from_raw_parts(&process_state.buses, &process_state.buffer_ptrs, len),
+            events: Events::new(&process_state.events),
+        });
 
         CLAP_PROCESS_CONTINUE
     }

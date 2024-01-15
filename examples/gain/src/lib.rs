@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use coupler::format::clap::*;
 use coupler::format::vst3::*;
-use coupler::{buffers::*, bus::*, events::*, params::*, parent::*, *};
+use coupler::{block::*, buffers::*, bus::*, events::*, params::*, parent::*, *};
 
 #[derive(Params, Serialize, Deserialize, Clone)]
 struct GainParams {
@@ -113,8 +113,8 @@ impl Processor for GainProcessor {
 
     fn reset(&mut self) {}
 
-    fn process(&mut self, mut buffers: Buffers, events: Events) {
-        for event in events {
+    fn process(&mut self, mut block: Block) {
+        for event in block.events {
             match event.data {
                 Data::ParamChange { id, value } => {
                     self.params.set_param(id, value);
@@ -123,7 +123,7 @@ impl Processor for GainProcessor {
             }
         }
 
-        let Some(BufferDir::InOut(mut main)) = buffers.get(0) else {
+        let Some(BufferDir::InOut(mut main)) = block.buffers.get(0) else {
             unreachable!();
         };
 

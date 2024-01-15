@@ -9,6 +9,7 @@ use vst3::{Class, ComRef, ComWrapper, Steinberg::Vst::*, Steinberg::*};
 use super::buffers::ScratchBuffers;
 use super::util::{copy_wstring, utf16_from_ptr};
 use super::view::View;
+use crate::block::Block;
 use crate::bus::{BusDir, Format, Layout};
 use crate::events::{Data, Event, Events};
 use crate::sync::params::ParamValues;
@@ -518,7 +519,10 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         }
 
         self.sync_processor(processor);
-        processor.process(buffers, Events::new(&process_state.events));
+        processor.process(Block {
+            buffers,
+            events: Events::new(&process_state.events),
+        });
 
         kResultOk
     }

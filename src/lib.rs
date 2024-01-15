@@ -1,5 +1,6 @@
 use std::io::{self, Read, Write};
 
+pub mod block;
 pub mod buffers;
 pub mod bus;
 pub mod events;
@@ -10,9 +11,8 @@ pub mod parent;
 mod sync;
 mod util;
 
-use buffers::Buffers;
+use block::Block;
 use bus::{BusInfo, Layout};
-use events::Events;
 use params::ParamInfo;
 use parent::Parent;
 
@@ -62,7 +62,7 @@ pub struct Config {
 pub trait Processor: Send + Sized + 'static {
     fn set_param(&mut self, id: ParamId, value: ParamValue);
     fn reset(&mut self);
-    fn process(&mut self, buffers: Buffers, events: Events);
+    fn process(&mut self, block: Block);
 }
 
 pub struct Size {
