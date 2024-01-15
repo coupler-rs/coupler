@@ -310,7 +310,12 @@ impl<P: Plugin> Instance<P> {
 
         instance.sync_processor(processor);
         processor.process(Block {
-            buffers: Buffers::from_raw_parts(&process_state.buses, &process_state.buffer_ptrs, len),
+            buffers: Buffers::from_raw_parts(
+                &process_state.buses,
+                &process_state.buffer_ptrs,
+                0,
+                len,
+            ),
             events: Events::new(&process_state.events),
         });
 

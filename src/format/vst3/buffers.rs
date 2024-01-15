@@ -99,7 +99,7 @@ impl ScratchBuffers {
 
         if len == 0 {
             self.ptrs.fill(NonNull::dangling().as_ptr());
-            return Ok(Buffers::from_raw_parts(&self.buses, &self.ptrs, len));
+            return Ok(Buffers::from_raw_parts(&self.buses, &self.ptrs, 0, len));
         }
 
         let input_count = data.numInputs as usize;
@@ -236,6 +236,6 @@ impl ScratchBuffers {
 
         self.output_ptrs.clear();
 
-        Ok(Buffers::from_raw_parts(&self.buses, &self.ptrs, len))
+        Ok(Buffers::from_raw_parts(&self.buses, &self.ptrs, 0, len))
     }
 }
