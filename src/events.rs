@@ -17,11 +17,12 @@ pub enum Data {
 #[derive(Copy, Clone)]
 pub struct Events<'a> {
     events: &'a [Event],
+    offset: i64,
 }
 
 impl<'a> Events<'a> {
-    pub fn new(events: &'a [Event]) -> Events<'a> {
-        Events { events }
+    pub fn new(events: &'a [Event], offset: i64) -> Events<'a> {
+        Events { events, offset }
     }
 }
 
@@ -32,18 +33,27 @@ impl<'a> IntoIterator for Events<'a> {
     fn into_iter(self) -> Self::IntoIter {
         Iter {
             iter: self.events.into_iter(),
+            offset: self.offset,
         }
     }
 }
 
 pub struct Iter<'a> {
     iter: slice::Iter<'a, Event>,
+    offset: i64,
 }
 
 impl<'a> Iterator for Iter<'a> {
     type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().copied()
+        if let Some(&Event { time, data }) = self.iter.next() {
+            Some(Event {
+                time: time + self.offset,
+                data,
+            })
+        } else {
+            None
+        }
     }
 }

@@ -521,7 +521,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         self.sync_processor(processor);
         processor.process(Block {
             buffers,
-            events: Events::new(&process_state.events),
+            events: Events::new(&process_state.events, 0),
         });
 
         kResultOk
