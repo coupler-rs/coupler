@@ -1,14 +1,14 @@
 use crate::buffers::Buffers;
 use crate::events::Events;
 
-pub struct Block<'a, 'b, 'c> {
-    pub buffers: Buffers<'a, 'b>,
-    pub events: Events<'c>,
+pub struct Block<'a, 'b> {
+    pub buffers: Buffers<'a>,
+    pub events: Events<'b>,
 }
 
-impl<'a, 'b, 'c> Block<'a, 'b, 'c> {
+impl<'a, 'b> Block<'a, 'b> {
     #[inline]
-    pub fn split_at_events(self) -> SplitAtEvents<'a, 'b, 'c> {
+    pub fn split_at_events(self) -> SplitAtEvents<'a, 'b> {
         SplitAtEvents {
             buffers: self.buffers,
             events: self.events,
@@ -18,14 +18,14 @@ impl<'a, 'b, 'c> Block<'a, 'b, 'c> {
     }
 }
 
-pub struct SplitAtEvents<'a, 'b, 'c> {
-    buffers: Buffers<'a, 'b>,
-    events: Events<'c>,
+pub struct SplitAtEvents<'a, 'b> {
+    buffers: Buffers<'a>,
+    events: Events<'b>,
     offset: i64,
     event: usize,
 }
 
-impl<'a, 'b, 'c> SplitAtEvents<'a, 'b, 'c> {
+impl<'a, 'b> SplitAtEvents<'a, 'b> {
     #[inline]
     pub fn next(&mut self) -> Option<Block> {
         let end_offset = self.buffers.len() as i64;
