@@ -4,6 +4,10 @@ use std::slice;
 
 use crate::bus::BusDir;
 
+pub mod bind;
+
+use bind::BindBuffers;
+
 pub enum BufferDir<'a> {
     In(Buffer<'a>),
     Out(BufferMut<'a>),
@@ -68,6 +72,17 @@ impl<'a> Buffers<'a> {
     }
 
     #[inline]
+    pub fn reborrow(&mut self) -> Buffers {
+        Buffers {
+            buses: self.buses,
+            ptrs: self.ptrs,
+            offset: self.offset,
+            len: self.len,
+            _marker: self._marker,
+        }
+    }
+
+    #[inline]
     pub fn get(&mut self, index: usize) -> Option<BufferDir> {
         if let Some(bus) = self.buses.get(index) {
             unsafe {
@@ -78,6 +93,19 @@ impl<'a> Buffers<'a> {
                     self.len,
                 ))
             }
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub fn bind<'b, B: BindBuffers<'b>>(&'b mut self) -> Option<B> {
+        let mut iter = self.reborrow().into_iter();
+
+        let result = B::bind(&mut iter)?;
+
+        if iter.next().is_none() {
+            Some(result)
         } else {
             None
         }

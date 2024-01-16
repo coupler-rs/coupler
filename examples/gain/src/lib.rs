@@ -2,9 +2,10 @@ use std::io::{self, Read, Write};
 
 use serde::{Deserialize, Serialize};
 
+use coupler::buffers::bind::*;
 use coupler::format::clap::*;
 use coupler::format::vst3::*;
-use coupler::{block::*, buffers::*, bus::*, events::*, params::*, parent::*, *};
+use coupler::{block::*, bus::*, events::*, params::*, parent::*, *};
 
 #[derive(Params, Serialize, Deserialize, Clone)]
 struct GainParams {
@@ -125,9 +126,7 @@ impl Processor for GainProcessor {
                 }
             }
 
-            let Some(BufferDir::InOut(mut main)) = block.buffers.get(0) else {
-                unreachable!();
-            };
+            let InOut(mut main) = block.buffers.bind().unwrap();
 
             for i in 0..main.channel_count() {
                 for sample in &mut main[i] {
