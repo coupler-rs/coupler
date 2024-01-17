@@ -37,11 +37,6 @@ jobs:
         if: contains(matrix.os, 'windows')
         run: |
           choco install llvm
-      - name: Install libclang (macOS)
-        if: contains(matrix.os, 'macOS')
-        run: |
-          brew install llvm
-          echo "LIBCLANG_PATH=/usr/local/opt/llvm/lib/libclang.dylib" >> $GITHUB_ENV
       - name: Build
         run: cargo build --workspace
       - name: Run tests
