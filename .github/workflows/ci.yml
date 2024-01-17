@@ -28,11 +28,6 @@ jobs:
           path: vst3sdk/pluginterfaces
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-      - name: Install xcb dependencies (Linux)
-        if: contains(matrix.os, 'ubuntu')
-        run: |
-          sudo apt update
-          sudo apt install libx11-xcb-dev libxcb-icccm4-dev libxcb-cursor-dev
       - name: Install libclang (Linux)
         if: contains(matrix.os, 'ubuntu')
         run: |
