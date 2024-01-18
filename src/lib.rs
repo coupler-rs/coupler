@@ -13,12 +13,8 @@ mod util;
 
 use block::Block;
 use bus::{BusInfo, Layout};
-use params::ParamInfo;
+use params::{ParamId, ParamInfo, ParamValue};
 use parent::Parent;
-
-pub type ParamId = u32;
-
-pub type ParamValue = f64;
 
 pub struct PluginInfo {
     pub name: String,

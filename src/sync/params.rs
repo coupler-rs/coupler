@@ -2,7 +2,7 @@ use std::sync::atomic::Ordering;
 
 use super::bitset::{self, AtomicBitset};
 use super::float::AtomicF64;
-use crate::{ParamInfo, ParamValue};
+use crate::params::{ParamInfo, ParamValue};
 
 pub struct ParamValues {
     values: Vec<AtomicF64>,

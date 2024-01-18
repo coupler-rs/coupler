@@ -1,7 +1,7 @@
 use std::ops::Range;
 use std::slice;
 
-use crate::{ParamId, ParamValue};
+use crate::params::{ParamId, ParamValue};
 
 #[derive(Copy, Clone)]
 pub struct Event {

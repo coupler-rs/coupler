@@ -12,9 +12,10 @@ use super::view::View;
 use crate::block::Block;
 use crate::bus::{BusDir, Format, Layout};
 use crate::events::{Data, Event, Events};
+use crate::params::ParamId;
 use crate::sync::params::ParamValues;
 use crate::util::{slice_from_raw_parts_checked, DisplayParam};
-use crate::{Config, Editor, Host, ParamId, Plugin, PluginInfo, Processor};
+use crate::{Config, Editor, Host, Plugin, PluginInfo, Processor};
 
 fn format_to_speaker_arrangement(format: &Format) -> SpeakerArrangement {
     match format {

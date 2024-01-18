@@ -3,8 +3,7 @@ use std::fmt::{self, Display, Formatter};
 use std::os::raw::c_char;
 use std::slice;
 
-use crate::params::ParamInfo;
-use crate::ParamValue;
+use crate::params::{ParamInfo, ParamValue};
 
 pub fn copy_cstring(src: &str, dst: &mut [c_char]) {
     let c_string = CString::new(src).unwrap_or_else(|_| CString::default());

@@ -265,14 +265,14 @@ pub fn derive_params(input: TokenStream) -> TokenStream {
                 ]
             }
 
-            fn set_param(&mut self, __id: ::coupler::ParamId, __value: ::coupler::ParamValue) {
+            fn set_param(&mut self, __id: ::coupler::params::ParamId, __value: ::coupler::params::ParamValue) {
                 match __id {
                     #(#set_cases)*
                     _ => {}
                 }
             }
 
-            fn get_param(&self, __id: ::coupler::ParamId) -> ::coupler::ParamValue {
+            fn get_param(&self, __id: ::coupler::params::ParamId) -> ::coupler::params::ParamValue {
                 match __id {
                     #(#get_cases)*
                     _ => 0.0,

@@ -3,7 +3,8 @@ use std::fmt::{self, Formatter};
 #[cfg(feature = "derive")]
 pub use coupler_derive::Params;
 
-use crate::{ParamId, ParamValue};
+pub type ParamId = u32;
+pub type ParamValue = f64;
 
 pub type ParseFn = dyn Fn(&str) -> Option<ParamValue> + Send + Sync;
 pub type DisplayFn = dyn Fn(ParamValue, &mut Formatter) -> Result<(), fmt::Error> + Send + Sync;
