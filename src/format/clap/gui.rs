@@ -4,8 +4,8 @@ use clap_sys::ext::gui::*;
 use clap_sys::plugin::*;
 
 use super::instance::Instance;
-use crate::parent::{Parent, RawParent};
-use crate::{Editor, Plugin};
+use crate::editor::{Editor, Parent, RawParent};
+use crate::plugin::Plugin;
 
 impl<P: Plugin> Instance<P> {
     pub(super) const GUI: clap_plugin_gui = clap_plugin_gui {

@@ -7,8 +7,8 @@ use vst3::{uid, Class, ComWrapper, Steinberg::Vst::*, Steinberg::*};
 use super::component::Component;
 use super::util::copy_wstring;
 use super::{Uuid, Vst3Info, Vst3Plugin};
+use crate::plugin::{Plugin, PluginInfo};
 use crate::util::copy_cstring;
-use crate::{Plugin, PluginInfo};
 
 fn uuid_to_tuid(uuid: &Uuid) -> TUID {
     uid(uuid.0, uuid.1, uuid.2, uuid.3)

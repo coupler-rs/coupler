@@ -9,13 +9,14 @@ use vst3::{Class, ComRef, ComWrapper, Steinberg::Vst::*, Steinberg::*};
 use super::buffers::ScratchBuffers;
 use super::util::{copy_wstring, utf16_from_ptr};
 use super::view::View;
-use crate::block::Block;
 use crate::bus::{BusDir, Format, Layout};
+use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
 use crate::params::ParamId;
+use crate::plugin::{Host, Plugin, PluginInfo};
+use crate::process::{Block, Config, Processor};
 use crate::sync::params::ParamValues;
 use crate::util::{slice_from_raw_parts_checked, DisplayParam};
-use crate::{Config, Editor, Host, Plugin, PluginInfo, Processor};
 
 fn format_to_speaker_arrangement(format: &Format) -> SpeakerArrangement {
     match format {

@@ -8,7 +8,7 @@ use clap_sys::{host::*, plugin::*, plugin_factory::*, version::*};
 
 use super::instance::Instance;
 use super::ClapPlugin;
-use crate::{Plugin, PluginInfo};
+use crate::plugin::{Plugin, PluginInfo};
 
 struct FactoryState {
     descriptor: clap_plugin_descriptor,

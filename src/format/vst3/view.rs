@@ -5,8 +5,8 @@ use std::sync::Arc;
 use vst3::{Class, Steinberg::*};
 
 use super::component::MainThreadState;
-use crate::parent::{Parent, RawParent};
-use crate::{Editor, Plugin};
+use crate::editor::{Editor, Parent, RawParent};
+use crate::plugin::Plugin;
 
 pub struct View<P: Plugin> {
     main_thread_state: Arc<UnsafeCell<MainThreadState<P>>>,

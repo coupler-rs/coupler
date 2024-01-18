@@ -9,14 +9,15 @@ use std::{io, ptr, slice};
 use clap_sys::ext::{audio_ports::*, audio_ports_config::*, gui::*, params::*, state::*};
 use clap_sys::{events::*, id::*, plugin::*, process::*, stream::*};
 
-use crate::block::Block;
 use crate::buffers::{Buffers, BusData};
 use crate::bus::{BusDir, Format};
+use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
 use crate::params::{ParamId, ParamInfo, ParamValue};
+use crate::plugin::{Host, Plugin, PluginInfo};
+use crate::process::{Block, Config, Processor};
 use crate::sync::params::ParamValues;
 use crate::util::{copy_cstring, slice_from_raw_parts_checked, DisplayParam};
-use crate::{Config, Editor, Host, Plugin, PluginInfo, Processor};
 
 fn port_type_from_format(format: &Format) -> &'static CStr {
     match format {

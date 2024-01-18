@@ -10,7 +10,7 @@ mod factory;
 mod util;
 mod view;
 
-use crate::Plugin;
+use crate::plugin::Plugin;
 use factory::Factory;
 
 pub struct Uuid(pub u32, pub u32, pub u32, pub u32);

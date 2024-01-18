@@ -6,8 +6,8 @@ use vst3::Steinberg::Vst::ProcessData;
 
 use crate::buffers::{Buffers, BusData};
 use crate::bus::{BusDir, BusInfo};
+use crate::process::Config;
 use crate::util::slice_from_raw_parts_checked;
-use crate::Config;
 
 pub struct ScratchBuffers {
     inputs_active: Vec<bool>,

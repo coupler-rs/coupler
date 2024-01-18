@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use coupler::buffers::bind::*;
 use coupler::format::clap::*;
 use coupler::format::vst3::*;
-use coupler::{block::*, bus::*, events::*, params::*, parent::*, *};
+use coupler::{bus::*, editor::*, events::*, params::*, plugin::*, process::*};
 
 #[derive(Params, Serialize, Deserialize, Clone)]
 struct GainParams {
