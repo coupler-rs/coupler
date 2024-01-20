@@ -37,23 +37,21 @@ fn parse_struct(input: &DeriveInput) -> Result<Vec<ParamInfo>, Error> {
     let mut params = Vec::new();
 
     for field in &fields.named {
-        let mut param_info = None;
+        let mut is_param = false;
+
+        let mut id = None;
+        let mut name = None;
+        let mut range = None;
+        let mut parse = None;
+        let mut display = None;
+        let mut format = None;
 
         for attr in &field.attrs {
             if !attr.path().is_ident("param") {
                 continue;
             }
 
-            if param_info.is_some() {
-                return Err(Error::new_spanned(&attr, "duplicate `param` attribute"));
-            }
-
-            let mut id = None;
-            let mut name = None;
-            let mut range = None;
-            let mut parse = None;
-            let mut display = None;
-            let mut format = None;
+            is_param = true;
 
             attr.parse_nested_meta(|meta| {
                 let ident = meta.path.get_ident().ok_or_else(|| {
@@ -103,12 +101,26 @@ fn parse_struct(input: &DeriveInput) -> Result<Vec<ParamInfo>, Error> {
                         ));
                     }
 
+                    if format.is_some() {
+                        return Err(Error::new_spanned(
+                            &ident,
+                            "`format` attribute cannot be used with `display`",
+                        ));
+                    }
+
                     display = Some(meta.value()?.parse::<Expr>()?);
                 } else if ident == "format" {
                     if format.is_some() {
                         return Err(Error::new_spanned(
                             &meta.path,
                             "duplicate param attribute `format`",
+                        ));
+                    }
+
+                    if display.is_some() {
+                        return Err(Error::new_spanned(
+                            &ident,
+                            "`format` attribute cannot be used with `display`",
                         ));
                     }
 
@@ -122,35 +134,28 @@ fn parse_struct(input: &DeriveInput) -> Result<Vec<ParamInfo>, Error> {
 
                 Ok(())
             })?;
-
-            let id = if let Some(id) = id {
-                id
-            } else {
-                return Err(Error::new_spanned(&attr, "missing `id` attribute"));
-            };
-
-            if display.is_some() && format.is_some() {
-                return Err(Error::new_spanned(
-                    &attr,
-                    "`format` attribute cannot be used with `display`",
-                ));
-            }
-
-            param_info = Some(ParamInfo {
-                ident: field.ident.clone().unwrap(),
-                ty: field.ty.clone(),
-                id,
-                name,
-                range,
-                parse,
-                display,
-                format,
-            });
         }
 
-        if let Some(param_info) = param_info {
-            params.push(param_info);
+        if !is_param {
+            continue;
         }
+
+        let id = if let Some(id) = id {
+            id
+        } else {
+            return Err(Error::new_spanned(&field, "missing `id` attribute"));
+        };
+
+        params.push(ParamInfo {
+            ident: field.ident.clone().unwrap(),
+            ty: field.ty.clone(),
+            id,
+            name,
+            range,
+            parse,
+            display,
+            format,
+        });
     }
 
     Ok(params)
