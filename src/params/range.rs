@@ -12,54 +12,52 @@ pub trait DefaultRange: Sized {
     fn default_range() -> Self::Range;
 }
 
-impl Range<f32> for std::ops::Range<f32> {
-    #[inline]
-    fn steps(&self) -> Option<u32> {
-        None
-    }
+macro_rules! float_range {
+    ($float:ty) => {
+        impl Range<$float> for std::ops::Range<$float> {
+            #[inline]
+            fn steps(&self) -> Option<u32> {
+                None
+            }
 
-    #[inline]
-    fn encode(&self, value: f32) -> ParamValue {
-        ((value - self.start) / (self.end - self.start)) as f64
-    }
+            #[inline]
+            fn encode(&self, value: $float) -> ParamValue {
+                ((value - self.start) / (self.end - self.start)) as f64
+            }
 
-    #[inline]
-    fn decode(&self, value: ParamValue) -> f32 {
-        (1.0 - value as f32) * self.start + value as f32 * self.end
-    }
+            #[inline]
+            fn decode(&self, value: ParamValue) -> $float {
+                (1.0 - value as $float) * self.start + value as $float * self.end
+            }
+        }
+
+        impl Range<$float> for std::ops::RangeInclusive<$float> {
+            #[inline]
+            fn steps(&self) -> Option<u32> {
+                None
+            }
+
+            #[inline]
+            fn encode(&self, value: $float) -> ParamValue {
+                ((value - self.start()) / (self.end() - self.start())) as f64
+            }
+
+            #[inline]
+            fn decode(&self, value: ParamValue) -> $float {
+                (1.0 - value as $float) * self.start() + value as $float * self.end()
+            }
+        }
+
+        impl DefaultRange for $float {
+            type Range = std::ops::Range<$float>;
+
+            #[inline]
+            fn default_range() -> Self::Range {
+                0.0..1.0
+            }
+        }
+    };
 }
 
-impl Range<f64> for std::ops::Range<f64> {
-    #[inline]
-    fn steps(&self) -> Option<u32> {
-        None
-    }
-
-    #[inline]
-    fn encode(&self, value: f64) -> ParamValue {
-        ((value - self.start) / (self.end - self.start)) as f64
-    }
-
-    #[inline]
-    fn decode(&self, value: ParamValue) -> f64 {
-        (1.0 - value as f64) * self.start + value as f64 * self.end
-    }
-}
-
-impl DefaultRange for f32 {
-    type Range = std::ops::Range<f32>;
-
-    #[inline]
-    fn default_range() -> Self::Range {
-        0.0..1.0
-    }
-}
-
-impl DefaultRange for f64 {
-    type Range = std::ops::Range<f64>;
-
-    #[inline]
-    fn default_range() -> Self::Range {
-        0.0..1.0
-    }
-}
+float_range!(f32);
+float_range!(f64);
