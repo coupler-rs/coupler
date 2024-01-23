@@ -1,10 +1,8 @@
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
-use syn::{Data, DeriveInput, Error, Expr, Fields, Ident, LitInt, LitStr, Type};
+use syn::{Data, DeriveInput, Error, Expr, Field, Fields, LitInt, LitStr};
 
-struct ParamInfo {
-    ident: Ident,
-    ty: Type,
+pub struct ParamAttr {
     id: LitInt,
     name: Option<LitStr>,
     range: Option<Expr>,
@@ -13,7 +11,142 @@ struct ParamInfo {
     format: Option<LitStr>,
 }
 
-fn parse_struct(input: &DeriveInput) -> Result<Vec<ParamInfo>, Error> {
+pub fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
+    let mut is_param = false;
+
+    let mut id = None;
+    let mut name = None;
+    let mut range = None;
+    let mut parse = None;
+    let mut display = None;
+    let mut format = None;
+
+    for attr in &field.attrs {
+        if !attr.path().is_ident("param") {
+            continue;
+        }
+
+        is_param = true;
+
+        attr.parse_nested_meta(|meta| {
+            let ident = meta.path.get_ident().ok_or_else(|| {
+                Error::new_spanned(&meta.path, "expected this path to be an identifier")
+            })?;
+            if ident == "id" {
+                if id.is_some() {
+                    return Err(Error::new_spanned(
+                        &meta.path,
+                        "duplicate param attribute `id`",
+                    ));
+                }
+
+                id = Some(meta.value()?.parse::<LitInt>()?);
+            } else if ident == "name" {
+                if name.is_some() {
+                    return Err(Error::new_spanned(
+                        &meta.path,
+                        "duplicate param attribute `name`",
+                    ));
+                }
+
+                name = Some(meta.value()?.parse::<LitStr>()?);
+            } else if ident == "range" {
+                if range.is_some() {
+                    return Err(Error::new_spanned(
+                        &meta.path,
+                        "duplicate param attribute `range`",
+                    ));
+                }
+
+                range = Some(meta.value()?.parse::<Expr>()?);
+            } else if ident == "parse" {
+                if parse.is_some() {
+                    return Err(Error::new_spanned(
+                        &meta.path,
+                        "duplicate param attribute `parse`",
+                    ));
+                }
+
+                parse = Some(meta.value()?.parse::<Expr>()?);
+            } else if ident == "display" {
+                if display.is_some() {
+                    return Err(Error::new_spanned(
+                        &meta.path,
+                        "duplicate param attribute `display`",
+                    ));
+                }
+
+                if format.is_some() {
+                    return Err(Error::new_spanned(
+                        &ident,
+                        "`format` attribute cannot be used with `display`",
+                    ));
+                }
+
+                display = Some(meta.value()?.parse::<Expr>()?);
+            } else if ident == "format" {
+                if format.is_some() {
+                    return Err(Error::new_spanned(
+                        &meta.path,
+                        "duplicate param attribute `format`",
+                    ));
+                }
+
+                if display.is_some() {
+                    return Err(Error::new_spanned(
+                        &ident,
+                        "`format` attribute cannot be used with `display`",
+                    ));
+                }
+
+                format = Some(meta.value()?.parse::<LitStr>()?);
+            } else {
+                return Err(Error::new_spanned(
+                    &meta.path,
+                    format!("unknown param attribute `{}`", ident),
+                ));
+            }
+
+            Ok(())
+        })?;
+    }
+
+    if !is_param {
+        return Ok(None);
+    }
+
+    let id = if let Some(id) = id {
+        id
+    } else {
+        return Err(Error::new_spanned(&field, "missing `id` attribute"));
+    };
+
+    Ok(Some(ParamAttr {
+        id,
+        name,
+        range,
+        parse,
+        display,
+        format,
+    }))
+}
+
+pub fn gen_range(field: &Field, param: &ParamAttr) -> TokenStream {
+    if let Some(range) = &param.range {
+        range.to_token_stream()
+    } else {
+        let ty = &field.ty;
+        quote! { <#ty as ::coupler::params::DefaultRange>::default_range() }
+    }
+}
+
+struct ParamField<'a> {
+    field: &'a Field,
+    param: ParamAttr,
+    range: TokenStream,
+}
+
+fn parse_fields(input: &DeriveInput) -> Result<Vec<ParamField>, Error> {
     let body = match &input.data {
         Data::Struct(body) => body,
         _ => {
@@ -34,164 +167,42 @@ fn parse_struct(input: &DeriveInput) -> Result<Vec<ParamInfo>, Error> {
         }
     };
 
-    let mut params = Vec::new();
+    let mut param_fields = Vec::new();
 
     for field in &fields.named {
-        let mut is_param = false;
-
-        let mut id = None;
-        let mut name = None;
-        let mut range = None;
-        let mut parse = None;
-        let mut display = None;
-        let mut format = None;
-
-        for attr in &field.attrs {
-            if !attr.path().is_ident("param") {
-                continue;
-            }
-
-            is_param = true;
-
-            attr.parse_nested_meta(|meta| {
-                let ident = meta.path.get_ident().ok_or_else(|| {
-                    Error::new_spanned(&meta.path, "expected this path to be an identifier")
-                })?;
-                if ident == "id" {
-                    if id.is_some() {
-                        return Err(Error::new_spanned(
-                            &meta.path,
-                            "duplicate param attribute `id`",
-                        ));
-                    }
-
-                    id = Some(meta.value()?.parse::<LitInt>()?);
-                } else if ident == "name" {
-                    if name.is_some() {
-                        return Err(Error::new_spanned(
-                            &meta.path,
-                            "duplicate param attribute `name`",
-                        ));
-                    }
-
-                    name = Some(meta.value()?.parse::<LitStr>()?);
-                } else if ident == "range" {
-                    if range.is_some() {
-                        return Err(Error::new_spanned(
-                            &meta.path,
-                            "duplicate param attribute `range`",
-                        ));
-                    }
-
-                    range = Some(meta.value()?.parse::<Expr>()?);
-                } else if ident == "parse" {
-                    if parse.is_some() {
-                        return Err(Error::new_spanned(
-                            &meta.path,
-                            "duplicate param attribute `parse`",
-                        ));
-                    }
-
-                    parse = Some(meta.value()?.parse::<Expr>()?);
-                } else if ident == "display" {
-                    if display.is_some() {
-                        return Err(Error::new_spanned(
-                            &meta.path,
-                            "duplicate param attribute `display`",
-                        ));
-                    }
-
-                    if format.is_some() {
-                        return Err(Error::new_spanned(
-                            &ident,
-                            "`format` attribute cannot be used with `display`",
-                        ));
-                    }
-
-                    display = Some(meta.value()?.parse::<Expr>()?);
-                } else if ident == "format" {
-                    if format.is_some() {
-                        return Err(Error::new_spanned(
-                            &meta.path,
-                            "duplicate param attribute `format`",
-                        ));
-                    }
-
-                    if display.is_some() {
-                        return Err(Error::new_spanned(
-                            &ident,
-                            "`format` attribute cannot be used with `display`",
-                        ));
-                    }
-
-                    format = Some(meta.value()?.parse::<LitStr>()?);
-                } else {
-                    return Err(Error::new_spanned(
-                        &meta.path,
-                        format!("unknown param attribute `{}`", ident),
-                    ));
-                }
-
-                Ok(())
-            })?;
+        if let Some(param) = parse_param(field)? {
+            let range = gen_range(field, &param);
+            param_fields.push(ParamField {
+                field,
+                param,
+                range,
+            });
         }
-
-        if !is_param {
-            continue;
-        }
-
-        let id = if let Some(id) = id {
-            id
-        } else {
-            return Err(Error::new_spanned(&field, "missing `id` attribute"));
-        };
-
-        params.push(ParamInfo {
-            ident: field.ident.clone().unwrap(),
-            ty: field.ty.clone(),
-            id,
-            name,
-            range,
-            parse,
-            display,
-            format,
-        });
     }
 
-    Ok(params)
+    Ok(param_fields)
 }
 
 pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
-    let params = parse_struct(&input)?;
+    let fields = parse_fields(&input)?;
 
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     let ident = &input.ident;
 
-    let ranges: Vec<_> = params
-        .iter()
-        .map(|param| {
-            if let Some(range) = &param.range {
-                range.to_token_stream()
-            } else {
-                let ty = &param.ty;
-                quote! { <#ty as ::coupler::params::DefaultRange>::default_range() }
-            }
-        })
-        .collect();
+    let param_info = fields.iter().map(|field| {
+        let ident = field.field.ident.as_ref().unwrap();
+        let ty = &field.field.ty;
+        let id = &field.param.id;
+        let range = &field.range;
 
-    let params_expanded = params.iter().zip(&ranges).map(|(param, range)| {
-        let ident = &param.ident;
-        let ty = &param.ty;
-        let id = &param.id;
-
-        let name = if let Some(name) = &param.name {
+        let name = if let Some(name) = &field.param.name {
             name.clone()
         } else {
-            LitStr::new(&param.ident.to_string(), param.ident.span())
+            LitStr::new(&ident.to_string(), ident.span())
         };
 
         let encode = quote! { ::coupler::params::Range::<#ty>::encode(&(#range), __value) };
-        let parse = if let Some(parse) = &param.parse {
+        let parse = if let Some(parse) = &field.param.parse {
             quote! {
                 match (#parse)(__str) {
                     ::std::option::Option::Some(__value) => ::std::option::Option::Some(#encode),
@@ -208,9 +219,9 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
         };
 
         let decode = quote! { ::coupler::params::Range::<#ty>::decode(&(#range), __value) };
-        let display = if let Some(display) = &param.display {
+        let display = if let Some(display) = &field.param.display {
             quote! { (#display)(#decode, __formatter) }
-        } else if let Some(format) = &param.format {
+        } else if let Some(format) = &field.param.format {
             quote! { write!(__formatter, #format, #decode) }
         } else {
             quote! { write!(__formatter, "{}", #decode) }
@@ -228,10 +239,11 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
         }
     });
 
-    let set_cases = params.iter().zip(&ranges).map(|(param, range)| {
-        let ident = &param.ident;
-        let ty = &param.ty;
-        let id = &param.id;
+    let set_cases = fields.iter().map(|field| {
+        let ident = &field.field.ident;
+        let ty = &field.field.ty;
+        let id = &field.param.id;
+        let range = &field.range;
 
         quote! {
             #id => {
@@ -240,10 +252,11 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
         }
     });
 
-    let get_cases = params.iter().zip(&ranges).map(|(param, range)| {
-        let ident = &param.ident;
-        let ty = &param.ty;
-        let id = &param.id;
+    let get_cases = fields.iter().map(|field| {
+        let ident = &field.field.ident;
+        let ty = &field.field.ty;
+        let id = &field.param.id;
+        let range = &field.range;
 
         quote! {
             #id => {
@@ -258,7 +271,7 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
                 let __default: #ident #ty_generics = ::std::default::Default::default();
 
                 ::std::vec![
-                    #(#params_expanded,)*
+                    #(#param_info,)*
                 ]
             }
 
