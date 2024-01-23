@@ -5,14 +5,14 @@ use syn::{Data, DeriveInput, Error, Expr, Field, Fields, Type};
 use super::params::{gen_range, parse_param, ParamAttr};
 
 struct SmoothAttr {
-    ty: Type,
+    style: Type,
     args: Option<Expr>,
 }
 
 fn parse_smooth(field: &Field) -> Result<Option<SmoothAttr>, Error> {
     let mut is_smooth = false;
 
-    let mut ty = None;
+    let mut style = None;
     let mut args = None;
 
     for attr in &field.attrs {
@@ -26,15 +26,15 @@ fn parse_smooth(field: &Field) -> Result<Option<SmoothAttr>, Error> {
             let ident = meta.path.get_ident().ok_or_else(|| {
                 Error::new_spanned(&meta.path, "expected this path to be an identifier")
             })?;
-            if ident == "type" {
-                if ty.is_some() {
+            if ident == "style" {
+                if style.is_some() {
                     return Err(Error::new_spanned(
                         &meta.path,
-                        "duplicate smooth attribute `type`",
+                        "duplicate smooth attribute `style`",
                     ));
                 }
 
-                ty = Some(meta.value()?.parse::<Type>()?);
+                style = Some(meta.value()?.parse::<Type>()?);
             } else if ident == "args" {
                 if args.is_some() {
                     return Err(Error::new_spanned(
@@ -59,13 +59,13 @@ fn parse_smooth(field: &Field) -> Result<Option<SmoothAttr>, Error> {
         return Ok(None);
     }
 
-    let ty = if let Some(ty) = ty {
-        ty
+    let style = if let Some(style) = style {
+        style
     } else {
-        return Err(Error::new_spanned(&field, "missing `type` attribute"));
+        return Err(Error::new_spanned(&field, "missing `style` attribute"));
     };
 
-    Ok(Some(SmoothAttr { ty, args }))
+    Ok(Some(SmoothAttr { style, args }))
 }
 
 struct SmoothField<'a> {
@@ -126,15 +126,18 @@ pub fn expand_smooth(input: &DeriveInput) -> Result<TokenStream, Error> {
     let ident = &input.ident;
 
     let smooth_fields = fields.iter().map(|field| {
-        let mut smooth_field = field.field.clone();
+        let vis = &field.field.vis;
+        let ident = &field.field.ident;
+        let ty = &field.field.ty;
 
-        smooth_field.attrs = Vec::new();
+        let field_type = if let Some(smooth) = &field.smooth {
+            let style = &smooth.style;
+            quote! { <#style as ::coupler::params::smooth::SmoothStyle<#ty>>::Smoother }
+        } else {
+            quote! { #ty }
+        };
 
-        if let Some(smooth) = &field.smooth {
-            smooth_field.ty = smooth.ty.clone();
-        }
-
-        smooth_field
+        quote! { #vis #ident: #field_type }
     });
 
     let smooth_fields_init = fields.iter().map(|field| {
@@ -142,7 +145,7 @@ pub fn expand_smooth(input: &DeriveInput) -> Result<TokenStream, Error> {
         let ty = &field.field.ty;
 
         if let Some(smooth) = &field.smooth {
-            let smoother_type = &smooth.ty;
+            let style = &smooth.style;
 
             let args = if let Some(args) = &smooth.args {
                 quote! { ::std::convert::From::from(#args) }
@@ -151,7 +154,7 @@ pub fn expand_smooth(input: &DeriveInput) -> Result<TokenStream, Error> {
             };
 
             quote! {
-                #ident: <#smoother_type as ::coupler::params::smooth::Smoother<#ty>>::build(
+                #ident: <#style as ::coupler::params::smooth::SmoothStyle<#ty>>::build(
                     self.#ident,
                     #args,
                     __sample_rate,

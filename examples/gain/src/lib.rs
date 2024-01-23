@@ -10,7 +10,7 @@ use coupler::{bus::*, editor::*, events::*, params::smooth::*, params::*, plugin
 #[derive(Params, Smooth, Serialize, Deserialize, Clone)]
 struct GainParams {
     #[param(id = 0, name = "Gain", range = 0.0..1.0, format = "{:.2}")]
-    #[smooth(type = Exp<f32>, args = 10.0)]
+    #[smooth(style = Exp, args = 10.0)]
     gain: f32,
 }
 
