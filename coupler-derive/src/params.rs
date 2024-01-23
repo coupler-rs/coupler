@@ -3,12 +3,12 @@ use quote::{quote, ToTokens};
 use syn::{Data, DeriveInput, Error, Expr, Field, Fields, LitInt, LitStr};
 
 pub struct ParamAttr {
-    id: LitInt,
-    name: Option<LitStr>,
-    range: Option<Expr>,
-    parse: Option<Expr>,
-    display: Option<Expr>,
-    format: Option<LitStr>,
+    pub id: LitInt,
+    pub name: Option<LitStr>,
+    pub range: Option<Expr>,
+    pub parse: Option<Expr>,
+    pub display: Option<Expr>,
+    pub format: Option<LitStr>,
 }
 
 pub fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {

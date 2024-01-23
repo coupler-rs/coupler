@@ -5,11 +5,12 @@ use serde::{Deserialize, Serialize};
 use coupler::buffers::bind::*;
 use coupler::format::clap::*;
 use coupler::format::vst3::*;
-use coupler::{bus::*, editor::*, events::*, params::*, plugin::*, process::*};
+use coupler::{bus::*, editor::*, events::*, params::smooth::*, params::*, plugin::*, process::*};
 
-#[derive(Params, Serialize, Deserialize, Clone)]
+#[derive(Params, Smooth, Serialize, Deserialize, Clone)]
 struct GainParams {
     #[param(id = 0, name = "Gain", range = 0.0..1.0, format = "{:.2}")]
+    #[smooth(type = Exp<f32>, args = 10.0)]
     gain: f32,
 }
 
@@ -76,9 +77,9 @@ impl Plugin for Gain {
         Ok(())
     }
 
-    fn processor(&self, _config: Config) -> Self::Processor {
+    fn processor(&self, config: Config) -> Self::Processor {
         GainProcessor {
-            params: self.params.clone(),
+            params: self.params.smoothed(config.sample_rate),
         }
     }
 
@@ -104,7 +105,7 @@ impl ClapPlugin for Gain {
 }
 
 pub struct GainProcessor {
-    params: GainParams,
+    params: Smoothed<GainParams>,
 }
 
 impl Processor for GainProcessor {
@@ -128,9 +129,10 @@ impl Processor for GainProcessor {
 
             let InOut(mut main) = block.buffers.bind().unwrap();
 
-            for i in 0..main.channel_count() {
-                for sample in &mut main[i] {
-                    *sample *= self.params.gain;
+            for i in 0..main.len() {
+                let gain = self.params.gain.next();
+                for channel in 0..main.channel_count() {
+                    main[channel][i] *= gain;
                 }
             }
         }

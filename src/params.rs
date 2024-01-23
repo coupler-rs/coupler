@@ -4,6 +4,7 @@ use std::fmt::{self, Formatter};
 pub use coupler_derive::Params;
 
 mod range;
+pub mod smooth;
 
 pub use range::{DefaultRange, Range};
 
