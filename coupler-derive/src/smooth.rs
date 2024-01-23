@@ -7,6 +7,7 @@ use super::params::{gen_range, parse_param, ParamAttr};
 struct SmoothAttr {
     style: Type,
     args: Option<Expr>,
+    ms: Option<Expr>,
 }
 
 fn parse_smooth(field: &Field) -> Result<Option<SmoothAttr>, Error> {
@@ -14,6 +15,7 @@ fn parse_smooth(field: &Field) -> Result<Option<SmoothAttr>, Error> {
 
     let mut style = None;
     let mut args = None;
+    let mut ms = None;
 
     for attr in &field.attrs {
         if !attr.path().is_ident("smooth") {
@@ -43,7 +45,30 @@ fn parse_smooth(field: &Field) -> Result<Option<SmoothAttr>, Error> {
                     ));
                 }
 
+                if ms.is_some() {
+                    return Err(Error::new_spanned(
+                        &ident,
+                        "`ms` attribute cannot be used with `args`",
+                    ));
+                }
+
                 args = Some(meta.value()?.parse::<Expr>()?);
+            } else if ident == "ms" {
+                if ms.is_some() {
+                    return Err(Error::new_spanned(
+                        &meta.path,
+                        "duplicate smooth attribute `ms`",
+                    ));
+                }
+
+                if args.is_some() {
+                    return Err(Error::new_spanned(
+                        &ident,
+                        "`ms` attribute cannot be used with `args`",
+                    ));
+                }
+
+                ms = Some(meta.value()?.parse::<Expr>()?);
             } else {
                 return Err(Error::new_spanned(
                     &meta.path,
@@ -65,7 +90,7 @@ fn parse_smooth(field: &Field) -> Result<Option<SmoothAttr>, Error> {
         return Err(Error::new_spanned(&field, "missing `style` attribute"));
     };
 
-    Ok(Some(SmoothAttr { style, args }))
+    Ok(Some(SmoothAttr { style, args, ms }))
 }
 
 struct SmoothField<'a> {
@@ -149,6 +174,8 @@ pub fn expand_smooth(input: &DeriveInput) -> Result<TokenStream, Error> {
 
             let args = if let Some(args) = &smooth.args {
                 quote! { ::std::convert::From::from(#args) }
+            } else if let Some(ms) = &smooth.ms {
+                quote! { ::std::convert::From::from(::coupler::params::smooth::Ms(#ms)) }
             } else {
                 quote! { ::std::default::Default::default() }
             };
