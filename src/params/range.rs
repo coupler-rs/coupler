@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use super::ParamValue;
 
 pub trait Range<T> {
@@ -122,3 +124,56 @@ int_range!(i8);
 int_range!(i16);
 int_range!(i32);
 int_range!(i64);
+
+pub trait Enum {
+    fn values() -> u32;
+    fn to_index(self) -> u32;
+    fn from_index(index: u32) -> Self;
+}
+
+pub struct EnumRange<E>(PhantomData<E>);
+
+impl<E> EnumRange<E> {
+    pub fn new() -> EnumRange<E> {
+        EnumRange(PhantomData)
+    }
+}
+
+impl<E: Enum> Range<E> for EnumRange<E> {
+    fn steps(&self) -> Option<u32> {
+        Some(E::values())
+    }
+
+    fn encode(&self, value: E) -> ParamValue {
+        let steps_recip = 1.0 / E::values() as f64;
+        (value.to_index() as f64 + 0.5) * steps_recip
+    }
+
+    fn decode(&self, value: ParamValue) -> E {
+        let steps = E::values() as f64;
+        E::from_index((value * steps) as u32)
+    }
+}
+
+impl<E: Enum> DefaultRange for E {
+    type Range = EnumRange<E>;
+
+    #[inline]
+    fn default_range() -> Self::Range {
+        EnumRange::new()
+    }
+}
+
+impl Enum for bool {
+    fn values() -> u32 {
+        2
+    }
+
+    fn to_index(self) -> u32 {
+        self as u32
+    }
+
+    fn from_index(index: u32) -> Self {
+        index != 0
+    }
+}
