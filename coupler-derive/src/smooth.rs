@@ -2,7 +2,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Error, Expr, Field, Fields, Type};
 
-use super::params::{gen_range, parse_param, ParamAttr};
+use super::params::{gen_decode, parse_param, ParamAttr};
 
 struct SmoothAttr {
     style: Type,
@@ -194,25 +194,22 @@ pub fn expand_smooth(input: &DeriveInput) -> Result<TokenStream, Error> {
 
     let set_cases = fields.iter().filter_map(|field| {
         let param = field.param.as_ref()?;
-        let range = gen_range(&field.field, param);
 
         let ident = &field.field.ident;
-        let ty = &field.field.ty;
         let id = &param.id;
+
+        let decode = gen_decode(&field.field, param, quote! { __value });
 
         if field.smooth.is_some() {
             Some(quote! {
                 #id => {
-                    ::coupler::params::smooth::Smoother::set(
-                        &mut self.#ident,
-                        ::coupler::params::Range::<#ty>::decode(&(#range), __value),
-                    );
+                    ::coupler::params::smooth::Smoother::set(&mut self.#ident, #decode);
                 }
             })
         } else {
             Some(quote! {
                 #id => {
-                    self.#ident = ::coupler::params::Range::<#ty>::decode(&(#range), __value);
+                    self.#ident = #decode;
                 }
             })
         }

@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use super::ParamValue;
 
 pub trait Range<T> {
@@ -8,10 +6,10 @@ pub trait Range<T> {
     fn decode(&self, value: ParamValue) -> T;
 }
 
-pub trait DefaultRange: Sized {
-    type Range: Range<Self>;
-
-    fn default_range() -> Self::Range;
+pub trait Encode {
+    fn steps() -> Option<u32>;
+    fn encode(self) -> ParamValue;
+    fn decode(value: ParamValue) -> Self;
 }
 
 macro_rules! float_range {
@@ -50,12 +48,17 @@ macro_rules! float_range {
             }
         }
 
-        impl DefaultRange for $float {
-            type Range = std::ops::Range<$float>;
+        impl Encode for $float {
+            fn steps() -> Option<u32> {
+                (0.0..1.0).steps()
+            }
 
-            #[inline]
-            fn default_range() -> Self::Range {
-                0.0..1.0
+            fn encode(self) -> ParamValue {
+                (0.0..1.0).encode(self)
+            }
+
+            fn decode(value: ParamValue) -> Self {
+                (0.0..1.0).decode(value)
             }
         }
     };
@@ -104,12 +107,17 @@ macro_rules! int_range {
             }
         }
 
-        impl DefaultRange for $int {
-            type Range = std::ops::Range<$int>;
+        impl Encode for $int {
+            fn steps() -> Option<u32> {
+                (0..2).steps()
+            }
 
-            #[inline]
-            fn default_range() -> Self::Range {
-                0..1
+            fn encode(self) -> ParamValue {
+                (0..2).encode(self)
+            }
+
+            fn decode(value: ParamValue) -> Self {
+                (0..2).decode(value)
             }
         }
     };
@@ -131,36 +139,19 @@ pub trait Enum {
     fn from_index(index: u32) -> Self;
 }
 
-pub struct EnumRange<E>(PhantomData<E>);
-
-impl<E> EnumRange<E> {
-    pub fn new() -> EnumRange<E> {
-        EnumRange(PhantomData)
-    }
-}
-
-impl<E: Enum> Range<E> for EnumRange<E> {
-    fn steps(&self) -> Option<u32> {
+impl<E: Enum> Encode for E {
+    fn steps() -> Option<u32> {
         Some(E::values())
     }
 
-    fn encode(&self, value: E) -> ParamValue {
+    fn encode(self) -> ParamValue {
         let steps_recip = 1.0 / E::values() as f64;
-        (value.to_index() as f64 + 0.5) * steps_recip
+        (self.to_index() as f64 + 0.5) * steps_recip
     }
 
-    fn decode(&self, value: ParamValue) -> E {
+    fn decode(value: ParamValue) -> E {
         let steps = E::values() as f64;
         E::from_index((value * steps) as u32)
-    }
-}
-
-impl<E: Enum> DefaultRange for E {
-    type Range = EnumRange<E>;
-
-    #[inline]
-    fn default_range() -> Self::Range {
-        EnumRange::new()
     }
 }
 
