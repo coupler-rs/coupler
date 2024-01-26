@@ -133,28 +133,6 @@ int_range!(i16);
 int_range!(i32);
 int_range!(i64);
 
-pub trait Enum {
-    fn values() -> u32;
-    fn to_index(self) -> u32;
-    fn from_index(index: u32) -> Self;
-}
-
-impl<E: Enum> Encode for E {
-    fn steps() -> Option<u32> {
-        Some(E::values())
-    }
-
-    fn encode(self) -> ParamValue {
-        let steps_recip = 1.0 / E::values() as f64;
-        (self.to_index() as f64 + 0.5) * steps_recip
-    }
-
-    fn decode(value: ParamValue) -> E {
-        let steps = E::values() as f64;
-        E::from_index((value * steps) as u32)
-    }
-}
-
 impl Encode for bool {
     fn steps() -> Option<u32> {
         Some(2)

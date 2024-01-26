@@ -1,12 +1,13 @@
-use std::fmt::{self, Formatter};
+use std::fmt::{self, Display, Formatter};
+use std::str::FromStr;
 
 #[cfg(feature = "derive")]
-pub use coupler_derive::Params;
+pub use coupler_derive::{Enum, Params};
 
 mod range;
 pub mod smooth;
 
-pub use range::{Encode, Enum, Range};
+pub use range::{Encode, Range};
 
 pub type ParamId = u32;
 pub type ParamValue = f64;
@@ -28,3 +29,5 @@ pub trait Params {
     fn set_param(&mut self, id: ParamId, value: ParamValue);
     fn get_param(&self, id: ParamId) -> ParamValue;
 }
+
+pub trait Enum: Encode + FromStr + Display {}
