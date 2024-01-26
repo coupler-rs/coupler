@@ -155,16 +155,19 @@ impl<E: Enum> Encode for E {
     }
 }
 
-impl Enum for bool {
-    fn values() -> u32 {
-        2
+impl Encode for bool {
+    fn steps() -> Option<u32> {
+        Some(2)
     }
 
-    fn to_index(self) -> u32 {
-        self as u32
+    fn encode(self) -> ParamValue {
+        match self {
+            false => 0.25,
+            true => 0.75,
+        }
     }
 
-    fn from_index(index: u32) -> Self {
-        index != 0
+    fn decode(value: ParamValue) -> Self {
+        value >= 0.5
     }
 }
