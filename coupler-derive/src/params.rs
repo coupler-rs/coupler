@@ -267,7 +267,11 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
         let ident = &field.field.ident;
         let id = &field.param.id;
 
-        let encode = gen_encode(&field.field, &field.param, quote! { self.#ident });
+        let encode = gen_encode(
+            &field.field,
+            &field.param,
+            quote! { ::std::clone::Clone::clone(&self.#ident) },
+        );
 
         quote! {
             #id => {

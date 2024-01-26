@@ -182,13 +182,13 @@ pub fn expand_smooth(input: &DeriveInput) -> Result<TokenStream, Error> {
 
             quote! {
                 #ident: <#style as ::coupler::params::smooth::SmoothStyle<#ty>>::build(
-                    self.#ident,
+                    ::std::clone::Clone::clone(&self.#ident),
                     #args,
                     __sample_rate,
                 )
             }
         } else {
-            quote! { #ident: self.#ident }
+            quote! { #ident: ::std::clone::Clone::clone(&self.#ident) }
         }
     });
 
