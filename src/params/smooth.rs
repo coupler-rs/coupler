@@ -16,11 +16,10 @@ pub trait SmoothParams {
     fn reset(&mut self);
 }
 
-pub trait SmoothStyle<T> {
-    type Args;
+pub trait BuildSmoother<T> {
     type Smoother: Smoother<T>;
 
-    fn build(value: T, args: Self::Args, sample_rate: f64) -> Self::Smoother;
+    fn build(self, value: T, sample_rate: f64) -> Self::Smoother;
 }
 
 pub trait Smoother<T> {
@@ -44,18 +43,23 @@ pub trait Smoother<T> {
     }
 }
 
-pub struct Ms<T>(pub T);
+const EPSILON: f64 = 1e-3;
 
-impl<T> From<T> for Ms<T> {
-    #[inline]
-    fn from(value: T) -> Ms<T> {
-        Ms(value)
+pub struct Exp {
+    ms: f64,
+}
+
+impl Default for Exp {
+    fn default() -> Exp {
+        Exp { ms: 10.0 }
     }
 }
 
-const EPSILON: f64 = 1e-3;
-
-pub struct Exp;
+impl Exp {
+    pub fn ms(self, ms: f64) -> Self {
+        Exp { ms, ..self }
+    }
+}
 
 pub struct ExpSmoother<T> {
     rate: T,
@@ -65,17 +69,16 @@ pub struct ExpSmoother<T> {
 
 macro_rules! impl_exp {
     ($float:ty) => {
-        impl SmoothStyle<$float> for Exp {
-            type Args = Ms<$float>;
+        impl BuildSmoother<$float> for Exp {
             type Smoother = ExpSmoother<$float>;
 
             #[inline]
-            fn build(value: $float, args: Self::Args, sample_rate: f64) -> Self::Smoother {
-                let dt = 1000.0 / sample_rate as $float;
-                let rate = 1.0 - (-dt / args.0).exp();
+            fn build(self, value: $float, sample_rate: f64) -> Self::Smoother {
+                let dt = 1000.0 / sample_rate;
+                let rate = 1.0 - (-dt / self.ms).exp();
 
                 ExpSmoother {
-                    rate,
+                    rate: rate as $float,
                     current: value,
                     target: value,
                 }

@@ -1,96 +1,65 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Error, Expr, Field, Fields, Type};
+use syn::parse::{Parse, ParseStream, Result};
+use syn::punctuated::Punctuated;
+use syn::{Data, DeriveInput, Error, Expr, Field, Fields, Ident, Path, Token};
 
 use super::params::{gen_decode, parse_param, ParamAttr};
 
 struct SmoothAttr {
-    style: Type,
-    args: Option<Expr>,
-    ms: Option<Expr>,
+    builder: Path,
+    args: Punctuated<SmoothArg, Token![,]>,
 }
 
-fn parse_smooth(field: &Field) -> Result<Option<SmoothAttr>, Error> {
-    let mut is_smooth = false;
+impl Parse for SmoothAttr {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let builder = input.parse::<Path>()?;
 
-    let mut style = None;
-    let mut args = None;
-    let mut ms = None;
+        let args = if input.peek(Token![,]) {
+            let _ = input.parse::<Token![,]>()?;
+            input.parse_terminated(SmoothArg::parse, Token![,])?
+        } else {
+            Punctuated::new()
+        };
+
+        Ok(SmoothAttr { builder, args })
+    }
+}
+
+struct SmoothArg {
+    name: Ident,
+    value: Expr,
+}
+
+impl Parse for SmoothArg {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let name = input.parse::<Ident>()?;
+        let _ = input.parse::<Token![=]>()?;
+        let value = input.parse::<Expr>()?;
+
+        Ok(SmoothArg { name, value })
+    }
+}
+
+fn parse_smooth(field: &Field) -> Result<Option<SmoothAttr>> {
+    let mut smooth = None;
 
     for attr in &field.attrs {
         if !attr.path().is_ident("smooth") {
             continue;
         }
 
-        is_smooth = true;
+        if smooth.is_some() {
+            return Err(Error::new_spanned(
+                attr.path(),
+                "duplicate `smooth` attribute",
+            ));
+        }
 
-        attr.parse_nested_meta(|meta| {
-            let ident = meta.path.get_ident().ok_or_else(|| {
-                Error::new_spanned(&meta.path, "expected this path to be an identifier")
-            })?;
-            if ident == "style" {
-                if style.is_some() {
-                    return Err(Error::new_spanned(
-                        &meta.path,
-                        "duplicate smooth attribute `style`",
-                    ));
-                }
-
-                style = Some(meta.value()?.parse::<Type>()?);
-            } else if ident == "args" {
-                if args.is_some() {
-                    return Err(Error::new_spanned(
-                        &meta.path,
-                        "duplicate smooth attribute `args`",
-                    ));
-                }
-
-                if ms.is_some() {
-                    return Err(Error::new_spanned(
-                        &ident,
-                        "`ms` attribute cannot be used with `args`",
-                    ));
-                }
-
-                args = Some(meta.value()?.parse::<Expr>()?);
-            } else if ident == "ms" {
-                if ms.is_some() {
-                    return Err(Error::new_spanned(
-                        &meta.path,
-                        "duplicate smooth attribute `ms`",
-                    ));
-                }
-
-                if args.is_some() {
-                    return Err(Error::new_spanned(
-                        &ident,
-                        "`ms` attribute cannot be used with `args`",
-                    ));
-                }
-
-                ms = Some(meta.value()?.parse::<Expr>()?);
-            } else {
-                return Err(Error::new_spanned(
-                    &meta.path,
-                    format!("unknown smooth attribute `{}`", ident),
-                ));
-            }
-
-            Ok(())
-        })?;
+        smooth = Some(attr.parse_args::<SmoothAttr>()?);
     }
 
-    if !is_smooth {
-        return Ok(None);
-    }
-
-    let style = if let Some(style) = style {
-        style
-    } else {
-        return Err(Error::new_spanned(&field, "missing `style` attribute"));
-    };
-
-    Ok(Some(SmoothAttr { style, args, ms }))
+    Ok(smooth)
 }
 
 struct SmoothField<'a> {
@@ -99,7 +68,7 @@ struct SmoothField<'a> {
     smooth: Option<SmoothAttr>,
 }
 
-fn parse_fields(input: &DeriveInput) -> Result<Vec<SmoothField>, Error> {
+fn parse_fields(input: &DeriveInput) -> Result<Vec<SmoothField>> {
     let body = match &input.data {
         Data::Struct(body) => body,
         _ => {
@@ -143,7 +112,7 @@ fn parse_fields(input: &DeriveInput) -> Result<Vec<SmoothField>, Error> {
     Ok(smooth_fields)
 }
 
-pub fn expand_smooth(input: &DeriveInput) -> Result<TokenStream, Error> {
+pub fn expand_smooth(input: &DeriveInput) -> Result<TokenStream> {
     let fields = parse_fields(&input)?;
 
     let generics = &input.generics;
@@ -156,8 +125,8 @@ pub fn expand_smooth(input: &DeriveInput) -> Result<TokenStream, Error> {
         let ty = &field.field.ty;
 
         let field_type = if let Some(smooth) = &field.smooth {
-            let style = &smooth.style;
-            quote! { <#style as ::coupler::params::smooth::SmoothStyle<#ty>>::Smoother }
+            let builder = &smooth.builder;
+            quote! { <#builder as ::coupler::params::smooth::BuildSmoother<#ty>>::Smoother }
         } else {
             quote! { #ty }
         };
@@ -170,20 +139,18 @@ pub fn expand_smooth(input: &DeriveInput) -> Result<TokenStream, Error> {
         let ty = &field.field.ty;
 
         if let Some(smooth) = &field.smooth {
-            let style = &smooth.style;
+            let builder = &smooth.builder;
 
-            let args = if let Some(args) = &smooth.args {
-                quote! { ::std::convert::From::from(#args) }
-            } else if let Some(ms) = &smooth.ms {
-                quote! { ::std::convert::From::from(::coupler::params::smooth::Ms(#ms)) }
-            } else {
-                quote! { ::std::default::Default::default() }
-            };
+            let args = smooth.args.iter().map(|arg| {
+                let name = &arg.name;
+                let value = &arg.value;
+                quote! { .#name(#value) }
+            });
 
             quote! {
-                #ident: <#style as ::coupler::params::smooth::SmoothStyle<#ty>>::build(
+                #ident: <#builder as ::coupler::params::smooth::BuildSmoother<#ty>>::build(
+                    <#builder as ::std::default::Default>::default() #(#args)*,
                     ::std::clone::Clone::clone(&self.#ident),
-                    #args,
                     __sample_rate,
                 )
             }
