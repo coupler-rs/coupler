@@ -134,7 +134,7 @@ pub fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
 pub fn gen_encode(field: &Field, param: &ParamAttr, value: impl ToTokens) -> TokenStream {
     let ty = &field.ty;
     if let Some(range) = &param.range {
-        quote! { ::coupler::params::Range::<#ty>::encode(&(#range), #value) }
+        quote! { ::coupler::params::Range::<#ty>::encode(&(#range), &#value) }
     } else {
         quote! { <#ty as ::coupler::params::Encode>::encode(#value) }
     }
@@ -267,11 +267,7 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
         let ident = &field.field.ident;
         let id = &field.param.id;
 
-        let encode = gen_encode(
-            &field.field,
-            &field.param,
-            quote! { ::std::clone::Clone::clone(&self.#ident) },
-        );
+        let encode = gen_encode(&field.field, &field.param, quote! { &self.#ident });
 
         quote! {
             #id => {

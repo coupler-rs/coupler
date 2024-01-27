@@ -150,7 +150,7 @@ pub fn expand_smooth(input: &DeriveInput) -> Result<TokenStream> {
             quote! {
                 #ident: <#builder as ::coupler::params::smooth::BuildSmoother<#ty>>::build(
                     <#builder as ::std::default::Default>::default() #(#args)*,
-                    ::std::clone::Clone::clone(&self.#ident),
+                    &self.#ident,
                     __sample_rate,
                 )
             }
@@ -170,7 +170,7 @@ pub fn expand_smooth(input: &DeriveInput) -> Result<TokenStream> {
         if field.smooth.is_some() {
             Some(quote! {
                 #id => {
-                    ::coupler::params::smooth::Smoother::set(&mut self.#ident, #decode);
+                    ::coupler::params::smooth::Smoother::set(&mut self.#ident, &#decode);
                 }
             })
         } else {

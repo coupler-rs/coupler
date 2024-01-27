@@ -19,14 +19,14 @@ pub trait SmoothParams {
 pub trait BuildSmoother<T> {
     type Smoother: Smoother<T>;
 
-    fn build(self, value: T, sample_rate: f64) -> Self::Smoother;
+    fn build(self, value: &T, sample_rate: f64) -> Self::Smoother;
 }
 
 pub trait Smoother<T> {
     type Value;
 
     fn reset(&mut self);
-    fn set(&mut self, value: T);
+    fn set(&mut self, value: &T);
     fn get(&self) -> Self::Value;
     fn next(&mut self) -> Self::Value;
 
@@ -73,14 +73,14 @@ macro_rules! impl_exp {
             type Smoother = ExpSmoother<$float>;
 
             #[inline]
-            fn build(self, value: $float, sample_rate: f64) -> Self::Smoother {
+            fn build(self, value: &$float, sample_rate: f64) -> Self::Smoother {
                 let dt = 1000.0 / sample_rate;
                 let rate = 1.0 - (-dt / self.ms).exp();
 
                 ExpSmoother {
                     rate: rate as $float,
-                    current: value,
-                    target: value,
+                    current: *value,
+                    target: *value,
                 }
             }
         }
@@ -94,8 +94,8 @@ macro_rules! impl_exp {
             }
 
             #[inline]
-            fn set(&mut self, value: $float) {
-                self.target = value;
+            fn set(&mut self, value: &$float) {
+                self.target = *value;
             }
 
             #[inline]
