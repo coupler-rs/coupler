@@ -144,12 +144,18 @@ pub fn expand_smooth(input: &DeriveInput) -> Result<TokenStream> {
             let args = smooth.args.iter().map(|arg| {
                 let name = &arg.name;
                 let value = &arg.value;
-                quote! { .#name(#value) }
+                quote! {
+                    let __builder = #builder::#name(__builder, #value);
+                }
             });
 
             quote! {
                 #ident: <#builder as ::coupler::params::smooth::BuildSmoother<#ty>>::build(
-                    <#builder as ::std::default::Default>::default() #(#args)*,
+                    {
+                        let __builder = <#builder as ::std::default::Default>::default();
+                        #(#args)*
+                        __builder
+                    },
                     &self.#ident,
                     __sample_rate,
                 )
