@@ -114,7 +114,9 @@ impl Processor for GainProcessor {
         self.params.set_param(id, value);
     }
 
-    fn reset(&mut self) {}
+    fn reset(&mut self) {
+        self.params.reset();
+    }
 
     fn process(&mut self, block: Block) {
         let mut split = block.split_at_events();
