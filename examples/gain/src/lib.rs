@@ -26,7 +26,7 @@ pub struct Gain {
 
 impl Plugin for Gain {
     type Processor = GainProcessor;
-    type Editor = GainEditor;
+    type Editor = NoEditor;
 
     fn info() -> PluginInfo {
         PluginInfo {
@@ -48,7 +48,7 @@ impl Plugin for Gain {
                 },
             ],
             params: GainParams::params(),
-            has_editor: true,
+            has_editor: false,
         }
     }
 
@@ -84,8 +84,8 @@ impl Plugin for Gain {
         }
     }
 
-    fn editor(&self, _parent: Parent) -> GainEditor {
-        GainEditor {}
+    fn editor(&self, _parent: Parent) -> Self::Editor {
+        NoEditor
     }
 }
 
@@ -138,17 +138,4 @@ impl Processor for GainProcessor {
             }
         }
     }
-}
-
-pub struct GainEditor {}
-
-impl Editor for GainEditor {
-    fn size(&self) -> Size {
-        Size {
-            width: 320.0,
-            height: 240.0,
-        }
-    }
-
-    fn set_param(&mut self, _id: ParamId, _value: ParamValue) {}
 }
