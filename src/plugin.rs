@@ -14,6 +14,7 @@ pub struct PluginInfo {
     pub buses: Vec<BusInfo>,
     pub layouts: Vec<Layout>,
     pub params: Vec<ParamInfo>,
+    pub has_editor: bool,
 }
 
 pub struct Host {}

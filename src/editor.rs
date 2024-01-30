@@ -29,10 +29,6 @@ pub struct Size {
 }
 
 pub trait Editor: Sized + 'static {
-    fn exists() -> bool {
-        true
-    }
-
     fn size(&self) -> Size;
     fn set_param(&mut self, id: ParamId, value: ParamValue);
 }

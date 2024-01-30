@@ -10,7 +10,6 @@ use super::buffers::ScratchBuffers;
 use super::util::{copy_wstring, utf16_from_ptr};
 use super::view::View;
 use crate::bus::{BusDir, Format, Layout};
-use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
 use crate::params::ParamId;
 use crate::plugin::{Host, Plugin, PluginInfo};
@@ -657,7 +656,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     }
 
     unsafe fn createView(&self, name: FIDString) -> *mut IPlugView {
-        if !P::Editor::exists() {
+        if !self.info.has_editor {
             return ptr::null_mut();
         }
 

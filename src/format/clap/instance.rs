@@ -11,7 +11,6 @@ use clap_sys::{events::*, id::*, plugin::*, process::*, stream::*};
 
 use crate::buffers::{Buffers, BusData};
 use crate::bus::{BusDir, Format};
-use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
 use crate::params::{ParamId, ParamInfo, ParamValue};
 use crate::plugin::{Host, Plugin, PluginInfo};
@@ -324,7 +323,7 @@ impl<P: Plugin> Instance<P> {
     }
 
     unsafe extern "C" fn get_extension(
-        _plugin: *const clap_plugin,
+        plugin: *const clap_plugin,
         id: *const c_char,
     ) -> *const c_void {
         let id = CStr::from_ptr(id);
@@ -345,8 +344,9 @@ impl<P: Plugin> Instance<P> {
             return &Self::STATE as *const _ as *const c_void;
         }
 
-        if P::Editor::exists() {
-            if id == CLAP_EXT_GUI {
+        if id == CLAP_EXT_GUI {
+            let instance = &*(plugin as *const Self);
+            if instance.info.has_editor {
                 return &Self::GUI as *const _ as *const c_void;
             }
         }

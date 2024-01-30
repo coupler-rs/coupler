@@ -48,6 +48,7 @@ impl Plugin for Gain {
                 },
             ],
             params: GainParams::params(),
+            has_editor: true,
         }
     }
 
