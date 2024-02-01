@@ -17,6 +17,22 @@ pub struct PluginInfo {
     pub has_editor: bool,
 }
 
+impl Default for PluginInfo {
+    fn default() -> PluginInfo {
+        PluginInfo {
+            name: String::new(),
+            version: String::new(),
+            vendor: String::new(),
+            url: String::new(),
+            email: String::new(),
+            buses: Vec::new(),
+            layouts: Vec::new(),
+            params: Vec::new(),
+            has_editor: false,
+        }
+    }
+}
+
 pub struct Host {}
 
 pub trait Plugin: Send + Sized + 'static {
