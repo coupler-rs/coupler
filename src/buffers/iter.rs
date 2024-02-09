@@ -47,7 +47,7 @@ impl<'a, 'b> Iterator for SplitAtEvents<'a, 'b> {
             len: split,
             _marker: PhantomData,
         };
-        self.buffers.offset += split as isize;
+        self.buffers.offset += split;
         self.buffers.len -= split;
 
         let events = self.events.slice(..event_count).unwrap();

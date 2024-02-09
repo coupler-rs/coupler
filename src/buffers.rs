@@ -22,7 +22,7 @@ impl<'a> BufferDir<'a> {
     pub unsafe fn from_raw_parts(
         dir: BusDir,
         ptrs: &'a [*mut f32],
-        offset: isize,
+        offset: usize,
         len: usize,
     ) -> BufferDir<'a> {
         match dir {
@@ -42,7 +42,7 @@ pub struct BusData {
 pub struct Buffers<'a> {
     buses: &'a [BusData],
     ptrs: &'a [*mut f32],
-    offset: isize,
+    offset: usize,
     len: usize,
     _marker: PhantomData<&'a mut f32>,
 }
@@ -52,7 +52,7 @@ impl<'a> Buffers<'a> {
     pub unsafe fn from_raw_parts(
         buses: &'a [BusData],
         ptrs: &'a [*mut f32],
-        offset: isize,
+        offset: usize,
         len: usize,
     ) -> Buffers<'a> {
         Buffers {
@@ -122,7 +122,7 @@ impl<'a> Buffers<'a> {
             Some(Buffers {
                 buses: self.buses,
                 ptrs: self.ptrs,
-                offset: self.offset.checked_add_unsigned(range.start).unwrap(),
+                offset: self.offset + range.start,
                 len: range.end - range.start,
                 _marker: self._marker,
             })
@@ -154,7 +154,7 @@ impl<'a> IntoIterator for Buffers<'a> {
 pub struct Buses<'a> {
     iter: slice::Iter<'a, BusData>,
     ptrs: &'a [*mut f32],
-    offset: isize,
+    offset: usize,
     len: usize,
     _marker: PhantomData<&'a mut f32>,
 }
@@ -181,14 +181,14 @@ impl<'a> Iterator for Buses<'a> {
 
 pub struct Buffer<'a> {
     ptrs: &'a [*mut f32],
-    offset: isize,
+    offset: usize,
     len: usize,
     _marker: PhantomData<&'a f32>,
 }
 
 impl<'a> Buffer<'a> {
     #[inline]
-    pub unsafe fn from_raw_parts(ptrs: &'a [*mut f32], offset: isize, len: usize) -> Buffer<'a> {
+    pub unsafe fn from_raw_parts(ptrs: &'a [*mut f32], offset: usize, len: usize) -> Buffer<'a> {
         Buffer {
             ptrs,
             offset,
@@ -213,20 +213,20 @@ impl<'a> Index<usize> for Buffer<'a> {
 
     #[inline]
     fn index(&self, index: usize) -> &[f32] {
-        unsafe { slice::from_raw_parts(self.ptrs[index].offset(self.offset), self.len) }
+        unsafe { slice::from_raw_parts(self.ptrs[index].add(self.offset), self.len) }
     }
 }
 
 pub struct BufferMut<'a> {
     ptrs: &'a [*mut f32],
-    offset: isize,
+    offset: usize,
     len: usize,
     _marker: PhantomData<&'a mut f32>,
 }
 
 impl<'a> BufferMut<'a> {
     #[inline]
-    pub unsafe fn from_raw_parts(ptrs: &'a [*mut f32], offset: isize, len: usize) -> BufferMut<'a> {
+    pub unsafe fn from_raw_parts(ptrs: &'a [*mut f32], offset: usize, len: usize) -> BufferMut<'a> {
         BufferMut {
             ptrs,
             offset,
@@ -251,13 +251,13 @@ impl<'a> Index<usize> for BufferMut<'a> {
 
     #[inline]
     fn index(&self, index: usize) -> &[f32] {
-        unsafe { slice::from_raw_parts(self.ptrs[index].offset(self.offset), self.len) }
+        unsafe { slice::from_raw_parts(self.ptrs[index].add(self.offset), self.len) }
     }
 }
 
 impl<'a> IndexMut<usize> for BufferMut<'a> {
     #[inline]
     fn index_mut(&mut self, index: usize) -> &mut [f32] {
-        unsafe { slice::from_raw_parts_mut(self.ptrs[index].offset(self.offset), self.len) }
+        unsafe { slice::from_raw_parts_mut(self.ptrs[index].add(self.offset), self.len) }
     }
 }
