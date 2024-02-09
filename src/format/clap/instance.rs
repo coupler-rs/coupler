@@ -316,7 +316,7 @@ impl<P: Plugin> Instance<P> {
                 0,
                 len,
             ),
-            events: Events::new(&process_state.events, 0),
+            events: Events::new(&process_state.events),
         });
 
         CLAP_PROCESS_CONTINUE

@@ -65,7 +65,7 @@ impl<'a, 'b> SplitAtEvents<'a, 'b> {
         }
 
         let buffers = self.buffers.slice(self.offset as usize..next_offset as usize).unwrap();
-        let events = self.events.slice(self.event..next_event).unwrap().with_offset(-self.offset);
+        let events = self.events.slice(self.event..next_event).unwrap();
 
         self.offset = next_offset;
         self.event = next_event;
