@@ -1,4 +1,4 @@
-use std::ops::{Index, Range};
+use std::ops::{Index, RangeBounds};
 use std::slice;
 
 use crate::params::{ParamId, ParamValue};
@@ -37,12 +37,14 @@ impl<'a> Events<'a> {
     }
 
     #[inline]
-    pub fn slice(&self, range: Range<usize>) -> Option<Events<'a>> {
-        if let Some(events) = self.events.get(range) {
-            Some(Events { events })
-        } else {
-            None
-        }
+    pub fn slice<R>(&self, range: R) -> Option<Events<'a>>
+    where
+        R: RangeBounds<usize>,
+    {
+        let range = (range.start_bound().cloned(), range.end_bound().cloned());
+        let events = self.events.get(range)?;
+
+        Some(Events { events })
     }
 }
 
