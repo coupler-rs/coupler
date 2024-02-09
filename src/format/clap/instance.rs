@@ -14,7 +14,7 @@ use crate::bus::{BusDir, Format};
 use crate::events::{Data, Event, Events};
 use crate::params::{ParamId, ParamInfo, ParamValue};
 use crate::plugin::{Host, Plugin, PluginInfo};
-use crate::process::{Block, Config, Processor};
+use crate::process::{Config, Processor};
 use crate::sync::params::ParamValues;
 use crate::util::{copy_cstring, slice_from_raw_parts_checked, DisplayParam};
 
@@ -309,15 +309,10 @@ impl<P: Plugin> Instance<P> {
         }
 
         instance.sync_processor(processor);
-        processor.process(Block {
-            buffers: Buffers::from_raw_parts(
-                &process_state.buses,
-                &process_state.buffer_ptrs,
-                0,
-                len,
-            ),
-            events: Events::new(&process_state.events),
-        });
+        processor.process(
+            Buffers::from_raw_parts(&process_state.buses, &process_state.buffer_ptrs, 0, len),
+            Events::new(&process_state.events),
+        );
 
         CLAP_PROCESS_CONTINUE
     }

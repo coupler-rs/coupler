@@ -13,7 +13,7 @@ use crate::bus::{BusDir, Format, Layout};
 use crate::events::{Data, Event, Events};
 use crate::params::ParamId;
 use crate::plugin::{Host, Plugin, PluginInfo};
-use crate::process::{Block, Config, Processor};
+use crate::process::{Config, Processor};
 use crate::sync::params::ParamValues;
 use crate::util::{slice_from_raw_parts_checked, DisplayParam};
 
@@ -520,10 +520,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         }
 
         self.sync_processor(processor);
-        processor.process(Block {
-            buffers,
-            events: Events::new(&process_state.events),
-        });
+        processor.process(buffers, Events::new(&process_state.events));
 
         kResultOk
     }

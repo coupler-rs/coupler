@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use coupler::buffers::bind::*;
 use coupler::format::clap::*;
 use coupler::format::vst3::*;
-use coupler::{bus::*, editor::*, events::*, params::smooth::*, params::*, plugin::*, process::*};
+use coupler::{
+    buffers::*, bus::*, editor::*, events::*, params::smooth::*, params::*, plugin::*, process::*,
+};
 
 #[derive(Params, Smooth, Serialize, Deserialize, Clone)]
 struct GainParams {
@@ -118,10 +120,9 @@ impl Processor for GainProcessor {
         self.params.reset();
     }
 
-    fn process(&mut self, block: Block) {
-        let mut split = block.split_at_events();
-        while let Some(mut block) = split.next() {
-            for event in block.events {
+    fn process(&mut self, buffers: Buffers, events: Events) {
+        for (mut buffers, events) in buffers.split_at_events(events) {
+            for event in events {
                 match event.data {
                     Data::ParamChange { id, value } => {
                         self.params.set_param(id, value);
@@ -130,7 +131,7 @@ impl Processor for GainProcessor {
                 }
             }
 
-            let InOut(mut main) = block.buffers.bind().unwrap();
+            let InOut(mut main) = buffers.bind().unwrap();
 
             for i in 0..main.len() {
                 let gain = self.params.gain.next();

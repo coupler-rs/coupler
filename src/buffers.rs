@@ -3,10 +3,13 @@ use std::ops::{Index, IndexMut, Range};
 use std::slice;
 
 use crate::bus::BusDir;
+use crate::events::Events;
 
 pub mod bind;
+pub mod iter;
 
 use bind::BindBuffers;
+use iter::SplitAtEvents;
 
 pub enum BufferDir<'a> {
     In(Buffer<'a>),
@@ -124,6 +127,11 @@ impl<'a> Buffers<'a> {
                 _marker: self._marker,
             })
         }
+    }
+
+    #[inline]
+    pub fn split_at_events<'b>(self, events: Events<'b>) -> SplitAtEvents<'a, 'b> {
+        SplitAtEvents::new(self, events)
     }
 }
 
