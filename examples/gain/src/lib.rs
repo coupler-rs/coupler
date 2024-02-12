@@ -2,7 +2,6 @@ use std::io::{self, Read, Write};
 
 use serde::{Deserialize, Serialize};
 
-use coupler::buffers::bind::*;
 use coupler::format::clap::*;
 use coupler::format::vst3::*;
 use coupler::{
@@ -131,7 +130,7 @@ impl Processor for GainProcessor {
                 }
             }
 
-            let InOut(mut main) = buffers.bind().unwrap();
+            let mut main = buffers.bind::<BufferMut>().unwrap();
 
             for i in 0..main.len() {
                 let gain = self.params.gain.next();

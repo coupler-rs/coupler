@@ -6,46 +6,28 @@ pub trait BindBuffers<'a, 'b>: Sized {
         I: Iterator<Item = BufferDir<'a, 'b>>;
 }
 
-pub struct In<'a, 'b>(pub Buffer<'a, 'b>);
-
-impl<'a, 'b> BindBuffers<'a, 'b> for In<'a, 'b> {
+impl<'a, 'b> BindBuffers<'a, 'b> for Buffer<'a, 'b> {
     #[inline]
     fn bind<I>(buffers: &mut I) -> Option<Self>
     where
         I: Iterator<Item = BufferDir<'a, 'b>>,
     {
         match buffers.next() {
-            Some(BufferDir::In(buffer)) => Some(In(buffer)),
+            Some(BufferDir::In(buffer)) => Some(buffer),
             _ => None,
         }
     }
 }
 
-pub struct Out<'a, 'b>(pub BufferMut<'a, 'b>);
-
-impl<'a, 'b> BindBuffers<'a, 'b> for Out<'a, 'b> {
+impl<'a, 'b> BindBuffers<'a, 'b> for BufferMut<'a, 'b> {
     #[inline]
     fn bind<I>(buffers: &mut I) -> Option<Self>
     where
         I: Iterator<Item = BufferDir<'a, 'b>>,
     {
         match buffers.next() {
-            Some(BufferDir::Out(buffer)) => Some(Out(buffer)),
-            _ => None,
-        }
-    }
-}
-
-pub struct InOut<'a, 'b>(pub BufferMut<'a, 'b>);
-
-impl<'a, 'b> BindBuffers<'a, 'b> for InOut<'a, 'b> {
-    #[inline]
-    fn bind<I>(buffers: &mut I) -> Option<Self>
-    where
-        I: Iterator<Item = BufferDir<'a, 'b>>,
-    {
-        match buffers.next() {
-            Some(BufferDir::InOut(buffer)) => Some(InOut(buffer)),
+            Some(BufferDir::Out(buffer)) => Some(buffer),
+            Some(BufferDir::InOut(buffer)) => Some(buffer),
             _ => None,
         }
     }
