@@ -11,20 +11,20 @@ pub mod iter;
 use bind::BindBuffers;
 use iter::SplitAtEvents;
 
-pub enum BufferDir<'a> {
-    In(Buffer<'a>),
-    Out(BufferMut<'a>),
-    InOut(BufferMut<'a>),
+pub enum BufferDir<'a, 'b> {
+    In(Buffer<'a, 'b>),
+    Out(BufferMut<'a, 'b>),
+    InOut(BufferMut<'a, 'b>),
 }
 
-impl<'a> BufferDir<'a> {
+impl<'a, 'b> BufferDir<'a, 'b> {
     #[inline]
     pub unsafe fn from_raw_parts(
         dir: BusDir,
         ptrs: &'a [*mut f32],
         offset: usize,
         len: usize,
-    ) -> BufferDir<'a> {
+    ) -> BufferDir<'a, 'b> {
         match dir {
             BusDir::In => BufferDir::In(Buffer::from_raw_parts(ptrs, offset, len)),
             BusDir::Out => BufferDir::Out(BufferMut::from_raw_parts(ptrs, offset, len)),
@@ -39,22 +39,22 @@ pub struct BusData {
     pub end: usize,
 }
 
-pub struct Buffers<'a> {
+pub struct Buffers<'a, 'b> {
     buses: &'a [BusData],
     ptrs: &'a [*mut f32],
     offset: usize,
     len: usize,
-    _marker: PhantomData<&'a mut f32>,
+    _marker: PhantomData<&'b mut f32>,
 }
 
-impl<'a> Buffers<'a> {
+impl<'a, 'b> Buffers<'a, 'b> {
     #[inline]
     pub unsafe fn from_raw_parts(
         buses: &'a [BusData],
         ptrs: &'a [*mut f32],
         offset: usize,
         len: usize,
-    ) -> Buffers<'a> {
+    ) -> Buffers<'a, 'b> {
         Buffers {
             buses,
             ptrs,
@@ -75,7 +75,7 @@ impl<'a> Buffers<'a> {
     }
 
     #[inline]
-    pub fn reborrow(&mut self) -> Buffers {
+    pub fn reborrow<'c>(&'c mut self) -> Buffers<'a, 'c> {
         Buffers {
             buses: self.buses,
             ptrs: self.ptrs,
@@ -102,7 +102,7 @@ impl<'a> Buffers<'a> {
     }
 
     #[inline]
-    pub fn bind<'b, B: BindBuffers<'b>>(&'b mut self) -> Option<B> {
+    pub fn bind<'c, B: BindBuffers<'a, 'c>>(&'c mut self) -> Option<B> {
         let mut iter = self.reborrow().into_iter();
 
         let result = B::bind(&mut iter)?;
@@ -130,14 +130,14 @@ impl<'a> Buffers<'a> {
     }
 
     #[inline]
-    pub fn split_at_events<'b>(self, events: Events<'b>) -> SplitAtEvents<'a, 'b> {
+    pub fn split_at_events<'e>(self, events: Events<'e>) -> SplitAtEvents<'a, 'b, 'e> {
         SplitAtEvents::new(self, events)
     }
 }
 
-impl<'a> IntoIterator for Buffers<'a> {
-    type Item = BufferDir<'a>;
-    type IntoIter = Buses<'a>;
+impl<'a, 'b> IntoIterator for Buffers<'a, 'b> {
+    type Item = BufferDir<'a, 'b>;
+    type IntoIter = Buses<'a, 'b>;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
@@ -151,16 +151,16 @@ impl<'a> IntoIterator for Buffers<'a> {
     }
 }
 
-pub struct Buses<'a> {
+pub struct Buses<'a, 'b> {
     iter: slice::Iter<'a, BusData>,
     ptrs: &'a [*mut f32],
     offset: usize,
     len: usize,
-    _marker: PhantomData<&'a mut f32>,
+    _marker: PhantomData<&'b mut f32>,
 }
 
-impl<'a> Iterator for Buses<'a> {
-    type Item = BufferDir<'a>;
+impl<'a, 'b> Iterator for Buses<'a, 'b> {
+    type Item = BufferDir<'a, 'b>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -179,16 +179,20 @@ impl<'a> Iterator for Buses<'a> {
     }
 }
 
-pub struct Buffer<'a> {
+pub struct Buffer<'a, 'b> {
     ptrs: &'a [*mut f32],
     offset: usize,
     len: usize,
-    _marker: PhantomData<&'a f32>,
+    _marker: PhantomData<&'b f32>,
 }
 
-impl<'a> Buffer<'a> {
+impl<'a, 'b> Buffer<'a, 'b> {
     #[inline]
-    pub unsafe fn from_raw_parts(ptrs: &'a [*mut f32], offset: usize, len: usize) -> Buffer<'a> {
+    pub unsafe fn from_raw_parts(
+        ptrs: &'a [*mut f32],
+        offset: usize,
+        len: usize,
+    ) -> Buffer<'a, 'b> {
         Buffer {
             ptrs,
             offset,
@@ -208,7 +212,7 @@ impl<'a> Buffer<'a> {
     }
 }
 
-impl<'a> Index<usize> for Buffer<'a> {
+impl<'a, 'b> Index<usize> for Buffer<'a, 'b> {
     type Output = [f32];
 
     #[inline]
@@ -217,16 +221,20 @@ impl<'a> Index<usize> for Buffer<'a> {
     }
 }
 
-pub struct BufferMut<'a> {
+pub struct BufferMut<'a, 'b> {
     ptrs: &'a [*mut f32],
     offset: usize,
     len: usize,
-    _marker: PhantomData<&'a mut f32>,
+    _marker: PhantomData<&'b mut f32>,
 }
 
-impl<'a> BufferMut<'a> {
+impl<'a, 'b> BufferMut<'a, 'b> {
     #[inline]
-    pub unsafe fn from_raw_parts(ptrs: &'a [*mut f32], offset: usize, len: usize) -> BufferMut<'a> {
+    pub unsafe fn from_raw_parts(
+        ptrs: &'a [*mut f32],
+        offset: usize,
+        len: usize,
+    ) -> BufferMut<'a, 'b> {
         BufferMut {
             ptrs,
             offset,
@@ -246,7 +254,7 @@ impl<'a> BufferMut<'a> {
     }
 }
 
-impl<'a> Index<usize> for BufferMut<'a> {
+impl<'a, 'b> Index<usize> for BufferMut<'a, 'b> {
     type Output = [f32];
 
     #[inline]
@@ -255,7 +263,7 @@ impl<'a> Index<usize> for BufferMut<'a> {
     }
 }
 
-impl<'a> IndexMut<usize> for BufferMut<'a> {
+impl<'a, 'b> IndexMut<usize> for BufferMut<'a, 'b> {
     #[inline]
     fn index_mut(&mut self, index: usize) -> &mut [f32] {
         unsafe { slice::from_raw_parts_mut(self.ptrs[index].add(self.offset), self.len) }

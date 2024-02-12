@@ -1,18 +1,18 @@
 use super::{Buffer, BufferDir, BufferMut};
 
-pub trait BindBuffers<'a>: Sized {
+pub trait BindBuffers<'a, 'b>: Sized {
     fn bind<I>(buffers: &mut I) -> Option<Self>
     where
-        I: Iterator<Item = BufferDir<'a>>;
+        I: Iterator<Item = BufferDir<'a, 'b>>;
 }
 
-pub struct In<'a>(pub Buffer<'a>);
+pub struct In<'a, 'b>(pub Buffer<'a, 'b>);
 
-impl<'a> BindBuffers<'a> for In<'a> {
+impl<'a, 'b> BindBuffers<'a, 'b> for In<'a, 'b> {
     #[inline]
     fn bind<I>(buffers: &mut I) -> Option<Self>
     where
-        I: Iterator<Item = BufferDir<'a>>,
+        I: Iterator<Item = BufferDir<'a, 'b>>,
     {
         match buffers.next() {
             Some(BufferDir::In(buffer)) => Some(In(buffer)),
@@ -21,13 +21,13 @@ impl<'a> BindBuffers<'a> for In<'a> {
     }
 }
 
-pub struct Out<'a>(pub BufferMut<'a>);
+pub struct Out<'a, 'b>(pub BufferMut<'a, 'b>);
 
-impl<'a> BindBuffers<'a> for Out<'a> {
+impl<'a, 'b> BindBuffers<'a, 'b> for Out<'a, 'b> {
     #[inline]
     fn bind<I>(buffers: &mut I) -> Option<Self>
     where
-        I: Iterator<Item = BufferDir<'a>>,
+        I: Iterator<Item = BufferDir<'a, 'b>>,
     {
         match buffers.next() {
             Some(BufferDir::Out(buffer)) => Some(Out(buffer)),
@@ -36,13 +36,13 @@ impl<'a> BindBuffers<'a> for Out<'a> {
     }
 }
 
-pub struct InOut<'a>(pub BufferMut<'a>);
+pub struct InOut<'a, 'b>(pub BufferMut<'a, 'b>);
 
-impl<'a> BindBuffers<'a> for InOut<'a> {
+impl<'a, 'b> BindBuffers<'a, 'b> for InOut<'a, 'b> {
     #[inline]
     fn bind<I>(buffers: &mut I) -> Option<Self>
     where
-        I: Iterator<Item = BufferDir<'a>>,
+        I: Iterator<Item = BufferDir<'a, 'b>>,
     {
         match buffers.next() {
             Some(BufferDir::InOut(buffer)) => Some(InOut(buffer)),
@@ -53,14 +53,14 @@ impl<'a> BindBuffers<'a> for InOut<'a> {
 
 macro_rules! bind_buffers {
     ($($binding:ident),*) => {
-        impl<'a, $($binding),*> BindBuffers<'a> for ($($binding,)*)
+        impl<'a, 'b, $($binding),*> BindBuffers<'a, 'b> for ($($binding,)*)
         where
-            $($binding: BindBuffers<'a>),*
+            $($binding: BindBuffers<'a, 'b>),*
         {
             #[inline]
             fn bind<I>(buffers: &mut I) -> Option<Self>
             where
-                I: Iterator<Item = BufferDir<'a>>,
+                I: Iterator<Item = BufferDir<'a, 'b>>,
             {
                 Some((
                     $(

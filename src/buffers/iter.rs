@@ -3,15 +3,15 @@ use std::marker::PhantomData;
 use super::Buffers;
 use crate::events::Events;
 
-pub struct SplitAtEvents<'a, 'b> {
-    buffers: Buffers<'a>,
-    events: Events<'b>,
+pub struct SplitAtEvents<'a, 'b, 'e> {
+    buffers: Buffers<'a, 'b>,
+    events: Events<'e>,
     offset: i64,
 }
 
-impl<'a, 'b> SplitAtEvents<'a, 'b> {
+impl<'a, 'b, 'e> SplitAtEvents<'a, 'b, 'e> {
     #[inline]
-    pub(crate) fn new(buffers: Buffers<'a>, events: Events<'b>) -> SplitAtEvents<'a, 'b> {
+    pub(crate) fn new(buffers: Buffers<'a, 'b>, events: Events<'e>) -> SplitAtEvents<'a, 'b, 'e> {
         SplitAtEvents {
             buffers: buffers,
             events: events,
@@ -20,11 +20,11 @@ impl<'a, 'b> SplitAtEvents<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Iterator for SplitAtEvents<'a, 'b> {
-    type Item = (Buffers<'a>, Events<'b>);
+impl<'a, 'b, 'e> Iterator for SplitAtEvents<'a, 'b, 'e> {
+    type Item = (Buffers<'a, 'b>, Events<'e>);
 
     #[inline]
-    fn next(&mut self) -> Option<(Buffers<'a>, Events<'b>)> {
+    fn next(&mut self) -> Option<(Buffers<'a, 'b>, Events<'e>)> {
         if self.buffers.len() == 0 && self.events.len() == 0 {
             return None;
         }
