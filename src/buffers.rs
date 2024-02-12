@@ -102,8 +102,8 @@ impl<'a, 'b> Buffers<'a, 'b> {
     }
 
     #[inline]
-    pub fn bind<'c, B: BindBuffers<'a, 'c>>(&'c mut self) -> Option<B> {
-        let mut iter = self.reborrow().into_iter();
+    pub fn bind<B: BindBuffers<'a, 'b>>(self) -> Option<B> {
+        let mut iter = self.into_iter();
 
         let result = B::bind(&mut iter)?;
 
