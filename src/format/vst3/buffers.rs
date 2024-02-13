@@ -4,7 +4,7 @@ use std::slice;
 
 use vst3::Steinberg::Vst::ProcessData;
 
-use crate::buffers::{Buffers, BusData};
+use crate::buffers::{BufferData, BufferType, Buffers};
 use crate::bus::{BusDir, BusInfo};
 use crate::process::Config;
 use crate::util::slice_from_raw_parts_checked;
@@ -12,7 +12,7 @@ use crate::util::slice_from_raw_parts_checked;
 pub struct ScratchBuffers {
     inputs_active: Vec<bool>,
     outputs_active: Vec<bool>,
-    buses: Vec<BusData>,
+    data: Vec<BufferData>,
     ptrs: Vec<*mut f32>,
     buffers: Vec<f32>,
     silence: Vec<f32>,
@@ -25,7 +25,7 @@ impl ScratchBuffers {
         ScratchBuffers {
             inputs_active: vec![true; input_count],
             outputs_active: vec![true; output_count],
-            buses: Vec::new(),
+            data: Vec::new(),
             ptrs: Vec::new(),
             buffers: Vec::new(),
             silence: Vec::new(),
@@ -43,17 +43,21 @@ impl ScratchBuffers {
     }
 
     pub fn resize(&mut self, buses: &[BusInfo], config: &Config) {
-        self.buses.clear();
+        self.data.clear();
         let mut total_channels = 0;
         let mut output_channels = 0;
         let mut in_out_channels = 0;
         for (info, format) in zip(buses, &config.layout.formats) {
+            let buffer_type = match info.dir {
+                BusDir::In => BufferType::Const,
+                BusDir::Out | BusDir::InOut => BufferType::Mut,
+            };
             let channel_count = format.channel_count();
 
-            self.buses.push(BusData {
+            self.data.push(BufferData {
+                buffer_type,
                 start: total_channels,
                 end: total_channels + channel_count,
-                dir: info.dir,
             });
 
             total_channels += channel_count;
@@ -85,6 +89,7 @@ impl ScratchBuffers {
 
     pub unsafe fn get_buffers(
         &mut self,
+        buses: &[BusInfo],
         input_bus_map: &[usize],
         output_bus_map: &[usize],
         config: &Config,
@@ -99,7 +104,7 @@ impl ScratchBuffers {
 
         if len == 0 {
             self.ptrs.fill(NonNull::dangling().as_ptr());
-            return Ok(Buffers::from_raw_parts(&self.buses, &self.ptrs, 0, len));
+            return Ok(Buffers::from_raw_parts(&self.data, &self.ptrs, 0, len));
         }
 
         let input_count = data.numInputs as usize;
@@ -126,7 +131,7 @@ impl ScratchBuffers {
         // Set up output pointers.
         self.output_ptrs.clear();
         for (output_index, &bus_index) in output_bus_map.iter().enumerate() {
-            let bus_data = &self.buses[bus_index];
+            let data = &self.data[bus_index];
             if self.outputs_active[output_index] {
                 let output = &outputs[output_index];
                 let channels = slice_from_raw_parts_checked(
@@ -134,11 +139,11 @@ impl ScratchBuffers {
                     output.numChannels as usize,
                 );
 
-                self.ptrs[bus_data.start..bus_data.end].copy_from_slice(channels);
+                self.ptrs[data.start..data.end].copy_from_slice(channels);
                 self.output_ptrs.extend_from_slice(&channels);
             } else {
                 // For inactive output buses, allocate a scratch buffer for each channel.
-                for ptr in &mut self.ptrs[bus_data.start..bus_data.end] {
+                for ptr in &mut self.ptrs[data.start..data.end] {
                     let (first, rest) = scratch.split_at_mut(len);
                     scratch = rest;
 
@@ -153,8 +158,9 @@ impl ScratchBuffers {
 
         // Set up input pointers.
         for (input_index, &bus_index) in input_bus_map.iter().enumerate() {
-            let bus_data = &self.buses[bus_index];
-            if bus_data.dir == BusDir::In {
+            let data = &self.data[bus_index];
+            let bus_info = &buses[bus_index];
+            if bus_info.dir == BusDir::In {
                 if self.inputs_active[input_index] {
                     let input = &inputs[input_index];
                     let channels = slice_from_raw_parts_checked(
@@ -162,7 +168,7 @@ impl ScratchBuffers {
                         input.numChannels as usize,
                     );
 
-                    let ptrs = &mut self.ptrs[bus_data.start..bus_data.end];
+                    let ptrs = &mut self.ptrs[data.start..data.end];
                     for (&channel, ptr) in zip(channels, ptrs) {
                         // If an input buffer is aliased by some output buffer, copy its contents to
                         // a scratch buffer.
@@ -180,7 +186,7 @@ impl ScratchBuffers {
                 } else {
                     // For inactive input buses, provide pointers to the silence buffer.
                     let silence = self.silence.as_ptr() as *mut f32;
-                    self.ptrs[bus_data.start..bus_data.end].fill(silence);
+                    self.ptrs[data.start..data.end].fill(silence);
                 }
             }
         }
@@ -189,8 +195,9 @@ impl ScratchBuffers {
         // inputs to outputs.
         self.moves.clear();
         for (input_index, &bus_index) in input_bus_map.iter().enumerate() {
-            let bus_data = &self.buses[bus_index];
-            if bus_data.dir == BusDir::InOut {
+            let data = &self.data[bus_index];
+            let bus_info = &buses[bus_index];
+            if bus_info.dir == BusDir::InOut {
                 if self.inputs_active[input_index] {
                     let input = &inputs[input_index];
                     let channels = slice_from_raw_parts_checked(
@@ -198,7 +205,7 @@ impl ScratchBuffers {
                         input.numChannels as usize,
                     );
 
-                    let ptrs = &self.ptrs[bus_data.start..bus_data.end];
+                    let ptrs = &self.ptrs[data.start..data.end];
                     for (&src, &dst) in zip(channels, ptrs) {
                         // Only perform a copy if input and output pointers are not equal.
                         if src != dst {
@@ -219,7 +226,7 @@ impl ScratchBuffers {
                     }
                 } else {
                     // For inactive input buses, copy from the silence buffer.
-                    for &dst in &self.ptrs[bus_data.start..bus_data.end] {
+                    for &dst in &self.ptrs[data.start..data.end] {
                         self.moves.push((self.silence.as_ptr(), dst));
                     }
                 }
@@ -236,6 +243,6 @@ impl ScratchBuffers {
 
         self.output_ptrs.clear();
 
-        Ok(Buffers::from_raw_parts(&self.buses, &self.ptrs, 0, len))
+        Ok(Buffers::from_raw_parts(&self.data, &self.ptrs, 0, len))
     }
 }

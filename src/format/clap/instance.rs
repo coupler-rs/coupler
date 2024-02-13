@@ -9,7 +9,7 @@ use std::{io, ptr, slice};
 use clap_sys::ext::{audio_ports::*, audio_ports_config::*, gui::*, params::*, state::*};
 use clap_sys::{events::*, id::*, plugin::*, process::*, stream::*};
 
-use crate::buffers::{Buffers, BusData};
+use crate::buffers::{BufferData, BufferType, Buffers};
 use crate::bus::{BusDir, Format};
 use crate::events::{Data, Event, Events};
 use crate::params::{ParamId, ParamInfo, ParamValue};
@@ -48,7 +48,7 @@ pub struct MainThreadState<P: Plugin> {
 }
 
 pub struct ProcessState<P: Plugin> {
-    buses: Vec<BusData>,
+    buffer_data: Vec<BufferData>,
     buffer_ptrs: Vec<*mut f32>,
     events: Vec<Event>,
     processor: Option<P::Processor>,
@@ -117,7 +117,7 @@ impl<P: Plugin> Instance<P> {
                 editor: None,
             }),
             process_state: UnsafeCell::new(ProcessState {
-                buses: Vec::new(),
+                buffer_data: Vec::new(),
                 buffer_ptrs: Vec::new(),
                 events: Vec::with_capacity(4096),
                 processor: None,
@@ -161,15 +161,19 @@ impl<P: Plugin> Instance<P> {
 
         let layout = &instance.info.layouts[main_thread_state.layout_index];
 
-        process_state.buses.clear();
+        process_state.buffer_data.clear();
         let mut total_channels = 0;
         for (info, format) in zip(&instance.info.buses, &layout.formats) {
+            let buffer_type = match info.dir {
+                BusDir::In => BufferType::Const,
+                BusDir::Out | BusDir::InOut => BufferType::Mut,
+            };
             let channel_count = format.channel_count();
 
-            process_state.buses.push(BusData {
+            process_state.buffer_data.push(BufferData {
+                buffer_type,
                 start: total_channels,
                 end: total_channels + channel_count,
-                dir: info.dir,
             });
 
             total_channels += channel_count;
@@ -239,31 +243,32 @@ impl<P: Plugin> Instance<P> {
         let outputs = slice_from_raw_parts_checked(process.audio_outputs, output_count);
 
         for (&bus_index, output) in zip(&instance.output_bus_map, outputs) {
-            let bus_data = &process_state.buses[bus_index];
+            let data = &process_state.buffer_data[bus_index];
 
             let channel_count = output.channel_count as usize;
-            if channel_count != bus_data.end - bus_data.start {
+            if channel_count != data.end - data.start {
                 return CLAP_PROCESS_ERROR;
             }
 
             let channels =
                 slice_from_raw_parts_checked(output.data32 as *const *mut f32, channel_count);
-            process_state.buffer_ptrs[bus_data.start..bus_data.end].copy_from_slice(channels);
+            process_state.buffer_ptrs[data.start..data.end].copy_from_slice(channels);
         }
 
         for (&bus_index, input) in zip(&instance.input_bus_map, inputs) {
-            let bus_data = &process_state.buses[bus_index];
+            let data = &process_state.buffer_data[bus_index];
+            let bus_info = &instance.info.buses[bus_index];
 
             let channel_count = input.channel_count as usize;
-            if channel_count != bus_data.end - bus_data.start {
+            if channel_count != data.end - data.start {
                 return CLAP_PROCESS_ERROR;
             }
 
             let channels =
                 slice_from_raw_parts_checked(input.data32 as *const *mut f32, channel_count);
-            let ptrs = &mut process_state.buffer_ptrs[bus_data.start..bus_data.end];
+            let ptrs = &mut process_state.buffer_ptrs[data.start..data.end];
 
-            match bus_data.dir {
+            match bus_info.dir {
                 BusDir::In => {
                     ptrs.copy_from_slice(channels);
                 }
@@ -310,7 +315,12 @@ impl<P: Plugin> Instance<P> {
 
         instance.sync_processor(processor);
         processor.process(
-            Buffers::from_raw_parts(&process_state.buses, &process_state.buffer_ptrs, 0, len),
+            Buffers::from_raw_parts(
+                &process_state.buffer_data,
+                &process_state.buffer_ptrs,
+                0,
+                len,
+            ),
             Events::new(&process_state.events),
         );
 

@@ -476,6 +476,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         let data = &*data;
 
         let Ok(buffers) = process_state.scratch_buffers.get_buffers(
+            &self.info.buses,
             &self.input_bus_map,
             &self.output_bus_map,
             &process_state.config,

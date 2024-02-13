@@ -41,7 +41,7 @@ impl<'a, 'b, 'e> Iterator for SplitAtEvents<'a, 'b, 'e> {
         }
 
         let buffers = Buffers {
-            buses: self.buffers.buses,
+            buffers: self.buffers.buffers,
             ptrs: self.buffers.ptrs,
             offset: self.buffers.offset,
             len: split,
