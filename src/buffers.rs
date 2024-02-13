@@ -215,6 +215,18 @@ impl<'a, 'b> Buffer<'a, 'b> {
     }
 }
 
+impl<'a, 'b> TryFrom<AnyBuffer<'a, 'b>> for Buffer<'a, 'b> {
+    type Error = AnyBuffer<'a, 'b>;
+
+    #[inline]
+    fn try_from(value: AnyBuffer<'a, 'b>) -> Result<Self, Self::Error> {
+        match value {
+            AnyBuffer::Const(buffer) => Ok(buffer),
+            _ => Err(value),
+        }
+    }
+}
+
 impl<'a, 'b> Index<usize> for Buffer<'a, 'b> {
     type Output = [f32];
 
@@ -254,6 +266,18 @@ impl<'a, 'b> BufferMut<'a, 'b> {
     #[inline]
     pub fn channel_count(&self) -> usize {
         self.ptrs.len()
+    }
+}
+
+impl<'a, 'b> TryFrom<AnyBuffer<'a, 'b>> for BufferMut<'a, 'b> {
+    type Error = AnyBuffer<'a, 'b>;
+
+    #[inline]
+    fn try_from(value: AnyBuffer<'a, 'b>) -> Result<Self, Self::Error> {
+        match value {
+            AnyBuffer::Mut(buffer) => Ok(buffer),
+            _ => Err(value),
+        }
     }
 }
 
