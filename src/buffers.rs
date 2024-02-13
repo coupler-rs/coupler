@@ -11,24 +11,24 @@ pub mod iter;
 use bind::BindBuffers;
 use iter::SplitAtEvents;
 
-pub enum BufferDir<'a, 'b> {
-    In(Buffer<'a, 'b>),
-    Out(BufferMut<'a, 'b>),
-    InOut(BufferMut<'a, 'b>),
+pub enum AnyBuffer<'a, 'b> {
+    Const(Buffer<'a, 'b>),
+    Mut(BufferMut<'a, 'b>),
 }
 
-impl<'a, 'b> BufferDir<'a, 'b> {
+impl<'a, 'b> AnyBuffer<'a, 'b> {
     #[inline]
     pub unsafe fn from_raw_parts(
         dir: BusDir,
         ptrs: &'a [*mut f32],
         offset: usize,
         len: usize,
-    ) -> BufferDir<'a, 'b> {
+    ) -> AnyBuffer<'a, 'b> {
         match dir {
-            BusDir::In => BufferDir::In(Buffer::from_raw_parts(ptrs, offset, len)),
-            BusDir::Out => BufferDir::Out(BufferMut::from_raw_parts(ptrs, offset, len)),
-            BusDir::InOut => BufferDir::InOut(BufferMut::from_raw_parts(ptrs, offset, len)),
+            BusDir::In => AnyBuffer::Const(Buffer::from_raw_parts(ptrs, offset, len)),
+            BusDir::Out | BusDir::InOut => {
+                AnyBuffer::Mut(BufferMut::from_raw_parts(ptrs, offset, len))
+            }
         }
     }
 }
@@ -86,10 +86,10 @@ impl<'a, 'b> Buffers<'a, 'b> {
     }
 
     #[inline]
-    pub fn get(&mut self, index: usize) -> Option<BufferDir> {
+    pub fn get(&mut self, index: usize) -> Option<AnyBuffer> {
         if let Some(bus) = self.buses.get(index) {
             unsafe {
-                Some(BufferDir::from_raw_parts(
+                Some(AnyBuffer::from_raw_parts(
                     bus.dir,
                     &self.ptrs[bus.start..bus.end],
                     self.offset,
@@ -136,7 +136,7 @@ impl<'a, 'b> Buffers<'a, 'b> {
 }
 
 impl<'a, 'b> IntoIterator for Buffers<'a, 'b> {
-    type Item = BufferDir<'a, 'b>;
+    type Item = AnyBuffer<'a, 'b>;
     type IntoIter = Buses<'a, 'b>;
 
     #[inline]
@@ -160,13 +160,13 @@ pub struct Buses<'a, 'b> {
 }
 
 impl<'a, 'b> Iterator for Buses<'a, 'b> {
-    type Item = BufferDir<'a, 'b>;
+    type Item = AnyBuffer<'a, 'b>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(bus) = self.iter.next() {
             unsafe {
-                Some(BufferDir::from_raw_parts(
+                Some(AnyBuffer::from_raw_parts(
                     bus.dir,
                     &self.ptrs[bus.start..bus.end],
                     self.offset,

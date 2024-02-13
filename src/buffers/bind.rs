@@ -1,19 +1,19 @@
-use super::{Buffer, BufferDir, BufferMut};
+use super::{AnyBuffer, Buffer, BufferMut};
 
 pub trait BindBuffers<'a, 'b>: Sized {
     fn bind<I>(buffers: &mut I) -> Option<Self>
     where
-        I: Iterator<Item = BufferDir<'a, 'b>>;
+        I: Iterator<Item = AnyBuffer<'a, 'b>>;
 }
 
 impl<'a, 'b> BindBuffers<'a, 'b> for Buffer<'a, 'b> {
     #[inline]
     fn bind<I>(buffers: &mut I) -> Option<Self>
     where
-        I: Iterator<Item = BufferDir<'a, 'b>>,
+        I: Iterator<Item = AnyBuffer<'a, 'b>>,
     {
         match buffers.next() {
-            Some(BufferDir::In(buffer)) => Some(buffer),
+            Some(AnyBuffer::Const(buffer)) => Some(buffer),
             _ => None,
         }
     }
@@ -23,11 +23,10 @@ impl<'a, 'b> BindBuffers<'a, 'b> for BufferMut<'a, 'b> {
     #[inline]
     fn bind<I>(buffers: &mut I) -> Option<Self>
     where
-        I: Iterator<Item = BufferDir<'a, 'b>>,
+        I: Iterator<Item = AnyBuffer<'a, 'b>>,
     {
         match buffers.next() {
-            Some(BufferDir::Out(buffer)) => Some(buffer),
-            Some(BufferDir::InOut(buffer)) => Some(buffer),
+            Some(AnyBuffer::Mut(buffer)) => Some(buffer),
             _ => None,
         }
     }
@@ -42,7 +41,7 @@ macro_rules! bind_buffers {
             #[inline]
             fn bind<I>(buffers: &mut I) -> Option<Self>
             where
-                I: Iterator<Item = BufferDir<'a, 'b>>,
+                I: Iterator<Item = AnyBuffer<'a, 'b>>,
             {
                 Some((
                     $(
