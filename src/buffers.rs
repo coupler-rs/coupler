@@ -7,7 +7,7 @@ use crate::events::Events;
 pub mod bind;
 pub mod iter;
 
-use bind::BindBuffers;
+use bind::{BindBuffers, BindBuffersError};
 use iter::SplitAtEvents;
 
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -105,15 +105,15 @@ impl<'a, 'b> Buffers<'a, 'b> {
     }
 
     #[inline]
-    pub fn bind<B: BindBuffers<'a, 'b>>(self) -> Option<B> {
+    pub fn bind<B: BindBuffers<'a, 'b>>(self) -> Result<B, BindBuffersError> {
         let mut iter = self.into_iter();
 
         let result = B::bind(&mut iter)?;
 
         if iter.next().is_none() {
-            Some(result)
+            Ok(result)
         } else {
-            None
+            Err(BindBuffersError(()))
         }
     }
 
@@ -215,18 +215,6 @@ impl<'a, 'b> Buffer<'a, 'b> {
     }
 }
 
-impl<'a, 'b> TryFrom<AnyBuffer<'a, 'b>> for Buffer<'a, 'b> {
-    type Error = AnyBuffer<'a, 'b>;
-
-    #[inline]
-    fn try_from(value: AnyBuffer<'a, 'b>) -> Result<Self, Self::Error> {
-        match value {
-            AnyBuffer::Const(buffer) => Ok(buffer),
-            _ => Err(value),
-        }
-    }
-}
-
 impl<'a, 'b> Index<usize> for Buffer<'a, 'b> {
     type Output = [f32];
 
@@ -266,18 +254,6 @@ impl<'a, 'b> BufferMut<'a, 'b> {
     #[inline]
     pub fn channel_count(&self) -> usize {
         self.ptrs.len()
-    }
-}
-
-impl<'a, 'b> TryFrom<AnyBuffer<'a, 'b>> for BufferMut<'a, 'b> {
-    type Error = AnyBuffer<'a, 'b>;
-
-    #[inline]
-    fn try_from(value: AnyBuffer<'a, 'b>) -> Result<Self, Self::Error> {
-        match value {
-            AnyBuffer::Mut(buffer) => Ok(buffer),
-            _ => Err(value),
-        }
     }
 }
 

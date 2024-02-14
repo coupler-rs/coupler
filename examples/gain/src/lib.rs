@@ -130,7 +130,7 @@ impl Processor for GainProcessor {
                 }
             }
 
-            let mut main = buffers.bind::<BufferMut>().unwrap();
+            let mut main: BufferMut = buffers.try_into().unwrap();
 
             for i in 0..main.len() {
                 let gain = self.params.gain.next();
