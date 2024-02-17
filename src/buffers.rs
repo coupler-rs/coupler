@@ -2,8 +2,6 @@ use std::marker::PhantomData;
 use std::ops::{Index, IndexMut, Range};
 use std::slice;
 
-use crate::events::Events;
-
 pub mod bind;
 pub mod iter;
 mod sample_buffer;
@@ -11,7 +9,6 @@ mod sample_buffer;
 pub use sample_buffer::{Offset, SampleBuffer};
 
 use bind::{BindBuffers, BindBuffersError};
-use iter::SplitAtEvents;
 
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum BufferType {
@@ -118,11 +115,6 @@ impl<'a, 'b> Buffers<'a, 'b> {
                 _marker: self._marker,
             })
         }
-    }
-
-    #[inline]
-    pub fn split_at_events<'e>(self, events: Events<'e>) -> SplitAtEvents<'a, 'b, 'e> {
-        SplitAtEvents::new(self, events)
     }
 }
 

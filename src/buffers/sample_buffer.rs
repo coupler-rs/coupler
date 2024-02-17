@@ -1,6 +1,8 @@
 use std::marker::PhantomData;
 
+use super::iter::SplitAtEvents;
 use super::{Buffer, BufferMut, Buffers, RawBuffer, RawBuffers};
+use crate::events::Events;
 
 pub trait Offset {
     unsafe fn offset(self, count: isize) -> Self;
@@ -12,6 +14,11 @@ pub trait SampleBuffer: Sized {
     fn sample_count(&self) -> usize;
     fn into_raw_parts(self) -> (Self::Raw, usize);
     unsafe fn from_raw_parts(raw: Self::Raw, sample_count: usize) -> Self;
+
+    #[inline]
+    fn split_at_events<'e>(self, events: Events<'e>) -> SplitAtEvents<'e, Self> {
+        SplitAtEvents::new(self, events)
+    }
 }
 
 impl<'a> Offset for RawBuffers<'a> {
