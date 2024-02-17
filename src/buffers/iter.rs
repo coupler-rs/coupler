@@ -42,8 +42,13 @@ impl<'a, 'b, 'e> Iterator for SplitAtEvents<'a, 'b, 'e> {
         let mut split = self.buffers.len;
         for event in self.events {
             if event.time > self.time {
-                split = split.min((event.time - self.time) as usize);
+                let offset = (event.time - self.time) as usize;
+                if offset < self.buffers.len {
+                    split = offset;
+                }
+
                 self.time = event.time;
+
                 break;
             }
 
