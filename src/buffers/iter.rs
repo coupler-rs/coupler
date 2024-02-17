@@ -25,12 +25,12 @@ impl<'a, 'b, 'e> Iterator for SplitAtEvents<'a, 'b, 'e> {
 
     #[inline]
     fn next(&mut self) -> Option<(Buffers<'a, 'b>, Events<'e>)> {
-        if self.buffers.len() == 0 && self.events.len() == 0 {
+        if self.buffers.len == 0 && self.events.len() == 0 {
             return None;
         }
 
         let mut event_count = 0;
-        let mut split = self.buffers.len();
+        let mut split = self.buffers.len;
         for event in self.events {
             if event.time > self.offset {
                 split = split.min((event.time - self.offset) as usize);

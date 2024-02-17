@@ -6,6 +6,9 @@ use crate::events::Events;
 
 pub mod bind;
 pub mod iter;
+mod sample_buffer;
+
+pub use sample_buffer::SampleBuffer;
 
 use bind::{BindBuffers, BindBuffersError};
 use iter::SplitAtEvents;
@@ -65,11 +68,6 @@ impl<'a, 'b> Buffers<'a, 'b> {
             len,
             _marker: PhantomData,
         }
-    }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.len
     }
 
     #[inline]
@@ -205,11 +203,6 @@ impl<'a, 'b> Buffer<'a, 'b> {
     }
 
     #[inline]
-    pub fn len(&self) -> usize {
-        self.len
-    }
-
-    #[inline]
     pub fn channel_count(&self) -> usize {
         self.ptrs.len()
     }
@@ -244,11 +237,6 @@ impl<'a, 'b> BufferMut<'a, 'b> {
             len,
             _marker: PhantomData,
         }
-    }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.len
     }
 
     #[inline]

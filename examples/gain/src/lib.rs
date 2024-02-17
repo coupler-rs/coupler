@@ -132,7 +132,7 @@ impl Processor for GainProcessor {
 
             let mut main: BufferMut = buffers.try_into().unwrap();
 
-            for i in 0..main.len() {
+            for i in 0..main.sample_count() {
                 let gain = self.params.gain.next();
                 for channel in 0..main.channel_count() {
                     main[channel][i] *= gain;
