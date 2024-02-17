@@ -55,7 +55,7 @@ impl<'a, 'b, const N: usize> TryFrom<Buffer<'a, 'b>> for [&'b [f32]; N] {
         }
 
         Ok(array::from_fn(|i| unsafe {
-            slice::from_raw_parts(value.raw.ptrs[i].add(value.raw.offset), value.len)
+            slice::from_raw_parts(value.raw.ptrs[i].offset(value.raw.offset), value.len)
         }))
     }
 }
@@ -135,7 +135,7 @@ impl<'a, 'b, const N: usize> TryFrom<BufferMut<'a, 'b>> for [&'b mut [f32]; N] {
         }
 
         Ok(array::from_fn(|i| unsafe {
-            slice::from_raw_parts_mut(value.raw.ptrs[i].add(value.raw.offset), value.len)
+            slice::from_raw_parts_mut(value.raw.ptrs[i].offset(value.raw.offset), value.len)
         }))
     }
 }

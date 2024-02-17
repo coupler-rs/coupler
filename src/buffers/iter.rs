@@ -56,7 +56,7 @@ impl<'a, 'b, 'e> Iterator for SplitAtEvents<'a, 'b, 'e> {
         }
 
         let buffers = unsafe { Buffers::from_raw_parts(self.buffers.raw, split) };
-        self.buffers.raw.offset += split;
+        self.buffers.raw.offset += split as isize;
         self.buffers.len -= split;
 
         let events = self.events.slice(..event_count).unwrap();

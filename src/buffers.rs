@@ -48,7 +48,7 @@ pub struct BufferData {
 pub struct RawBuffers<'a> {
     pub buffers: &'a [BufferData],
     pub ptrs: &'a [*mut f32],
-    pub offset: usize,
+    pub offset: isize,
 }
 
 pub struct Buffers<'a, 'b> {
@@ -112,7 +112,7 @@ impl<'a, 'b> Buffers<'a, 'b> {
                 raw: RawBuffers {
                     buffers: self.raw.buffers,
                     ptrs: self.raw.ptrs,
-                    offset: self.raw.offset + range.start,
+                    offset: self.raw.offset + range.start as isize,
                 },
                 len: range.end - range.start,
                 _marker: self._marker,
@@ -145,7 +145,7 @@ impl<'a, 'b> IntoIterator for Buffers<'a, 'b> {
 pub struct BufferIter<'a, 'b> {
     iter: slice::Iter<'a, BufferData>,
     ptrs: &'a [*mut f32],
-    offset: usize,
+    offset: isize,
     len: usize,
     _marker: PhantomData<&'b mut f32>,
 }
@@ -175,7 +175,7 @@ impl<'a, 'b> Iterator for BufferIter<'a, 'b> {
 #[derive(Copy, Clone)]
 pub struct RawBuffer<'a> {
     pub ptrs: &'a [*mut f32],
-    pub offset: usize,
+    pub offset: isize,
 }
 
 #[derive(Copy, Clone)]
@@ -197,7 +197,7 @@ impl<'a, 'b> Index<usize> for Buffer<'a, 'b> {
 
     #[inline]
     fn index(&self, index: usize) -> &[f32] {
-        unsafe { slice::from_raw_parts(self.raw.ptrs[index].add(self.raw.offset), self.len) }
+        unsafe { slice::from_raw_parts(self.raw.ptrs[index].offset(self.raw.offset), self.len) }
     }
 }
 
@@ -228,13 +228,13 @@ impl<'a, 'b> Index<usize> for BufferMut<'a, 'b> {
 
     #[inline]
     fn index(&self, index: usize) -> &[f32] {
-        unsafe { slice::from_raw_parts(self.raw.ptrs[index].add(self.raw.offset), self.len) }
+        unsafe { slice::from_raw_parts(self.raw.ptrs[index].offset(self.raw.offset), self.len) }
     }
 }
 
 impl<'a, 'b> IndexMut<usize> for BufferMut<'a, 'b> {
     #[inline]
     fn index_mut(&mut self, index: usize) -> &mut [f32] {
-        unsafe { slice::from_raw_parts_mut(self.raw.ptrs[index].add(self.raw.offset), self.len) }
+        unsafe { slice::from_raw_parts_mut(self.raw.ptrs[index].offset(self.raw.offset), self.len) }
     }
 }
