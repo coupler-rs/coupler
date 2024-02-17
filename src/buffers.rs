@@ -212,6 +212,15 @@ impl<'a, 'b> BufferMut<'a, 'b> {
     pub fn channel_count(&self) -> usize {
         self.raw.ptrs.len()
     }
+
+    #[inline]
+    pub fn reborrow<'c>(&'c mut self) -> BufferMut<'a, 'c> {
+        BufferMut {
+            raw: self.raw,
+            len: self.len,
+            _marker: self._marker,
+        }
+    }
 }
 
 impl<'a, 'b> Index<usize> for BufferMut<'a, 'b> {
