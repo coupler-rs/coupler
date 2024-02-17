@@ -1,15 +1,22 @@
 use std::marker::PhantomData;
 
 use super::iter::SplitAtEvents;
-use super::{Buffer, BufferMut, Buffers, RawBuffer, RawBuffers};
+use super::{Buffer, BufferMut, BufferSamples, Buffers, RawBuffer, RawBuffers, Sample, SampleMut};
 use crate::events::Events;
 
 pub trait Offset {
     unsafe fn offset(self, count: isize) -> Self;
 }
 
+pub trait SampleView {
+    type Raw: Copy + Clone;
+
+    unsafe fn from_raw(raw: Self::Raw) -> Self;
+}
+
 pub trait BufferView: Sized {
     type Raw: Copy + Clone + Offset;
+    type Sample: SampleView<Raw = Self::Raw>;
 
     fn sample_count(&self) -> usize;
     fn into_raw_parts(self) -> (Self::Raw, usize);
@@ -31,8 +38,21 @@ impl<'a> Offset for RawBuffers<'a> {
     }
 }
 
+impl<'a, 'b> SampleView for BufferSamples<'a, 'b> {
+    type Raw = RawBuffers<'a>;
+
+    #[inline]
+    unsafe fn from_raw(raw: Self::Raw) -> Self {
+        BufferSamples {
+            raw,
+            _marker: PhantomData,
+        }
+    }
+}
+
 impl<'a, 'b> BufferView for Buffers<'a, 'b> {
     type Raw = RawBuffers<'a>;
+    type Sample = BufferSamples<'a, 'b>;
 
     #[inline]
     fn sample_count(&self) -> usize {
@@ -64,8 +84,21 @@ impl<'a> Offset for RawBuffer<'a> {
     }
 }
 
+impl<'a, 'b> SampleView for Sample<'a, 'b> {
+    type Raw = RawBuffer<'a>;
+
+    #[inline]
+    unsafe fn from_raw(raw: Self::Raw) -> Self {
+        Sample {
+            raw,
+            _marker: PhantomData,
+        }
+    }
+}
+
 impl<'a, 'b> BufferView for Buffer<'a, 'b> {
     type Raw = RawBuffer<'a>;
+    type Sample = Sample<'a, 'b>;
 
     #[inline]
     fn sample_count(&self) -> usize {
@@ -87,8 +120,21 @@ impl<'a, 'b> BufferView for Buffer<'a, 'b> {
     }
 }
 
+impl<'a, 'b> SampleView for SampleMut<'a, 'b> {
+    type Raw = RawBuffer<'a>;
+
+    #[inline]
+    unsafe fn from_raw(raw: Self::Raw) -> Self {
+        SampleMut {
+            raw,
+            _marker: PhantomData,
+        }
+    }
+}
+
 impl<'a, 'b> BufferView for BufferMut<'a, 'b> {
     type Raw = RawBuffer<'a>;
+    type Sample = SampleMut<'a, 'b>;
 
     #[inline]
     fn sample_count(&self) -> usize {
