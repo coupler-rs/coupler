@@ -23,6 +23,17 @@ pub trait BufferView: Sized {
     unsafe fn from_raw_parts(raw: Self::Raw, sample_count: usize) -> Self;
 
     #[inline]
+    fn sample(self, index: usize) -> Option<Self::Sample> {
+        let (raw, len) = self.into_raw_parts();
+
+        if index < len {
+            unsafe { Some(Self::Sample::from_raw(raw.offset(index as isize))) }
+        } else {
+            None
+        }
+    }
+
+    #[inline]
     fn split_at_events<'e>(self, events: Events<'e>) -> SplitAtEvents<'e, Self> {
         SplitAtEvents::new(self, events)
     }
