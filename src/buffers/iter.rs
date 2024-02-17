@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use super::{BufferView, Offset};
+use super::{BufferView, Offset, SampleView};
 use crate::events::Events;
 
 pub struct SplitAtEvents<'e, B: BufferView> {
@@ -71,5 +71,41 @@ impl<'e, B: BufferView> Iterator for SplitAtEvents<'e, B> {
         self.events = self.events.slice(event_count..).unwrap();
 
         Some((buffer, events))
+    }
+}
+
+pub struct Samples<B: BufferView> {
+    raw: B::Raw,
+    len: usize,
+    _marker: PhantomData<B>,
+}
+
+impl<B: BufferView> Samples<B> {
+    #[inline]
+    pub(crate) fn new(buffer: B) -> Samples<B> {
+        let (raw, len) = buffer.into_raw_parts();
+
+        Samples {
+            raw,
+            len,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<B: BufferView> Iterator for Samples<B> {
+    type Item = B::Sample;
+
+    #[inline]
+    fn next(&mut self) -> Option<B::Sample> {
+        if self.len == 0 {
+            return None;
+        }
+
+        let sample = unsafe { B::Sample::from_raw(self.raw) };
+        self.raw = unsafe { self.raw.offset(1) };
+        self.len -= 1;
+
+        Some(sample)
     }
 }

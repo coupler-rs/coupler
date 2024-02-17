@@ -121,7 +121,7 @@ impl Processor for GainProcessor {
 
     fn process(&mut self, buffers: Buffers, events: Events) {
         let buffer: BufferMut = buffers.try_into().unwrap();
-        for (mut buffer, events) in buffer.split_at_events(events) {
+        for (buffer, events) in buffer.split_at_events(events) {
             for event in events {
                 match event.data {
                     Data::ParamChange { id, value } => {
@@ -131,10 +131,10 @@ impl Processor for GainProcessor {
                 }
             }
 
-            for i in 0..buffer.sample_count() {
+            for sample in buffer.samples() {
                 let gain = self.params.gain.next();
-                for channel in 0..buffer.channel_count() {
-                    buffer[channel][i] *= gain;
+                for channel in sample {
+                    *channel *= gain;
                 }
             }
         }

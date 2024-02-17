@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use super::iter::SplitAtEvents;
+use super::iter::{Samples, SplitAtEvents};
 use super::{Buffer, BufferMut, BufferSamples, Buffers, RawBuffer, RawBuffers, Sample, SampleMut};
 use crate::events::Events;
 
@@ -31,6 +31,11 @@ pub trait BufferView: Sized {
         } else {
             None
         }
+    }
+
+    #[inline]
+    fn samples(self) -> Samples<Self> {
+        Samples::new(self)
     }
 
     #[inline]
