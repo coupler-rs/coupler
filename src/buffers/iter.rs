@@ -6,7 +6,7 @@ use crate::events::Events;
 pub struct SplitAtEvents<'a, 'b, 'e> {
     buffers: Buffers<'a, 'b>,
     events: Events<'e>,
-    offset: i64,
+    time: i64,
 }
 
 impl<'a, 'b, 'e> SplitAtEvents<'a, 'b, 'e> {
@@ -15,7 +15,7 @@ impl<'a, 'b, 'e> SplitAtEvents<'a, 'b, 'e> {
         SplitAtEvents {
             buffers: buffers,
             events: events,
-            offset: 0,
+            time: 0,
         }
     }
 }
@@ -32,8 +32,9 @@ impl<'a, 'b, 'e> Iterator for SplitAtEvents<'a, 'b, 'e> {
         let mut event_count = 0;
         let mut split = self.buffers.len;
         for event in self.events {
-            if event.time > self.offset {
-                split = split.min((event.time - self.offset) as usize);
+            if event.time > self.time {
+                split = split.min((event.time - self.time) as usize);
+                self.time = event.time;
                 break;
             }
 
