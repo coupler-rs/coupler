@@ -41,13 +41,11 @@ impl<'a, 'b, 'e> Iterator for SplitAtEvents<'a, 'b, 'e> {
         }
 
         let buffers = Buffers {
-            buffers: self.buffers.buffers,
-            ptrs: self.buffers.ptrs,
-            offset: self.buffers.offset,
+            raw: self.buffers.raw,
             len: split,
             _marker: PhantomData,
         };
-        self.buffers.offset += split;
+        self.buffers.raw.offset += split;
         self.buffers.len -= split;
 
         let events = self.events.slice(..event_count).unwrap();
