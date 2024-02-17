@@ -193,6 +193,41 @@ impl<'a, 'b> Index<usize> for Buffer<'a, 'b> {
     }
 }
 
+impl<'a, 'b> IntoIterator for Buffer<'a, 'b> {
+    type Item = &'b [f32];
+    type IntoIter = Channels<'a, 'b>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        Channels {
+            iter: self.raw.ptrs.into_iter(),
+            offset: self.raw.offset,
+            len: self.len,
+            _marker: PhantomData,
+        }
+    }
+}
+
+pub struct Channels<'a, 'b> {
+    iter: slice::Iter<'a, *mut f32>,
+    offset: isize,
+    len: usize,
+    _marker: PhantomData<&'b f32>,
+}
+
+impl<'a, 'b> Iterator for Channels<'a, 'b> {
+    type Item = &'b [f32];
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(ptr) = self.iter.next() {
+            unsafe { Some(slice::from_raw_parts(ptr.offset(self.offset), self.len)) }
+        } else {
+            None
+        }
+    }
+}
+
 pub struct BufferMut<'a, 'b> {
     raw: RawBuffer<'a>,
     len: usize,
@@ -228,5 +263,40 @@ impl<'a, 'b> IndexMut<usize> for BufferMut<'a, 'b> {
     #[inline]
     fn index_mut(&mut self, index: usize) -> &mut [f32] {
         unsafe { slice::from_raw_parts_mut(self.raw.ptrs[index].offset(self.raw.offset), self.len) }
+    }
+}
+
+impl<'a, 'b> IntoIterator for BufferMut<'a, 'b> {
+    type Item = &'b mut [f32];
+    type IntoIter = ChannelsMut<'a, 'b>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        ChannelsMut {
+            iter: self.raw.ptrs.into_iter(),
+            offset: self.raw.offset,
+            len: self.len,
+            _marker: PhantomData,
+        }
+    }
+}
+
+pub struct ChannelsMut<'a, 'b> {
+    iter: slice::Iter<'a, *mut f32>,
+    offset: isize,
+    len: usize,
+    _marker: PhantomData<&'b mut f32>,
+}
+
+impl<'a, 'b> Iterator for ChannelsMut<'a, 'b> {
+    type Item = &'b mut [f32];
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(ptr) = self.iter.next() {
+            unsafe { Some(slice::from_raw_parts_mut(ptr.offset(self.offset), self.len)) }
+        } else {
+            None
+        }
     }
 }
