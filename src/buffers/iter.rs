@@ -1,6 +1,4 @@
-use std::marker::PhantomData;
-
-use super::Buffers;
+use super::{Buffers, SampleBuffer};
 use crate::events::Events;
 
 pub struct SplitAtEvents<'a, 'b, 'e> {
@@ -41,11 +39,7 @@ impl<'a, 'b, 'e> Iterator for SplitAtEvents<'a, 'b, 'e> {
             event_count += 1;
         }
 
-        let buffers = Buffers {
-            raw: self.buffers.raw,
-            len: split,
-            _marker: PhantomData,
-        };
+        let buffers = unsafe { Buffers::from_raw_parts(self.buffers.raw, split) };
         self.buffers.raw.offset += split;
         self.buffers.len -= split;
 
