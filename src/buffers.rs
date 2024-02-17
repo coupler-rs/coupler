@@ -178,6 +178,7 @@ pub struct RawBuffer<'a> {
     pub offset: usize,
 }
 
+#[derive(Copy, Clone)]
 pub struct Buffer<'a, 'b> {
     raw: RawBuffer<'a>,
     len: usize,
