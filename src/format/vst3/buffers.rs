@@ -4,7 +4,7 @@ use std::slice;
 
 use vst3::Steinberg::Vst::ProcessData;
 
-use crate::buffers::{BufferData, BufferType, Buffers, RawBuffers, SampleBuffer};
+use crate::buffers::{BufferData, BufferType, BufferView, Buffers, RawBuffers};
 use crate::bus::{BusDir, BusInfo};
 use crate::process::Config;
 use crate::util::slice_from_raw_parts_checked;

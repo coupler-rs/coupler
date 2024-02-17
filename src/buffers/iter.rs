@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 
-use super::{Offset, SampleBuffer};
+use super::{BufferView, Offset};
 use crate::events::Events;
 
-pub struct SplitAtEvents<'e, B: SampleBuffer> {
+pub struct SplitAtEvents<'e, B: BufferView> {
     raw: B::Raw,
     len: usize,
     events: Events<'e>,
@@ -11,7 +11,7 @@ pub struct SplitAtEvents<'e, B: SampleBuffer> {
     _marker: PhantomData<B>,
 }
 
-impl<'e, B: SampleBuffer> SplitAtEvents<'e, B> {
+impl<'e, B: BufferView> SplitAtEvents<'e, B> {
     #[inline]
     pub(crate) fn new(buffer: B, events: Events<'e>) -> SplitAtEvents<'e, B> {
         let (raw, len) = buffer.into_raw_parts();
@@ -26,7 +26,7 @@ impl<'e, B: SampleBuffer> SplitAtEvents<'e, B> {
     }
 }
 
-impl<'e, B: SampleBuffer> Iterator for SplitAtEvents<'e, B> {
+impl<'e, B: BufferView> Iterator for SplitAtEvents<'e, B> {
     type Item = (B, Events<'e>);
 
     #[inline]

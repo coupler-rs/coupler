@@ -3,10 +3,10 @@ use std::ops::{Index, IndexMut, Range};
 use std::slice;
 
 pub mod bind;
+mod buffer_view;
 pub mod iter;
-mod sample_buffer;
 
-pub use sample_buffer::{Offset, SampleBuffer};
+pub use buffer_view::{BufferView, Offset};
 
 use bind::{BindBuffers, BindBuffersError};
 

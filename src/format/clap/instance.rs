@@ -9,7 +9,7 @@ use std::{io, ptr, slice};
 use clap_sys::ext::{audio_ports::*, audio_ports_config::*, gui::*, params::*, state::*};
 use clap_sys::{events::*, id::*, plugin::*, process::*, stream::*};
 
-use crate::buffers::{BufferData, BufferType, Buffers, RawBuffers, SampleBuffer};
+use crate::buffers::{BufferData, BufferType, BufferView, Buffers, RawBuffers};
 use crate::bus::{BusDir, Format};
 use crate::events::{Data, Event, Events};
 use crate::params::{ParamId, ParamInfo, ParamValue};

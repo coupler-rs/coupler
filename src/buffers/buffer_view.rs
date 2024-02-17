@@ -8,7 +8,7 @@ pub trait Offset {
     unsafe fn offset(self, count: isize) -> Self;
 }
 
-pub trait SampleBuffer: Sized {
+pub trait BufferView: Sized {
     type Raw: Copy + Clone + Offset;
 
     fn sample_count(&self) -> usize;
@@ -31,7 +31,7 @@ impl<'a> Offset for RawBuffers<'a> {
     }
 }
 
-impl<'a, 'b> SampleBuffer for Buffers<'a, 'b> {
+impl<'a, 'b> BufferView for Buffers<'a, 'b> {
     type Raw = RawBuffers<'a>;
 
     #[inline]
@@ -64,7 +64,7 @@ impl<'a> Offset for RawBuffer<'a> {
     }
 }
 
-impl<'a, 'b> SampleBuffer for Buffer<'a, 'b> {
+impl<'a, 'b> BufferView for Buffer<'a, 'b> {
     type Raw = RawBuffer<'a>;
 
     #[inline]
@@ -87,7 +87,7 @@ impl<'a, 'b> SampleBuffer for Buffer<'a, 'b> {
     }
 }
 
-impl<'a, 'b> SampleBuffer for BufferMut<'a, 'b> {
+impl<'a, 'b> BufferView for BufferMut<'a, 'b> {
     type Raw = RawBuffer<'a>;
 
     #[inline]
