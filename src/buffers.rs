@@ -8,7 +8,7 @@ pub mod bind;
 pub mod iter;
 mod sample_buffer;
 
-pub use sample_buffer::SampleBuffer;
+pub use sample_buffer::{Offset, SampleBuffer};
 
 use bind::{BindBuffers, BindBuffersError};
 use iter::SplitAtEvents;

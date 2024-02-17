@@ -2,12 +2,26 @@ use std::marker::PhantomData;
 
 use super::{Buffer, BufferMut, Buffers, RawBuffer, RawBuffers};
 
-pub trait SampleBuffer {
-    type Raw;
+pub trait Offset {
+    unsafe fn offset(self, count: isize) -> Self;
+}
+
+pub trait SampleBuffer: Sized {
+    type Raw: Copy + Clone + Offset;
 
     fn sample_count(&self) -> usize;
     fn into_raw_parts(self) -> (Self::Raw, usize);
     unsafe fn from_raw_parts(raw: Self::Raw, sample_count: usize) -> Self;
+}
+
+impl<'a> Offset for RawBuffers<'a> {
+    #[inline]
+    unsafe fn offset(self, count: isize) -> Self {
+        RawBuffers {
+            offset: self.offset + count,
+            ..self
+        }
+    }
 }
 
 impl<'a, 'b> SampleBuffer for Buffers<'a, 'b> {
@@ -29,6 +43,16 @@ impl<'a, 'b> SampleBuffer for Buffers<'a, 'b> {
             raw,
             len: sample_count,
             _marker: PhantomData,
+        }
+    }
+}
+
+impl<'a> Offset for RawBuffer<'a> {
+    #[inline]
+    unsafe fn offset(self, count: isize) -> Self {
+        RawBuffer {
+            offset: self.offset + count,
+            ..self
         }
     }
 }
