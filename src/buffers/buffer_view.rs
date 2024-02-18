@@ -22,17 +22,6 @@ pub trait BufferView: Sized {
     unsafe fn from_raw_parts(raw: Self::Raw, len: usize) -> Self;
 
     #[inline]
-    fn sample(self, index: usize) -> Option<Self::Sample> {
-        let (raw, len) = self.into_raw_parts();
-
-        if index < len {
-            unsafe { Some(Self::Sample::from_raw(raw.offset(index as isize))) }
-        } else {
-            None
-        }
-    }
-
-    #[inline]
     fn samples(self) -> Samples<Self> {
         Samples::new(self)
     }
