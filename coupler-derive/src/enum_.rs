@@ -107,7 +107,7 @@ pub fn expand_enum(input: &DeriveInput) -> Result<TokenStream, Error> {
                 Some(#count)
             }
 
-            fn encode(self) -> ParamValue {
+            fn encode(&self) -> ParamValue {
                 match self {
                     #(#encode_cases)*
                 }
