@@ -56,6 +56,11 @@ pub struct Buffers<'a, 'b> {
 
 impl<'a, 'b> Buffers<'a, 'b> {
     #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    #[inline]
     pub fn buffer_count(&self) -> usize {
         self.raw.buffers.len()
     }
@@ -266,6 +271,11 @@ pub struct Buffer<'a, 'b> {
 
 impl<'a, 'b> Buffer<'a, 'b> {
     #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    #[inline]
     pub fn channel_count(&self) -> usize {
         self.raw.ptrs.len()
     }
@@ -376,6 +386,11 @@ pub struct BufferMut<'a, 'b> {
 }
 
 impl<'a, 'b> BufferMut<'a, 'b> {
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
     #[inline]
     pub fn channel_count(&self) -> usize {
         self.raw.ptrs.len()

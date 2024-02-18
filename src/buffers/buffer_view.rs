@@ -18,9 +18,8 @@ pub trait BufferView: Sized {
     type Raw: Copy + Clone + Offset;
     type Sample: SampleView<Raw = Self::Raw>;
 
-    fn sample_count(&self) -> usize;
     fn into_raw_parts(self) -> (Self::Raw, usize);
-    unsafe fn from_raw_parts(raw: Self::Raw, sample_count: usize) -> Self;
+    unsafe fn from_raw_parts(raw: Self::Raw, len: usize) -> Self;
 
     #[inline]
     fn sample(self, index: usize) -> Option<Self::Sample> {
@@ -71,20 +70,15 @@ impl<'a, 'b> BufferView for Buffers<'a, 'b> {
     type Sample = BufferSamples<'a, 'b>;
 
     #[inline]
-    fn sample_count(&self) -> usize {
-        self.len
-    }
-
-    #[inline]
     fn into_raw_parts(self) -> (Self::Raw, usize) {
         (self.raw, self.len)
     }
 
     #[inline]
-    unsafe fn from_raw_parts(raw: Self::Raw, sample_count: usize) -> Self {
+    unsafe fn from_raw_parts(raw: Self::Raw, len: usize) -> Self {
         Buffers {
             raw,
-            len: sample_count,
+            len,
             _marker: PhantomData,
         }
     }
@@ -117,20 +111,15 @@ impl<'a, 'b> BufferView for Buffer<'a, 'b> {
     type Sample = Sample<'a, 'b>;
 
     #[inline]
-    fn sample_count(&self) -> usize {
-        self.len
-    }
-
-    #[inline]
     fn into_raw_parts(self) -> (Self::Raw, usize) {
         (self.raw, self.len)
     }
 
     #[inline]
-    unsafe fn from_raw_parts(raw: Self::Raw, sample_count: usize) -> Self {
+    unsafe fn from_raw_parts(raw: Self::Raw, len: usize) -> Self {
         Buffer {
             raw,
-            len: sample_count,
+            len,
             _marker: PhantomData,
         }
     }
@@ -153,20 +142,15 @@ impl<'a, 'b> BufferView for BufferMut<'a, 'b> {
     type Sample = SampleMut<'a, 'b>;
 
     #[inline]
-    fn sample_count(&self) -> usize {
-        self.len
-    }
-
-    #[inline]
     fn into_raw_parts(self) -> (Self::Raw, usize) {
         (self.raw, self.len)
     }
 
     #[inline]
-    unsafe fn from_raw_parts(raw: Self::Raw, sample_count: usize) -> Self {
+    unsafe fn from_raw_parts(raw: Self::Raw, len: usize) -> Self {
         BufferMut {
             raw,
-            len: sample_count,
+            len,
             _marker: PhantomData,
         }
     }
