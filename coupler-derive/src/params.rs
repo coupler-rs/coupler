@@ -136,7 +136,7 @@ pub fn gen_encode(field: &Field, param: &ParamAttr, value: impl ToTokens) -> Tok
     if let Some(range) = &param.range {
         quote! { ::coupler::params::Range::<#ty>::encode(&(#range), &#value) }
     } else {
-        quote! { <#ty as ::coupler::params::Encode>::encode(#value) }
+        quote! { <#ty as ::coupler::params::Encode>::encode(&#value) }
     }
 }
 
