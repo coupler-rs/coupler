@@ -5,7 +5,6 @@ use std::str::FromStr;
 pub use coupler_derive::{Enum, Params};
 
 mod range;
-pub mod smooth;
 
 pub use range::{Encode, Log, Range};
 
