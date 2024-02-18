@@ -12,6 +12,9 @@ pub trait Encode {
     fn decode(value: ParamValue) -> Self;
 }
 
+#[derive(Copy, Clone)]
+pub struct Log<T>(pub T);
+
 macro_rules! float_range {
     ($float:ty) => {
         impl Range<$float> for std::ops::Range<$float> {
@@ -45,6 +48,40 @@ macro_rules! float_range {
             #[inline]
             fn decode(&self, value: ParamValue) -> $float {
                 (1.0 - value as $float) * self.start() + value as $float * self.end()
+            }
+        }
+
+        impl Range<$float> for Log<std::ops::Range<$float>> {
+            #[inline]
+            fn steps(&self) -> Option<u32> {
+                None
+            }
+
+            #[inline]
+            fn encode(&self, value: &$float) -> ParamValue {
+                (value / self.0.start).log(self.0.end / self.0.start) as f64
+            }
+
+            #[inline]
+            fn decode(&self, value: ParamValue) -> $float {
+                self.0.start * (self.0.end / self.0.start).powf(value as $float)
+            }
+        }
+
+        impl Range<$float> for Log<std::ops::RangeInclusive<$float>> {
+            #[inline]
+            fn steps(&self) -> Option<u32> {
+                None
+            }
+
+            #[inline]
+            fn encode(&self, value: &$float) -> ParamValue {
+                (value / self.0.start()).log(self.0.end() / self.0.start()) as f64
+            }
+
+            #[inline]
+            fn decode(&self, value: ParamValue) -> $float {
+                self.0.start() * (self.0.end() / self.0.start()).powf(value as $float)
             }
         }
 
