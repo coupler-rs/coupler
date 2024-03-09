@@ -1,14 +1,14 @@
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut, Range};
-use std::slice;
+use std::{array, slice};
 
-pub mod bind;
+pub mod collect;
 mod buffer_view;
 pub mod iter;
 
 pub use buffer_view::{BufferView, Offset, SampleView};
 
-use bind::{BindBuffers, BindBuffersError};
+use collect::FromBuffers;
 
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum BufferType {
@@ -93,15 +93,15 @@ impl<'a, 'b> Buffers<'a, 'b> {
     }
 
     #[inline]
-    pub fn bind<B: BindBuffers<'a, 'b>>(self) -> Result<B, BindBuffersError> {
+    pub fn collect<B: FromBuffers<'a, 'b>>(self) -> Option<B> {
         let mut iter = self.into_iter();
 
         let result = B::bind(&mut iter)?;
 
         if iter.next().is_none() {
-            Ok(result)
+            Some(result)
         } else {
-            Err(BindBuffersError(()))
+            None
         }
     }
 
@@ -279,6 +279,17 @@ impl<'a, 'b> Buffer<'a, 'b> {
     pub fn channel_count(&self) -> usize {
         self.raw.ptrs.len()
     }
+
+    #[inline]
+    pub fn collect<const N: usize>(self) -> Option<[&'b [f32]; N]> {
+        if self.channel_count() != N {
+            return None;
+        }
+
+        Some(array::from_fn(|i| unsafe {
+            slice::from_raw_parts(self.raw.ptrs[i].offset(self.raw.offset), self.len)
+        }))
+    }
 }
 
 impl<'a, 'b> Index<usize> for Buffer<'a, 'b> {
@@ -403,6 +414,17 @@ impl<'a, 'b> BufferMut<'a, 'b> {
             len: self.len,
             _marker: self._marker,
         }
+    }
+
+    #[inline]
+    pub fn collect<const N: usize>(self) -> Option<[&'b mut [f32]; N]> {
+        if self.channel_count() != N {
+            return None;
+        }
+
+        Some(array::from_fn(|i| unsafe {
+            slice::from_raw_parts_mut(self.raw.ptrs[i].offset(self.raw.offset), self.len)
+        }))
     }
 }
 
