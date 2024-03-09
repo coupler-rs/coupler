@@ -9,6 +9,7 @@ pub mod iter;
 pub use buffer_view::{BufferView, Offset};
 
 use collect::FromBuffers;
+use iter::IntoSamples;
 
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum BufferType {
@@ -134,7 +135,7 @@ impl<'a, 'b> Buffers<'a, 'b> {
 
     #[inline]
     pub fn samples<'c>(&'c mut self) -> iter::SamplesIter<'a, 'c> {
-        iter::SamplesIter::new(self.reborrow())
+        self.reborrow().into_samples()
     }
 }
 
@@ -331,7 +332,7 @@ impl<'a, 'b> Buffer<'a, 'b> {
 
     #[inline]
     pub fn samples(&self) -> iter::SampleIter<'a, 'b> {
-        iter::SampleIter::new(*self)
+        self.into_samples()
     }
 }
 
@@ -498,7 +499,7 @@ impl<'a, 'b> BufferMut<'a, 'b> {
 
     #[inline]
     pub fn samples<'c>(&'c mut self) -> iter::SampleIterMut<'a, 'c> {
-        iter::SampleIterMut::new(self.reborrow())
+        self.reborrow().into_samples()
     }
 }
 

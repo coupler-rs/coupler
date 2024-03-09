@@ -5,6 +5,23 @@ use super::{
 };
 use crate::events::Events;
 
+pub trait IntoSamples {
+    type Sample;
+    type SampleIter: Iterator<Item = Self::Sample>;
+
+    fn into_samples(self) -> Self::SampleIter;
+}
+
+impl<'a, 'b> IntoSamples for Buffers<'a, 'b> {
+    type Sample = Samples<'a, 'b>;
+    type SampleIter = SamplesIter<'a, 'b>;
+
+    #[inline]
+    fn into_samples(self) -> Self::SampleIter {
+        SamplesIter::new(self)
+    }
+}
+
 pub struct SamplesIter<'a, 'b> {
     buffers: &'a [BufferData],
     ptrs: &'a [*mut f32],
@@ -14,7 +31,7 @@ pub struct SamplesIter<'a, 'b> {
 }
 
 impl<'a, 'b> SamplesIter<'a, 'b> {
-    pub(crate) fn new(buffers: Buffers<'a, 'b>) -> SamplesIter<'a, 'b> {
+    fn new(buffers: Buffers<'a, 'b>) -> SamplesIter<'a, 'b> {
         SamplesIter {
             buffers: buffers.buffers,
             ptrs: buffers.ptrs,
@@ -41,6 +58,16 @@ impl<'a, 'b> Iterator for SamplesIter<'a, 'b> {
     }
 }
 
+impl<'a, 'b> IntoSamples for Buffer<'a, 'b> {
+    type Sample = Sample<'a, 'b>;
+    type SampleIter = SampleIter<'a, 'b>;
+
+    #[inline]
+    fn into_samples(self) -> Self::SampleIter {
+        SampleIter::new(self)
+    }
+}
+
 pub struct SampleIter<'a, 'b> {
     ptrs: &'a [*mut f32],
     offset: isize,
@@ -49,7 +76,7 @@ pub struct SampleIter<'a, 'b> {
 }
 
 impl<'a, 'b> SampleIter<'a, 'b> {
-    pub(crate) fn new(buffer: Buffer<'a, 'b>) -> SampleIter<'a, 'b> {
+    fn new(buffer: Buffer<'a, 'b>) -> SampleIter<'a, 'b> {
         SampleIter {
             ptrs: buffer.ptrs,
             offset: buffer.offset,
@@ -75,6 +102,16 @@ impl<'a, 'b> Iterator for SampleIter<'a, 'b> {
     }
 }
 
+impl<'a, 'b> IntoSamples for BufferMut<'a, 'b> {
+    type Sample = SampleMut<'a, 'b>;
+    type SampleIter = SampleIterMut<'a, 'b>;
+
+    #[inline]
+    fn into_samples(self) -> Self::SampleIter {
+        SampleIterMut::new(self)
+    }
+}
+
 pub struct SampleIterMut<'a, 'b> {
     ptrs: &'a [*mut f32],
     offset: isize,
@@ -83,7 +120,7 @@ pub struct SampleIterMut<'a, 'b> {
 }
 
 impl<'a, 'b> SampleIterMut<'a, 'b> {
-    pub(crate) fn new(buffer: BufferMut<'a, 'b>) -> SampleIterMut<'a, 'b> {
+    fn new(buffer: BufferMut<'a, 'b>) -> SampleIterMut<'a, 'b> {
         SampleIterMut {
             ptrs: buffer.ptrs,
             offset: buffer.offset,
