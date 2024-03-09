@@ -6,7 +6,7 @@ mod buffer_view;
 pub mod collect;
 pub mod iter;
 
-pub use buffer_view::{BufferView, Offset, SampleView};
+pub use buffer_view::{BufferView, Offset};
 
 use collect::FromBuffers;
 
@@ -131,6 +131,11 @@ impl<'a, 'b> Buffers<'a, 'b> {
             })
         }
     }
+
+    #[inline]
+    pub fn samples<'c>(&'c mut self) -> iter::SamplesIter<'a, 'c> {
+        iter::SamplesIter::new(self.reborrow())
+    }
 }
 
 impl<'a, 'b> IntoIterator for Buffers<'a, 'b> {
@@ -196,21 +201,21 @@ impl<'a, 'b> AnySample<'a, 'b> {
     }
 }
 
-pub struct BufferSamples<'a, 'b> {
+pub struct Samples<'a, 'b> {
     buffers: &'a [BufferData],
     ptrs: &'a [*mut f32],
     offset: isize,
     _marker: PhantomData<&'b mut f32>,
 }
 
-impl<'a, 'b> BufferSamples<'a, 'b> {
+impl<'a, 'b> Samples<'a, 'b> {
     #[inline]
     pub unsafe fn from_raw_parts(
         buffers: &'a [BufferData],
         ptrs: &'a [*mut f32],
         offset: isize,
-    ) -> BufferSamples<'a, 'b> {
-        BufferSamples {
+    ) -> Samples<'a, 'b> {
+        Samples {
             buffers,
             ptrs,
             offset,
@@ -239,7 +244,7 @@ impl<'a, 'b> BufferSamples<'a, 'b> {
     }
 }
 
-impl<'a, 'b> IntoIterator for BufferSamples<'a, 'b> {
+impl<'a, 'b> IntoIterator for Samples<'a, 'b> {
     type Item = AnySample<'a, 'b>;
     type IntoIter = BufferSampleIter<'a, 'b>;
 
@@ -322,6 +327,11 @@ impl<'a, 'b> Buffer<'a, 'b> {
         Some(array::from_fn(|i| unsafe {
             slice::from_raw_parts(self.ptrs[i].offset(self.offset), self.len)
         }))
+    }
+
+    #[inline]
+    pub fn samples(&self) -> iter::SampleIter<'a, 'b> {
+        iter::SampleIter::new(*self)
     }
 }
 
@@ -484,6 +494,11 @@ impl<'a, 'b> BufferMut<'a, 'b> {
         Some(array::from_fn(|i| unsafe {
             slice::from_raw_parts_mut(self.ptrs[i].offset(self.offset), self.len)
         }))
+    }
+
+    #[inline]
+    pub fn samples<'c>(&'c mut self) -> iter::SampleIterMut<'a, 'c> {
+        iter::SampleIterMut::new(self.reborrow())
     }
 }
 

@@ -1,7 +1,113 @@
 use std::marker::PhantomData;
 
-use super::{BufferView, Offset, SampleView};
+use super::{
+    Buffer, BufferData, BufferMut, BufferView, Buffers, Offset, Sample, SampleMut, Samples,
+};
 use crate::events::Events;
+
+pub struct SamplesIter<'a, 'b> {
+    buffers: &'a [BufferData],
+    ptrs: &'a [*mut f32],
+    offset: isize,
+    end: isize,
+    _marker: PhantomData<&'b mut f32>,
+}
+
+impl<'a, 'b> SamplesIter<'a, 'b> {
+    pub(crate) fn new(buffers: Buffers<'a, 'b>) -> SamplesIter<'a, 'b> {
+        SamplesIter {
+            buffers: buffers.buffers,
+            ptrs: buffers.ptrs,
+            offset: buffers.offset,
+            end: buffers.offset + buffers.len as isize,
+            _marker: buffers._marker,
+        }
+    }
+}
+
+impl<'a, 'b> Iterator for SamplesIter<'a, 'b> {
+    type Item = Samples<'a, 'b>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Samples<'a, 'b>> {
+        if self.offset < self.end {
+            let offset = self.offset;
+            self.offset += 1;
+
+            unsafe { Some(Samples::from_raw_parts(self.buffers, self.ptrs, offset)) }
+        } else {
+            None
+        }
+    }
+}
+
+pub struct SampleIter<'a, 'b> {
+    ptrs: &'a [*mut f32],
+    offset: isize,
+    end: isize,
+    _marker: PhantomData<&'b f32>,
+}
+
+impl<'a, 'b> SampleIter<'a, 'b> {
+    pub(crate) fn new(buffer: Buffer<'a, 'b>) -> SampleIter<'a, 'b> {
+        SampleIter {
+            ptrs: buffer.ptrs,
+            offset: buffer.offset,
+            end: buffer.offset + buffer.len as isize,
+            _marker: buffer._marker,
+        }
+    }
+}
+
+impl<'a, 'b> Iterator for SampleIter<'a, 'b> {
+    type Item = Sample<'a, 'b>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Sample<'a, 'b>> {
+        if self.offset < self.end {
+            let offset = self.offset;
+            self.offset += 1;
+
+            unsafe { Some(Sample::from_raw_parts(self.ptrs, offset)) }
+        } else {
+            None
+        }
+    }
+}
+
+pub struct SampleIterMut<'a, 'b> {
+    ptrs: &'a [*mut f32],
+    offset: isize,
+    end: isize,
+    _marker: PhantomData<&'b mut f32>,
+}
+
+impl<'a, 'b> SampleIterMut<'a, 'b> {
+    pub(crate) fn new(buffer: BufferMut<'a, 'b>) -> SampleIterMut<'a, 'b> {
+        SampleIterMut {
+            ptrs: buffer.ptrs,
+            offset: buffer.offset,
+            end: buffer.offset + buffer.len as isize,
+            _marker: buffer._marker,
+        }
+    }
+}
+
+impl<'a, 'b> Iterator for SampleIterMut<'a, 'b> {
+    type Item = SampleMut<'a, 'b>;
+
+    #[inline]
+    fn next(&mut self) -> Option<SampleMut<'a, 'b>> {
+        if self.offset < self.end {
+            let offset = self.offset;
+            self.offset += 1;
+
+            unsafe { Some(SampleMut::from_raw_parts(self.ptrs, offset)) }
+        } else {
+            None
+        }
+    }
+}
 
 pub struct SplitAtEvents<'e, B: BufferView> {
     raw: B::Raw,
@@ -71,41 +177,5 @@ impl<'e, B: BufferView> Iterator for SplitAtEvents<'e, B> {
         self.events = self.events.slice(event_count..).unwrap();
 
         Some((buffer, events))
-    }
-}
-
-pub struct Samples<B: BufferView> {
-    raw: B::Raw,
-    len: usize,
-    _marker: PhantomData<B>,
-}
-
-impl<B: BufferView> Samples<B> {
-    #[inline]
-    pub(crate) fn new(buffer: B) -> Samples<B> {
-        let (raw, len) = buffer.into_raw_parts();
-
-        Samples {
-            raw,
-            len,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<B: BufferView> Iterator for Samples<B> {
-    type Item = B::Sample;
-
-    #[inline]
-    fn next(&mut self) -> Option<B::Sample> {
-        if self.len == 0 {
-            return None;
-        }
-
-        let sample = unsafe { B::Sample::from_raw(self.raw) };
-        self.raw = unsafe { self.raw.offset(1) };
-        self.len -= 1;
-
-        Some(sample)
     }
 }
