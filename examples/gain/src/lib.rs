@@ -115,7 +115,7 @@ impl Processor for GainProcessor {
     fn reset(&mut self) {}
 
     fn process(&mut self, buffers: Buffers, events: Events) {
-        let buffer = buffers.collect::<BufferMut>().unwrap();
+        let mut buffer = buffers.collect::<BufferMut>().unwrap();
         for (mut buffer, events) in buffer.split_at_events(events) {
             for event in events {
                 match event.data {

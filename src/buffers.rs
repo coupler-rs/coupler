@@ -2,14 +2,12 @@ use std::marker::PhantomData;
 use std::ops::{Index, IndexMut, Range};
 use std::{array, slice};
 
-mod buffer_view;
 pub mod collect;
 pub mod iter;
 
-pub use buffer_view::{BufferView, Offset};
-
+use crate::events::Events;
 use collect::FromBuffers;
-use iter::IntoSamples;
+use iter::{BlockIterator, IntoBlocks, IntoSamples};
 
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum BufferType {
@@ -136,6 +134,14 @@ impl<'a, 'b> Buffers<'a, 'b> {
     #[inline]
     pub fn samples<'c>(&'c mut self) -> iter::SamplesIter<'a, 'c> {
         self.reborrow().into_samples()
+    }
+
+    #[inline]
+    pub fn split_at_events<'c, 'e>(
+        &'c mut self,
+        events: Events<'e>,
+    ) -> iter::SplitAtEvents<'e, iter::BlocksIter<'a, 'c>> {
+        self.reborrow().into_blocks().split_at_events(events)
     }
 }
 
@@ -334,6 +340,14 @@ impl<'a, 'b> Buffer<'a, 'b> {
     pub fn samples(&self) -> iter::SampleIter<'a, 'b> {
         self.into_samples()
     }
+
+    #[inline]
+    pub fn split_at_events<'e>(
+        &self,
+        events: Events<'e>,
+    ) -> iter::SplitAtEvents<'e, iter::BlockIter<'a, 'b>> {
+        self.into_blocks().split_at_events(events)
+    }
 }
 
 impl<'a, 'b> Index<usize> for Buffer<'a, 'b> {
@@ -500,6 +514,14 @@ impl<'a, 'b> BufferMut<'a, 'b> {
     #[inline]
     pub fn samples<'c>(&'c mut self) -> iter::SampleIterMut<'a, 'c> {
         self.reborrow().into_samples()
+    }
+
+    #[inline]
+    pub fn split_at_events<'c, 'e>(
+        &'c mut self,
+        events: Events<'e>,
+    ) -> iter::SplitAtEvents<'e, iter::BlockIterMut<'a, 'c>> {
+        self.reborrow().into_blocks().split_at_events(events)
     }
 }
 

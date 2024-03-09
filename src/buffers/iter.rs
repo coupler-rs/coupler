@@ -1,8 +1,6 @@
 use std::marker::PhantomData;
 
-use super::{
-    Buffer, BufferData, BufferMut, BufferView, Buffers, Offset, Sample, SampleMut, Samples,
-};
+use super::{Buffer, BufferData, BufferMut, Buffers, Sample, SampleMut, Samples};
 use crate::events::Events;
 
 pub trait IntoSamples {
@@ -146,41 +144,204 @@ impl<'a, 'b> Iterator for SampleIterMut<'a, 'b> {
     }
 }
 
-pub struct SplitAtEvents<'e, B: BufferView> {
-    raw: B::Raw,
-    len: usize,
-    events: Events<'e>,
-    time: i64,
-    _marker: PhantomData<B>,
+pub trait IntoBlocks {
+    type Block;
+    type BlockIter: BlockIterator<Block = Self::Block>;
+
+    fn into_blocks(self) -> Self::BlockIter;
 }
 
-impl<'e, B: BufferView> SplitAtEvents<'e, B> {
-    #[inline]
-    pub(crate) fn new(buffer: B, events: Events<'e>) -> SplitAtEvents<'e, B> {
-        let (raw, len) = buffer.into_raw_parts();
+pub trait BlockIterator {
+    type Block;
 
-        SplitAtEvents {
-            raw,
-            len,
-            events,
-            time: 0,
-            _marker: PhantomData,
+    fn len(&self) -> usize;
+    fn next_block(&mut self, len: usize) -> Self::Block;
+
+    #[inline]
+    fn split_at_events<'e>(self, events: Events<'e>) -> SplitAtEvents<'e, Self>
+    where
+        Self: Sized,
+    {
+        SplitAtEvents::new(self, events)
+    }
+}
+
+impl<'a, 'b> IntoBlocks for Buffers<'a, 'b> {
+    type Block = Buffers<'a, 'b>;
+    type BlockIter = BlocksIter<'a, 'b>;
+
+    #[inline]
+    fn into_blocks(self) -> Self::BlockIter {
+        BlocksIter::new(self)
+    }
+}
+
+pub struct BlocksIter<'a, 'b> {
+    buffers: &'a [BufferData],
+    ptrs: &'a [*mut f32],
+    offset: isize,
+    end: isize,
+    _marker: PhantomData<&'b mut f32>,
+}
+
+impl<'a, 'b> BlocksIter<'a, 'b> {
+    fn new(buffers: Buffers<'a, 'b>) -> BlocksIter<'a, 'b> {
+        BlocksIter {
+            buffers: buffers.buffers,
+            ptrs: buffers.ptrs,
+            offset: buffers.offset,
+            end: buffers.offset + buffers.len as isize,
+            _marker: buffers._marker,
         }
     }
 }
 
-impl<'e, B: BufferView> Iterator for SplitAtEvents<'e, B> {
-    type Item = (B, Events<'e>);
+impl<'a, 'b> BlockIterator for BlocksIter<'a, 'b> {
+    type Block = Buffers<'a, 'b>;
 
     #[inline]
-    fn next(&mut self) -> Option<(B, Events<'e>)> {
-        if self.len == 0 {
+    fn len(&self) -> usize {
+        (self.end - self.offset) as usize
+    }
+
+    #[inline]
+    fn next_block(&mut self, len: usize) -> Self::Block {
+        let remainder = self.len();
+        let len = if len > remainder { remainder } else { len };
+
+        let offset = self.offset;
+        self.offset = self.offset + len as isize;
+
+        unsafe { Buffers::from_raw_parts(self.buffers, self.ptrs, offset, len) }
+    }
+}
+
+impl<'a, 'b> IntoBlocks for Buffer<'a, 'b> {
+    type Block = Buffer<'a, 'b>;
+    type BlockIter = BlockIter<'a, 'b>;
+
+    #[inline]
+    fn into_blocks(self) -> Self::BlockIter {
+        BlockIter::new(self)
+    }
+}
+
+pub struct BlockIter<'a, 'b> {
+    ptrs: &'a [*mut f32],
+    offset: isize,
+    end: isize,
+    _marker: PhantomData<&'b f32>,
+}
+
+impl<'a, 'b> BlockIter<'a, 'b> {
+    fn new(buffer: Buffer<'a, 'b>) -> BlockIter<'a, 'b> {
+        BlockIter {
+            ptrs: buffer.ptrs,
+            offset: buffer.offset,
+            end: buffer.offset + buffer.len as isize,
+            _marker: buffer._marker,
+        }
+    }
+}
+
+impl<'a, 'b> BlockIterator for BlockIter<'a, 'b> {
+    type Block = Buffer<'a, 'b>;
+
+    #[inline]
+    fn len(&self) -> usize {
+        (self.end - self.offset) as usize
+    }
+
+    #[inline]
+    fn next_block(&mut self, len: usize) -> Self::Block {
+        let remainder = self.len();
+        let len = if len > remainder { remainder } else { len };
+
+        let offset = self.offset;
+        self.offset = self.offset + len as isize;
+
+        unsafe { Buffer::from_raw_parts(self.ptrs, offset, len) }
+    }
+}
+
+impl<'a, 'b> IntoBlocks for BufferMut<'a, 'b> {
+    type Block = BufferMut<'a, 'b>;
+    type BlockIter = BlockIterMut<'a, 'b>;
+
+    #[inline]
+    fn into_blocks(self) -> Self::BlockIter {
+        BlockIterMut::new(self)
+    }
+}
+
+pub struct BlockIterMut<'a, 'b> {
+    ptrs: &'a [*mut f32],
+    offset: isize,
+    end: isize,
+    _marker: PhantomData<&'b mut f32>,
+}
+
+impl<'a, 'b> BlockIterMut<'a, 'b> {
+    fn new(buffer: BufferMut<'a, 'b>) -> BlockIterMut<'a, 'b> {
+        BlockIterMut {
+            ptrs: buffer.ptrs,
+            offset: buffer.offset,
+            end: buffer.offset + buffer.len as isize,
+            _marker: buffer._marker,
+        }
+    }
+}
+
+impl<'a, 'b> BlockIterator for BlockIterMut<'a, 'b> {
+    type Block = BufferMut<'a, 'b>;
+
+    #[inline]
+    fn len(&self) -> usize {
+        (self.end - self.offset) as usize
+    }
+
+    #[inline]
+    fn next_block(&mut self, len: usize) -> Self::Block {
+        let remainder = self.len();
+        let len = if len > remainder { remainder } else { len };
+
+        let offset = self.offset;
+        self.offset = self.offset + len as isize;
+
+        unsafe { BufferMut::from_raw_parts(self.ptrs, offset, len) }
+    }
+}
+
+pub struct SplitAtEvents<'e, B> {
+    blocks: B,
+    events: Events<'e>,
+    time: i64,
+}
+
+impl<'e, B> SplitAtEvents<'e, B> {
+    fn new(blocks: B, events: Events<'e>) -> SplitAtEvents<'e, B> {
+        SplitAtEvents {
+            blocks,
+            events,
+            time: 0,
+        }
+    }
+}
+
+impl<'e, B: BlockIterator> Iterator for SplitAtEvents<'e, B> {
+    type Item = (B::Block, Events<'e>);
+
+    #[inline]
+    fn next(&mut self) -> Option<(B::Block, Events<'e>)> {
+        let len = self.blocks.len();
+
+        if len == 0 {
             if self.events.len() == 0 {
                 return None;
             }
 
             // If we've reached the end of the buffer, yield all remaining events in one go:
-            let buffers = unsafe { B::from_raw_parts(self.raw, 0) };
+            let buffers = self.blocks.next_block(0);
 
             let events = self.events;
             self.events = Events::new(&[]);
@@ -190,11 +351,11 @@ impl<'e, B: BufferView> Iterator for SplitAtEvents<'e, B> {
 
         // Find the first event with a timestamp greater than the current one:
         let mut event_count = 0;
-        let mut split = self.len;
+        let mut split = len;
         for event in self.events {
             if event.time > self.time {
                 let offset = (event.time - self.time) as usize;
-                if offset < self.len {
+                if offset < len {
                     split = offset;
                 }
 
@@ -206,9 +367,7 @@ impl<'e, B: BufferView> Iterator for SplitAtEvents<'e, B> {
             event_count += 1;
         }
 
-        let buffer = unsafe { B::from_raw_parts(self.raw, split) };
-        self.raw = unsafe { self.raw.offset(split as isize) };
-        self.len -= split;
+        let buffer = self.blocks.next_block(split);
 
         let events = self.events.slice(..event_count).unwrap();
         self.events = self.events.slice(event_count..).unwrap();
