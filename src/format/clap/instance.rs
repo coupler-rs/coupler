@@ -9,7 +9,7 @@ use std::{io, ptr, slice};
 use clap_sys::ext::{audio_ports::*, audio_ports_config::*, gui::*, params::*, state::*};
 use clap_sys::{events::*, id::*, plugin::*, process::*, stream::*};
 
-use crate::buffers::{BufferData, BufferType, BufferView, Buffers, RawBuffers};
+use crate::buffers::{BufferData, BufferType, Buffers};
 use crate::bus::{BusDir, Format};
 use crate::events::{Data, Event, Events};
 use crate::params::{ParamId, ParamInfo, ParamValue};
@@ -316,11 +316,9 @@ impl<P: Plugin> Instance<P> {
         instance.sync_processor(processor);
         processor.process(
             Buffers::from_raw_parts(
-                RawBuffers {
-                    buffers: &process_state.buffer_data,
-                    ptrs: &process_state.buffer_ptrs,
-                    offset: 0,
-                },
+                &process_state.buffer_data,
+                &process_state.buffer_ptrs,
+                0,
                 len,
             ),
             Events::new(&process_state.events),

@@ -1,7 +1,5 @@
-use std::marker::PhantomData;
-
 use super::iter::{Samples, SplitAtEvents};
-use super::{Buffer, BufferMut, BufferSamples, Buffers, RawBuffer, RawBuffers, Sample, SampleMut};
+use super::{Buffer, BufferData, BufferMut, BufferSamples, Buffers, Sample, SampleMut};
 use crate::events::Events;
 
 pub trait Offset {
@@ -32,6 +30,13 @@ pub trait BufferView: Sized {
     }
 }
 
+#[derive(Copy, Clone)]
+pub struct RawBuffers<'a> {
+    pub buffers: &'a [BufferData],
+    pub ptrs: &'a [*mut f32],
+    pub offset: isize,
+}
+
 impl<'a> Offset for RawBuffers<'a> {
     #[inline]
     unsafe fn offset(self, count: isize) -> Self {
@@ -47,10 +52,7 @@ impl<'a, 'b> SampleView for BufferSamples<'a, 'b> {
 
     #[inline]
     unsafe fn from_raw(raw: Self::Raw) -> Self {
-        BufferSamples {
-            raw,
-            _marker: PhantomData,
-        }
+        BufferSamples::from_raw_parts(raw.buffers, raw.ptrs, raw.offset)
     }
 }
 
@@ -60,17 +62,26 @@ impl<'a, 'b> BufferView for Buffers<'a, 'b> {
 
     #[inline]
     fn into_raw_parts(self) -> (Self::Raw, usize) {
-        (self.raw, self.len)
+        (
+            RawBuffers {
+                buffers: self.buffers,
+                ptrs: self.ptrs,
+                offset: self.offset,
+            },
+            self.len,
+        )
     }
 
     #[inline]
     unsafe fn from_raw_parts(raw: Self::Raw, len: usize) -> Self {
-        Buffers {
-            raw,
-            len,
-            _marker: PhantomData,
-        }
+        Buffers::from_raw_parts(raw.buffers, raw.ptrs, raw.offset, len)
     }
+}
+
+#[derive(Copy, Clone)]
+pub struct RawBuffer<'a> {
+    pub ptrs: &'a [*mut f32],
+    pub offset: isize,
 }
 
 impl<'a> Offset for RawBuffer<'a> {
@@ -88,10 +99,7 @@ impl<'a, 'b> SampleView for Sample<'a, 'b> {
 
     #[inline]
     unsafe fn from_raw(raw: Self::Raw) -> Self {
-        Sample {
-            raw,
-            _marker: PhantomData,
-        }
+        Sample::from_raw_parts(raw.ptrs, raw.offset)
     }
 }
 
@@ -101,16 +109,18 @@ impl<'a, 'b> BufferView for Buffer<'a, 'b> {
 
     #[inline]
     fn into_raw_parts(self) -> (Self::Raw, usize) {
-        (self.raw, self.len)
+        (
+            RawBuffer {
+                ptrs: self.ptrs,
+                offset: self.offset,
+            },
+            self.len,
+        )
     }
 
     #[inline]
     unsafe fn from_raw_parts(raw: Self::Raw, len: usize) -> Self {
-        Buffer {
-            raw,
-            len,
-            _marker: PhantomData,
-        }
+        Buffer::from_raw_parts(raw.ptrs, raw.offset, len)
     }
 }
 
@@ -119,10 +129,7 @@ impl<'a, 'b> SampleView for SampleMut<'a, 'b> {
 
     #[inline]
     unsafe fn from_raw(raw: Self::Raw) -> Self {
-        SampleMut {
-            raw,
-            _marker: PhantomData,
-        }
+        SampleMut::from_raw_parts(raw.ptrs, raw.offset)
     }
 }
 
@@ -132,15 +139,17 @@ impl<'a, 'b> BufferView for BufferMut<'a, 'b> {
 
     #[inline]
     fn into_raw_parts(self) -> (Self::Raw, usize) {
-        (self.raw, self.len)
+        (
+            RawBuffer {
+                ptrs: self.ptrs,
+                offset: self.offset,
+            },
+            self.len,
+        )
     }
 
     #[inline]
     unsafe fn from_raw_parts(raw: Self::Raw, len: usize) -> Self {
-        BufferMut {
-            raw,
-            len,
-            _marker: PhantomData,
-        }
+        BufferMut::from_raw_parts(raw.ptrs, raw.offset, len)
     }
 }

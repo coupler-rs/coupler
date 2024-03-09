@@ -2,8 +2,8 @@ use std::marker::PhantomData;
 use std::ops::{Index, IndexMut, Range};
 use std::{array, slice};
 
-pub mod collect;
 mod buffer_view;
+pub mod collect;
 pub mod iter;
 
 pub use buffer_view::{BufferView, Offset, SampleView};
@@ -25,12 +25,13 @@ impl<'a, 'b> AnyBuffer<'a, 'b> {
     #[inline]
     pub unsafe fn from_raw_parts(
         buffer_type: BufferType,
-        raw: RawBuffer<'a>,
+        ptrs: &'a [*mut f32],
+        offset: isize,
         len: usize,
     ) -> AnyBuffer<'a, 'b> {
         match buffer_type {
-            BufferType::Const => AnyBuffer::Const(Buffer::from_raw_parts(raw, len)),
-            BufferType::Mut => AnyBuffer::Mut(BufferMut::from_raw_parts(raw, len)),
+            BufferType::Const => AnyBuffer::Const(Buffer::from_raw_parts(ptrs, offset, len)),
+            BufferType::Mut => AnyBuffer::Mut(BufferMut::from_raw_parts(ptrs, offset, len)),
         }
     }
 }
@@ -41,20 +42,31 @@ pub struct BufferData {
     pub end: usize,
 }
 
-#[derive(Copy, Clone)]
-pub struct RawBuffers<'a> {
-    pub buffers: &'a [BufferData],
-    pub ptrs: &'a [*mut f32],
-    pub offset: isize,
-}
-
 pub struct Buffers<'a, 'b> {
-    raw: RawBuffers<'a>,
+    buffers: &'a [BufferData],
+    ptrs: &'a [*mut f32],
+    offset: isize,
     len: usize,
     _marker: PhantomData<&'b mut f32>,
 }
 
 impl<'a, 'b> Buffers<'a, 'b> {
+    #[inline]
+    pub unsafe fn from_raw_parts(
+        buffers: &'a [BufferData],
+        ptrs: &'a [*mut f32],
+        offset: isize,
+        len: usize,
+    ) -> Buffers<'a, 'b> {
+        Buffers {
+            buffers,
+            ptrs,
+            offset,
+            len,
+            _marker: PhantomData,
+        }
+    }
+
     #[inline]
     pub fn len(&self) -> usize {
         self.len
@@ -62,13 +74,15 @@ impl<'a, 'b> Buffers<'a, 'b> {
 
     #[inline]
     pub fn buffer_count(&self) -> usize {
-        self.raw.buffers.len()
+        self.buffers.len()
     }
 
     #[inline]
     pub fn reborrow<'c>(&'c mut self) -> Buffers<'a, 'c> {
         Buffers {
-            raw: self.raw,
+            buffers: self.buffers,
+            ptrs: self.ptrs,
+            offset: self.offset,
             len: self.len,
             _marker: self._marker,
         }
@@ -76,14 +90,12 @@ impl<'a, 'b> Buffers<'a, 'b> {
 
     #[inline]
     pub fn get(&mut self, index: usize) -> Option<AnyBuffer> {
-        if let Some(buffer) = self.raw.buffers.get(index) {
+        if let Some(buffer) = self.buffers.get(index) {
             unsafe {
                 Some(AnyBuffer::from_raw_parts(
                     buffer.buffer_type,
-                    RawBuffer {
-                        ptrs: &self.raw.ptrs[buffer.start..buffer.end],
-                        offset: self.raw.offset,
-                    },
+                    &self.ptrs[buffer.start..buffer.end],
+                    self.offset,
                     self.len,
                 ))
             }
@@ -111,11 +123,9 @@ impl<'a, 'b> Buffers<'a, 'b> {
             None
         } else {
             Some(Buffers {
-                raw: RawBuffers {
-                    buffers: self.raw.buffers,
-                    ptrs: self.raw.ptrs,
-                    offset: self.raw.offset + range.start as isize,
-                },
+                buffers: self.buffers,
+                ptrs: self.ptrs,
+                offset: self.offset + range.start as isize,
                 len: range.end - range.start,
                 _marker: self._marker,
             })
@@ -130,9 +140,9 @@ impl<'a, 'b> IntoIterator for Buffers<'a, 'b> {
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
         BufferIter {
-            iter: self.raw.buffers.into_iter(),
-            ptrs: self.raw.ptrs,
-            offset: self.raw.offset,
+            iter: self.buffers.into_iter(),
+            ptrs: self.ptrs,
+            offset: self.offset,
             len: self.len,
             _marker: PhantomData,
         }
@@ -156,10 +166,8 @@ impl<'a, 'b> Iterator for BufferIter<'a, 'b> {
             unsafe {
                 Some(AnyBuffer::from_raw_parts(
                     buffer.buffer_type,
-                    RawBuffer {
-                        ptrs: &self.ptrs[buffer.start..buffer.end],
-                        offset: self.offset,
-                    },
+                    &self.ptrs[buffer.start..buffer.end],
+                    self.offset,
                     self.len,
                 ))
             }
@@ -176,35 +184,53 @@ pub enum AnySample<'a, 'b> {
 
 impl<'a, 'b> AnySample<'a, 'b> {
     #[inline]
-    pub unsafe fn from_raw(buffer_type: BufferType, raw: RawBuffer<'a>) -> AnySample<'a, 'b> {
+    pub unsafe fn from_raw_parts(
+        buffer_type: BufferType,
+        ptrs: &'a [*mut f32],
+        offset: isize,
+    ) -> AnySample<'a, 'b> {
         match buffer_type {
-            BufferType::Const => AnySample::Const(Sample::from_raw(raw)),
-            BufferType::Mut => AnySample::Mut(SampleMut::from_raw(raw)),
+            BufferType::Const => AnySample::Const(Sample::from_raw_parts(ptrs, offset)),
+            BufferType::Mut => AnySample::Mut(SampleMut::from_raw_parts(ptrs, offset)),
         }
     }
 }
 
 pub struct BufferSamples<'a, 'b> {
-    raw: RawBuffers<'a>,
+    buffers: &'a [BufferData],
+    ptrs: &'a [*mut f32],
+    offset: isize,
     _marker: PhantomData<&'b mut f32>,
 }
 
 impl<'a, 'b> BufferSamples<'a, 'b> {
     #[inline]
+    pub unsafe fn from_raw_parts(
+        buffers: &'a [BufferData],
+        ptrs: &'a [*mut f32],
+        offset: isize,
+    ) -> BufferSamples<'a, 'b> {
+        BufferSamples {
+            buffers,
+            ptrs,
+            offset,
+            _marker: PhantomData,
+        }
+    }
+
+    #[inline]
     pub fn buffer_count(&self) -> usize {
-        self.raw.buffers.len()
+        self.buffers.len()
     }
 
     #[inline]
     pub fn get(&mut self, index: usize) -> Option<AnySample> {
-        if let Some(buffer) = self.raw.buffers.get(index) {
+        if let Some(buffer) = self.buffers.get(index) {
             unsafe {
-                Some(AnySample::from_raw(
+                Some(AnySample::from_raw_parts(
                     buffer.buffer_type,
-                    RawBuffer {
-                        ptrs: &self.raw.ptrs[buffer.start..buffer.end],
-                        offset: self.raw.offset,
-                    },
+                    &self.ptrs[buffer.start..buffer.end],
+                    self.offset,
                 ))
             }
         } else {
@@ -220,9 +246,9 @@ impl<'a, 'b> IntoIterator for BufferSamples<'a, 'b> {
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
         BufferSampleIter {
-            iter: self.raw.buffers.into_iter(),
-            ptrs: self.raw.ptrs,
-            offset: self.raw.offset,
+            iter: self.buffers.into_iter(),
+            ptrs: self.ptrs,
+            offset: self.offset,
             _marker: PhantomData,
         }
     }
@@ -242,12 +268,10 @@ impl<'a, 'b> Iterator for BufferSampleIter<'a, 'b> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(buffer) = self.iter.next() {
             unsafe {
-                Some(AnySample::from_raw(
+                Some(AnySample::from_raw_parts(
                     buffer.buffer_type,
-                    RawBuffer {
-                        ptrs: &self.ptrs[buffer.start..buffer.end],
-                        offset: self.offset,
-                    },
+                    &self.ptrs[buffer.start..buffer.end],
+                    self.offset,
                 ))
             }
         } else {
@@ -257,19 +281,28 @@ impl<'a, 'b> Iterator for BufferSampleIter<'a, 'b> {
 }
 
 #[derive(Copy, Clone)]
-pub struct RawBuffer<'a> {
-    pub ptrs: &'a [*mut f32],
-    pub offset: isize,
-}
-
-#[derive(Copy, Clone)]
 pub struct Buffer<'a, 'b> {
-    raw: RawBuffer<'a>,
+    ptrs: &'a [*mut f32],
+    offset: isize,
     len: usize,
     _marker: PhantomData<&'b f32>,
 }
 
 impl<'a, 'b> Buffer<'a, 'b> {
+    #[inline]
+    pub unsafe fn from_raw_parts(
+        ptrs: &'a [*mut f32],
+        offset: isize,
+        len: usize,
+    ) -> Buffer<'a, 'b> {
+        Buffer {
+            ptrs,
+            offset,
+            len,
+            _marker: PhantomData,
+        }
+    }
+
     #[inline]
     pub fn len(&self) -> usize {
         self.len
@@ -277,7 +310,7 @@ impl<'a, 'b> Buffer<'a, 'b> {
 
     #[inline]
     pub fn channel_count(&self) -> usize {
-        self.raw.ptrs.len()
+        self.ptrs.len()
     }
 
     #[inline]
@@ -287,7 +320,7 @@ impl<'a, 'b> Buffer<'a, 'b> {
         }
 
         Some(array::from_fn(|i| unsafe {
-            slice::from_raw_parts(self.raw.ptrs[i].offset(self.raw.offset), self.len)
+            slice::from_raw_parts(self.ptrs[i].offset(self.offset), self.len)
         }))
     }
 }
@@ -297,7 +330,7 @@ impl<'a, 'b> Index<usize> for Buffer<'a, 'b> {
 
     #[inline]
     fn index(&self, index: usize) -> &[f32] {
-        unsafe { slice::from_raw_parts(self.raw.ptrs[index].offset(self.raw.offset), self.len) }
+        unsafe { slice::from_raw_parts(self.ptrs[index].offset(self.offset), self.len) }
     }
 }
 
@@ -308,8 +341,8 @@ impl<'a, 'b> IntoIterator for Buffer<'a, 'b> {
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
         Channels {
-            iter: self.raw.ptrs.into_iter(),
-            offset: self.raw.offset,
+            iter: self.ptrs.into_iter(),
+            offset: self.offset,
             len: self.len,
             _marker: PhantomData,
         }
@@ -337,14 +370,24 @@ impl<'a, 'b> Iterator for Channels<'a, 'b> {
 }
 
 pub struct Sample<'a, 'b> {
-    raw: RawBuffer<'a>,
+    ptrs: &'a [*mut f32],
+    offset: isize,
     _marker: PhantomData<&'b f32>,
 }
 
 impl<'a, 'b> Sample<'a, 'b> {
     #[inline]
+    pub unsafe fn from_raw_parts(ptrs: &'a [*mut f32], offset: isize) -> Sample<'a, 'b> {
+        Sample {
+            ptrs,
+            offset,
+            _marker: PhantomData,
+        }
+    }
+
+    #[inline]
     pub fn channel_count(&self) -> usize {
-        self.raw.ptrs.len()
+        self.ptrs.len()
     }
 }
 
@@ -353,7 +396,7 @@ impl<'a, 'b> Index<usize> for Sample<'a, 'b> {
 
     #[inline]
     fn index(&self, index: usize) -> &f32 {
-        unsafe { &*self.raw.ptrs[index].offset(self.raw.offset) }
+        unsafe { &*self.ptrs[index].offset(self.offset) }
     }
 }
 
@@ -364,8 +407,8 @@ impl<'a, 'b> IntoIterator for Sample<'a, 'b> {
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
         SampleChannels {
-            iter: self.raw.ptrs.into_iter(),
-            offset: self.raw.offset,
+            iter: self.ptrs.into_iter(),
+            offset: self.offset,
             _marker: PhantomData,
         }
     }
@@ -391,12 +434,27 @@ impl<'a, 'b> Iterator for SampleChannels<'a, 'b> {
 }
 
 pub struct BufferMut<'a, 'b> {
-    raw: RawBuffer<'a>,
+    ptrs: &'a [*mut f32],
+    offset: isize,
     len: usize,
     _marker: PhantomData<&'b mut f32>,
 }
 
 impl<'a, 'b> BufferMut<'a, 'b> {
+    #[inline]
+    pub unsafe fn from_raw_parts(
+        ptrs: &'a [*mut f32],
+        offset: isize,
+        len: usize,
+    ) -> BufferMut<'a, 'b> {
+        BufferMut {
+            ptrs,
+            offset,
+            len,
+            _marker: PhantomData,
+        }
+    }
+
     #[inline]
     pub fn len(&self) -> usize {
         self.len
@@ -404,13 +462,14 @@ impl<'a, 'b> BufferMut<'a, 'b> {
 
     #[inline]
     pub fn channel_count(&self) -> usize {
-        self.raw.ptrs.len()
+        self.ptrs.len()
     }
 
     #[inline]
     pub fn reborrow<'c>(&'c mut self) -> BufferMut<'a, 'c> {
         BufferMut {
-            raw: self.raw,
+            ptrs: self.ptrs,
+            offset: self.offset,
             len: self.len,
             _marker: self._marker,
         }
@@ -423,7 +482,7 @@ impl<'a, 'b> BufferMut<'a, 'b> {
         }
 
         Some(array::from_fn(|i| unsafe {
-            slice::from_raw_parts_mut(self.raw.ptrs[i].offset(self.raw.offset), self.len)
+            slice::from_raw_parts_mut(self.ptrs[i].offset(self.offset), self.len)
         }))
     }
 }
@@ -433,14 +492,14 @@ impl<'a, 'b> Index<usize> for BufferMut<'a, 'b> {
 
     #[inline]
     fn index(&self, index: usize) -> &[f32] {
-        unsafe { slice::from_raw_parts(self.raw.ptrs[index].offset(self.raw.offset), self.len) }
+        unsafe { slice::from_raw_parts(self.ptrs[index].offset(self.offset), self.len) }
     }
 }
 
 impl<'a, 'b> IndexMut<usize> for BufferMut<'a, 'b> {
     #[inline]
     fn index_mut(&mut self, index: usize) -> &mut [f32] {
-        unsafe { slice::from_raw_parts_mut(self.raw.ptrs[index].offset(self.raw.offset), self.len) }
+        unsafe { slice::from_raw_parts_mut(self.ptrs[index].offset(self.offset), self.len) }
     }
 }
 
@@ -451,8 +510,8 @@ impl<'a, 'b> IntoIterator for BufferMut<'a, 'b> {
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
         ChannelsMut {
-            iter: self.raw.ptrs.into_iter(),
-            offset: self.raw.offset,
+            iter: self.ptrs.into_iter(),
+            offset: self.offset,
             len: self.len,
             _marker: PhantomData,
         }
@@ -480,14 +539,24 @@ impl<'a, 'b> Iterator for ChannelsMut<'a, 'b> {
 }
 
 pub struct SampleMut<'a, 'b> {
-    raw: RawBuffer<'a>,
+    ptrs: &'a [*mut f32],
+    offset: isize,
     _marker: PhantomData<&'b mut f32>,
 }
 
 impl<'a, 'b> SampleMut<'a, 'b> {
     #[inline]
+    pub unsafe fn from_raw_parts(ptrs: &'a [*mut f32], offset: isize) -> SampleMut<'a, 'b> {
+        SampleMut {
+            ptrs,
+            offset,
+            _marker: PhantomData,
+        }
+    }
+
+    #[inline]
     pub fn channel_count(&self) -> usize {
-        self.raw.ptrs.len()
+        self.ptrs.len()
     }
 }
 
@@ -496,14 +565,14 @@ impl<'a, 'b> Index<usize> for SampleMut<'a, 'b> {
 
     #[inline]
     fn index(&self, index: usize) -> &f32 {
-        unsafe { &*self.raw.ptrs[index].offset(self.raw.offset) }
+        unsafe { &*self.ptrs[index].offset(self.offset) }
     }
 }
 
 impl<'a, 'b> IndexMut<usize> for SampleMut<'a, 'b> {
     #[inline]
     fn index_mut(&mut self, index: usize) -> &mut f32 {
-        unsafe { &mut *self.raw.ptrs[index].offset(self.raw.offset) }
+        unsafe { &mut *self.ptrs[index].offset(self.offset) }
     }
 }
 
@@ -514,8 +583,8 @@ impl<'a, 'b> IntoIterator for SampleMut<'a, 'b> {
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
         SampleChannelsMut {
-            iter: self.raw.ptrs.into_iter(),
-            offset: self.raw.offset,
+            iter: self.ptrs.into_iter(),
+            offset: self.offset,
             _marker: PhantomData,
         }
     }
