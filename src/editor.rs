@@ -30,7 +30,7 @@ pub struct Size {
 
 pub trait Editor: Sized + 'static {
     fn size(&self) -> Size;
-    fn set_param(&mut self, id: ParamId, value: ParamValue);
+    fn param_changed(&mut self, id: ParamId, value: ParamValue);
 }
 
 pub struct NoEditor;
@@ -43,5 +43,5 @@ impl Editor for NoEditor {
         }
     }
 
-    fn set_param(&mut self, _id: ParamId, _value: ParamValue) {}
+    fn param_changed(&mut self, _id: ParamId, _value: ParamValue) {}
 }
