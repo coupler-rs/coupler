@@ -122,13 +122,6 @@ impl<P: Plugin> Component<P> {
             plugin.set_param(id, value);
         }
     }
-
-    fn sync_processor(&self, processor: &mut P::Processor) {
-        for (index, value) in self.processor_params.poll() {
-            let id = self.info.params[index].id;
-            processor.set_param(id, value);
-        }
-    }
 }
 
 impl<P: Plugin> Class for Component<P> {
@@ -466,7 +459,25 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         };
 
         if state == 0 {
-            self.sync_processor(processor);
+            // Flush plugin -> processor parameter changes
+            process_state.events.clear();
+            for (index, value) in self.processor_params.poll() {
+                process_state.events.push(Event {
+                    time: 0,
+                    data: Data::ParamChange {
+                        id: self.info.params[index].id,
+                        value,
+                    },
+                });
+            }
+
+            if !process_state.events.is_empty() {
+                processor.process(
+                    process_state.scratch_buffers.get_empty_buffers(),
+                    Events::new(&process_state.events),
+                );
+            }
+
             processor.reset();
         }
 
@@ -493,6 +504,16 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         };
 
         process_state.events.clear();
+
+        for (index, value) in self.processor_params.poll() {
+            process_state.events.push(Event {
+                time: 0,
+                data: Data::ParamChange {
+                    id: self.info.params[index].id,
+                    value,
+                },
+            });
+        }
 
         if let Some(param_changes) = ComRef::from_raw(data.inputParameterChanges) {
             for index in 0..param_changes.getParameterCount() {
@@ -527,7 +548,6 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
             }
         }
 
-        self.sync_processor(processor);
         processor.process(buffers, Events::new(&process_state.events));
 
         kResultOk

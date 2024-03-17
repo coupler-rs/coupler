@@ -103,8 +103,7 @@ impl ScratchBuffers {
         let mut scratch = &mut self.buffers[..];
 
         if len == 0 {
-            self.ptrs.fill(NonNull::dangling().as_ptr());
-            return Ok(Buffers::from_raw_parts(&self.data, &self.ptrs, 0, len));
+            return Ok(self.get_empty_buffers());
         }
 
         let input_count = data.numInputs as usize;
@@ -244,5 +243,10 @@ impl ScratchBuffers {
         self.output_ptrs.clear();
 
         Ok(Buffers::from_raw_parts(&self.data, &self.ptrs, 0, len))
+    }
+
+    pub fn get_empty_buffers(&mut self) -> Buffers {
+        self.ptrs.fill(NonNull::dangling().as_ptr());
+        unsafe { Buffers::from_raw_parts(&self.data, &self.ptrs, 0, 0) }
     }
 }
