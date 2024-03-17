@@ -133,13 +133,6 @@ impl<P: Plugin> Instance<P> {
             plugin.set_param(id, value);
         }
     }
-
-    fn sync_processor(&self, processor: &mut P::Processor) {
-        for (index, value) in self.processor_params.poll() {
-            let id = self.info.params[index].id;
-            processor.set_param(id, value);
-        }
-    }
 }
 
 impl<P: Plugin> Instance<P> {
@@ -221,7 +214,31 @@ impl<P: Plugin> Instance<P> {
         let process_state = &mut *instance.process_state.get();
 
         if let Some(processor) = &mut process_state.processor {
-            instance.sync_processor(processor);
+            // Flush plugin -> processor parameter changes
+            process_state.events.clear();
+            for (index, value) in instance.processor_params.poll() {
+                process_state.events.push(Event {
+                    time: 0,
+                    data: Data::ParamChange {
+                        id: instance.info.params[index].id,
+                        value,
+                    },
+                });
+            }
+
+            if !process_state.events.is_empty() {
+                process_state.buffer_ptrs.fill(NonNull::dangling().as_ptr());
+                processor.process(
+                    Buffers::from_raw_parts(
+                        &process_state.buffer_data,
+                        &process_state.buffer_ptrs,
+                        0,
+                        0,
+                    ),
+                    Events::new(&process_state.events),
+                );
+            }
+
             processor.reset();
         }
     }
@@ -297,6 +314,16 @@ impl<P: Plugin> Instance<P> {
 
         process_state.events.clear();
 
+        for (index, value) in instance.processor_params.poll() {
+            process_state.events.push(Event {
+                time: 0,
+                data: Data::ParamChange {
+                    id: instance.info.params[index].id,
+                    value,
+                },
+            });
+        }
+
         let in_events = process.in_events;
         let size = (*in_events).size.unwrap()(in_events);
         for i in 0..size {
@@ -323,7 +350,6 @@ impl<P: Plugin> Instance<P> {
             }
         }
 
-        instance.sync_processor(processor);
         processor.process(
             Buffers::from_raw_parts(
                 &process_state.buffer_data,
@@ -638,7 +664,19 @@ impl<P: Plugin> Instance<P> {
 
         // If we are in the active state, flush will be called on the audio thread.
         if let Some(processor) = &mut process_state.processor {
-            instance.sync_processor(processor);
+            process_state.buffer_ptrs.fill(NonNull::dangling().as_ptr());
+
+            process_state.events.clear();
+
+            for (index, value) in instance.processor_params.poll() {
+                process_state.events.push(Event {
+                    time: 0,
+                    data: Data::ParamChange {
+                        id: instance.info.params[index].id,
+                        value,
+                    },
+                });
+            }
 
             let size = (*in_).size.unwrap()(in_);
             for i in 0..size {
@@ -651,11 +689,29 @@ impl<P: Plugin> Instance<P> {
 
                     if let Some(&index) = instance.param_map.get(&event.param_id) {
                         let value = map_param_in(&instance.info.params[index], event.value);
-                        processor.set_param(event.param_id, value);
+
+                        process_state.events.push(Event {
+                            time: event.header.time as i64,
+                            data: Data::ParamChange {
+                                id: event.param_id,
+                                value,
+                            },
+                        });
+
                         instance.plugin_params.set(index, value);
                     }
                 }
             }
+
+            processor.process(
+                Buffers::from_raw_parts(
+                    &process_state.buffer_data,
+                    &process_state.buffer_ptrs,
+                    0,
+                    0,
+                ),
+                Events::new(&process_state.events),
+            );
         }
         // Otherwise, flush will be called on the main thread.
         else {
