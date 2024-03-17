@@ -262,13 +262,20 @@ impl<P: Plugin> IComponentTrait for Component<P> {
         let process_state = &mut *self.process_state.get();
 
         if state == 0 {
+            // Apply any remaining processor -> plugin parameter changes. There won't be any more
+            // until the plugin becomes active again.
+            self.sync_plugin(&mut main_thread_state.plugin);
+
             process_state.processor = None;
         } else {
             let config = main_thread_state.config.clone();
             process_state.config = config.clone();
             process_state.scratch_buffers.resize(&self.info.buses, &config);
 
-            self.sync_plugin(&mut main_thread_state.plugin);
+            // Discard any pending plugin -> processor parameter changes, since they will already be
+            // reflected in the initial state of the processor.
+            for _ in self.processor_params.poll() {}
+
             process_state.processor = Some(main_thread_state.plugin.processor(config));
         }
 
