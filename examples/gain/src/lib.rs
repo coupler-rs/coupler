@@ -108,10 +108,6 @@ pub struct GainProcessor {
 }
 
 impl Processor for GainProcessor {
-    fn set_param(&mut self, id: ParamId, value: ParamValue) {
-        self.params.set_param(id, value);
-    }
-
     fn reset(&mut self) {}
 
     fn process(&mut self, buffers: Buffers, events: Events) {
