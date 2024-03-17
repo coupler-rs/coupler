@@ -62,7 +62,9 @@ pub struct Instance<P: Plugin> {
     pub input_bus_map: Vec<usize>,
     pub output_bus_map: Vec<usize>,
     pub param_map: HashMap<ParamId, usize>,
+    // Processor -> plugin parameter changes
     pub plugin_params: ParamValues,
+    // Plugin -> processor parameter changes
     pub processor_params: ParamValues,
     pub main_thread_state: UnsafeCell<MainThreadState<P>>,
     pub process_state: UnsafeCell<ProcessState<P>>,
@@ -187,7 +189,10 @@ impl<P: Plugin> Instance<P> {
             max_buffer_size: max_frames_count as usize,
         };
 
-        instance.sync_plugin(&mut main_thread_state.plugin);
+        // Discard any pending plugin -> processor parameter changes, since they will already be
+        // reflected in the initial state of the processor.
+        for _ in instance.processor_params.poll() {}
+
         process_state.processor = Some(main_thread_state.plugin.processor(config));
 
         true
@@ -195,7 +200,12 @@ impl<P: Plugin> Instance<P> {
 
     unsafe extern "C" fn deactivate(plugin: *const clap_plugin) {
         let instance = &*(plugin as *const Self);
+        let main_thread_state = &mut *instance.main_thread_state.get();
         let process_state = &mut *instance.process_state.get();
+
+        // Apply any remaining processor -> plugin parameter changes. There won't be any more until
+        // the next call to `activate`.
+        instance.sync_plugin(&mut main_thread_state.plugin);
 
         process_state.processor = None;
     }
@@ -651,8 +661,6 @@ impl<P: Plugin> Instance<P> {
         else {
             let main_thread_state = &mut *instance.main_thread_state.get();
 
-            instance.sync_plugin(&mut main_thread_state.plugin);
-
             let size = (*in_).size.unwrap()(in_);
             for i in 0..size {
                 let event = (*in_).get.unwrap()(in_, i);
@@ -665,7 +673,6 @@ impl<P: Plugin> Instance<P> {
                     if let Some(&index) = instance.param_map.get(&event.param_id) {
                         let value = map_param_in(&instance.info.params[index], event.value);
                         main_thread_state.plugin.set_param(event.param_id, value);
-                        instance.processor_params.set(index, value);
                     }
                 }
             }
