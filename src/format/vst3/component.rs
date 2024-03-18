@@ -10,6 +10,7 @@ use super::buffers::ScratchBuffers;
 use super::util::{copy_wstring, utf16_from_ptr};
 use super::view::View;
 use crate::bus::{BusDir, Format, Layout};
+use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
 use crate::params::ParamId;
 use crate::plugin::{Host, Plugin, PluginInfo};
@@ -305,6 +306,10 @@ impl<P: Plugin> IComponentTrait for Component<P> {
                     let value = main_thread_state.plugin.get_param(param.id);
                     self.processor_params.set(index, value);
                     main_thread_state.editor_params[index] = value;
+
+                    if let Some(editor) = &mut main_thread_state.editor {
+                        editor.param_changed(param.id, value);
+                    }
                 }
 
                 return kResultOk;
@@ -669,6 +674,10 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
 
         if let Some(&index) = self.param_map.get(&id) {
             main_thread_state.editor_params[index] = value;
+
+            if let Some(editor) = &mut main_thread_state.editor {
+                editor.param_changed(id, value);
+            }
 
             return kResultOk;
         }
