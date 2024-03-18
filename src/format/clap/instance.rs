@@ -11,6 +11,7 @@ use clap_sys::{events::*, id::*, plugin::*, process::*, stream::*};
 
 use crate::buffers::{BufferData, BufferType, Buffers};
 use crate::bus::{BusDir, Format};
+use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
 use crate::params::{ParamId, ParamInfo, ParamValue};
 use crate::plugin::{Host, Plugin, PluginInfo};
@@ -127,10 +128,14 @@ impl<P: Plugin> Instance<P> {
         }
     }
 
-    fn sync_plugin(&self, plugin: &mut P) {
+    fn sync_plugin(&self, main_thread_state: &mut MainThreadState<P>) {
         for (index, value) in self.plugin_params.poll() {
             let id = self.info.params[index].id;
-            plugin.set_param(id, value);
+            main_thread_state.plugin.set_param(id, value);
+
+            if let Some(editor) = &mut main_thread_state.editor {
+                editor.param_changed(id, value);
+            }
         }
     }
 }
@@ -198,7 +203,7 @@ impl<P: Plugin> Instance<P> {
 
         // Apply any remaining processor -> plugin parameter changes. There won't be any more until
         // the next call to `activate`.
-        instance.sync_plugin(&mut main_thread_state.plugin);
+        instance.sync_plugin(main_thread_state);
 
         process_state.processor = None;
     }
@@ -598,7 +603,7 @@ impl<P: Plugin> Instance<P> {
         let main_thread_state = &mut *instance.main_thread_state.get();
 
         if let Some(&index) = instance.param_map.get(&param_id) {
-            instance.sync_plugin(&mut main_thread_state.plugin);
+            instance.sync_plugin(main_thread_state);
 
             let param = &instance.info.params[index];
             *value = map_param_out(param, main_thread_state.plugin.get_param(param_id));
@@ -729,6 +734,10 @@ impl<P: Plugin> Instance<P> {
                     if let Some(&index) = instance.param_map.get(&event.param_id) {
                         let value = map_param_in(&instance.info.params[index], event.value);
                         main_thread_state.plugin.set_param(event.param_id, value);
+
+                        if let Some(editor) = &mut main_thread_state.editor {
+                            editor.param_changed(event.param_id, value);
+                        }
                     }
                 }
             }
@@ -776,7 +785,7 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
         let main_thread_state = &mut *instance.main_thread_state.get();
 
-        instance.sync_plugin(&mut main_thread_state.plugin);
+        instance.sync_plugin(main_thread_state);
         let result = main_thread_state.plugin.save(&mut StreamWriter(stream));
         result.is_ok()
     }
@@ -811,11 +820,15 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
         let main_thread_state = &mut *instance.main_thread_state.get();
 
-        instance.sync_plugin(&mut main_thread_state.plugin);
+        instance.sync_plugin(main_thread_state);
         if let Ok(_) = main_thread_state.plugin.load(&mut StreamReader(stream)) {
             for (index, param) in instance.info.params.iter().enumerate() {
                 let value = main_thread_state.plugin.get_param(param.id);
                 instance.processor_params.set(index, value);
+
+                if let Some(editor) = &mut main_thread_state.editor {
+                    editor.param_changed(param.id, value);
+                }
             }
 
             return true;
