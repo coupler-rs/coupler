@@ -110,14 +110,14 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
 
     unsafe extern "C" fn create_plugin(
         factory: *const clap_plugin_factory,
-        _host: *const clap_host,
+        host: *const clap_host,
         plugin_id: *const c_char,
     ) -> *const clap_plugin {
         let factory = &*(factory as *const Self);
 
         if let Some(state) = &*factory.state.get() {
             if CStr::from_ptr(plugin_id) == CStr::from_ptr(state.descriptor.id) {
-                let instance = Box::new(Instance::<P>::new(&state.descriptor, &state.info));
+                let instance = Box::new(Instance::<P>::new(&state.descriptor, &state.info, host));
                 return Box::into_raw(instance) as *const clap_plugin;
             }
         }

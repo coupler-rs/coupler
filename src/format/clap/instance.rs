@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::{io, ptr, slice};
 
 use clap_sys::ext::{audio_ports::*, audio_ports_config::*, gui::*, params::*, state::*};
-use clap_sys::{events::*, id::*, plugin::*, process::*, stream::*};
+use clap_sys::{events::*, host::*, id::*, plugin::*, process::*, stream::*};
 
 use crate::buffers::{BufferData, BufferType, Buffers};
 use crate::bus::{BusDir, Format};
@@ -59,6 +59,7 @@ pub struct ProcessState<P: Plugin> {
 pub struct Instance<P: Plugin> {
     #[allow(unused)]
     pub clap_plugin: clap_plugin,
+    pub host: *const clap_host,
     pub info: Arc<PluginInfo>,
     pub input_bus_map: Vec<usize>,
     pub output_bus_map: Vec<usize>,
@@ -74,7 +75,11 @@ pub struct Instance<P: Plugin> {
 unsafe impl<P: Plugin> Sync for Instance<P> {}
 
 impl<P: Plugin> Instance<P> {
-    pub fn new(desc: *const clap_plugin_descriptor, info: &Arc<PluginInfo>) -> Self {
+    pub fn new(
+        desc: *const clap_plugin_descriptor,
+        info: &Arc<PluginInfo>,
+        host: *const clap_host,
+    ) -> Self {
         let mut input_bus_map = Vec::new();
         let mut output_bus_map = Vec::new();
         for (index, bus) in info.buses.iter().enumerate() {
@@ -108,6 +113,7 @@ impl<P: Plugin> Instance<P> {
                 get_extension: Some(Self::get_extension),
                 on_main_thread: Some(Self::on_main_thread),
             },
+            host,
             info: info.clone(),
             input_bus_map,
             output_bus_map,
@@ -329,6 +335,8 @@ impl<P: Plugin> Instance<P> {
             });
         }
 
+        let mut params_changed = false;
+
         let in_events = process.in_events;
         let size = (*in_events).size.unwrap()(in_events);
         for i in 0..size {
@@ -351,8 +359,14 @@ impl<P: Plugin> Instance<P> {
                     });
 
                     instance.plugin_params.set(index, value);
+
+                    params_changed = true;
                 }
             }
+        }
+
+        if params_changed {
+            (*instance.host).request_callback.unwrap()(instance.host);
         }
 
         processor.process(
@@ -400,7 +414,12 @@ impl<P: Plugin> Instance<P> {
         ptr::null()
     }
 
-    unsafe extern "C" fn on_main_thread(_plugin: *const clap_plugin) {}
+    unsafe extern "C" fn on_main_thread(plugin: *const clap_plugin) {
+        let instance = &*(plugin as *const Self);
+        let main_thread_state = &mut *instance.main_thread_state.get();
+
+        instance.sync_plugin(main_thread_state);
+    }
 }
 
 impl<P: Plugin> Instance<P> {
@@ -683,6 +702,8 @@ impl<P: Plugin> Instance<P> {
                 });
             }
 
+            let mut params_changed = false;
+
             let size = (*in_).size.unwrap()(in_);
             for i in 0..size {
                 let event = (*in_).get.unwrap()(in_, i);
@@ -704,8 +725,14 @@ impl<P: Plugin> Instance<P> {
                         });
 
                         instance.plugin_params.set(index, value);
+
+                        params_changed = true;
                     }
                 }
+            }
+
+            if params_changed {
+                (*instance.host).request_callback.unwrap()(instance.host);
             }
 
             processor.process(
