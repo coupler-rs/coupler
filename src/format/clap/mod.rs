@@ -4,6 +4,7 @@ use clap_sys::{entry::*, version::*};
 
 mod factory;
 mod gui;
+mod host;
 mod instance;
 
 #[doc(hidden)]

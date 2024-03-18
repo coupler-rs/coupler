@@ -1,4 +1,5 @@
 use std::io::{self, Read, Write};
+use std::sync::Arc;
 
 use crate::bus::{BusInfo, Layout};
 use crate::editor::{Editor, Parent};
@@ -33,7 +34,18 @@ impl Default for PluginInfo {
     }
 }
 
-pub struct Host {}
+pub trait HostInner {}
+
+#[derive(Clone)]
+pub struct Host {
+    _inner: Arc<dyn HostInner>,
+}
+
+impl Host {
+    pub fn from_inner(inner: Arc<dyn HostInner>) -> Host {
+        Host { _inner: inner }
+    }
+}
 
 pub trait Plugin: Send + Sized + 'static {
     type Processor: Processor;

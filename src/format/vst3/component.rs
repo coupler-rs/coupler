@@ -7,6 +7,7 @@ use std::sync::Arc;
 use vst3::{Class, ComRef, ComWrapper, Steinberg::Vst::*, Steinberg::*};
 
 use super::buffers::ScratchBuffers;
+use super::host::Vst3Host;
 use super::util::{copy_wstring, utf16_from_ptr};
 use super::view::View;
 use crate::bus::{BusDir, Format, Layout};
@@ -104,7 +105,7 @@ impl<P: Plugin> Component<P> {
             processor_params: ParamValues::new(&info.params),
             main_thread_state: Arc::new(UnsafeCell::new(MainThreadState {
                 config: config.clone(),
-                plugin: P::new(Host {}),
+                plugin: P::new(Host::from_inner(Arc::new(Vst3Host {}))),
                 editor_params,
                 editor: None,
             })),

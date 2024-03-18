@@ -9,6 +9,7 @@ use std::{io, ptr, slice};
 use clap_sys::ext::{audio_ports::*, audio_ports_config::*, gui::*, params::*, state::*};
 use clap_sys::{events::*, host::*, id::*, plugin::*, process::*, stream::*};
 
+use super::host::ClapHost;
 use crate::buffers::{BufferData, BufferType, Buffers};
 use crate::bus::{BusDir, Format};
 use crate::editor::Editor;
@@ -122,7 +123,7 @@ impl<P: Plugin> Instance<P> {
             processor_params: ParamValues::new(&info.params),
             main_thread_state: UnsafeCell::new(MainThreadState {
                 layout_index: 0,
-                plugin: P::new(Host {}),
+                plugin: P::new(Host::from_inner(Arc::new(ClapHost {}))),
                 editor: None,
             }),
             process_state: UnsafeCell::new(ProcessState {
