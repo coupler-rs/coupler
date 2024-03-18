@@ -76,13 +76,13 @@ impl Plugin for Gain {
         Ok(())
     }
 
-    fn processor(&self, _config: Config) -> Self::Processor {
+    fn processor(&mut self, _config: Config) -> Self::Processor {
         GainProcessor {
             params: self.params.clone(),
         }
     }
 
-    fn editor(&self, _parent: Parent) -> Self::Editor {
+    fn editor(&mut self, _parent: Parent) -> Self::Editor {
         NoEditor
     }
 }

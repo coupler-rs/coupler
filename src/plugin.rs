@@ -57,8 +57,8 @@ pub trait Plugin: Send + Sized + 'static {
     fn get_param(&self, id: ParamId) -> ParamValue;
     fn save(&self, output: &mut impl Write) -> io::Result<()>;
     fn load(&mut self, input: &mut impl Read) -> io::Result<()>;
-    fn processor(&self, config: Config) -> Self::Processor;
-    fn editor(&self, parent: Parent) -> Self::Editor;
+    fn processor(&mut self, config: Config) -> Self::Processor;
+    fn editor(&mut self, parent: Parent) -> Self::Editor;
 
     #[allow(unused_variables)]
     fn latency(&self, config: &Config) -> u64 {
