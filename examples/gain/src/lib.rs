@@ -2,6 +2,8 @@ use std::io::{self, Read, Write};
 
 use serde::{Deserialize, Serialize};
 
+use portlight::{App, AppMode, AppOptions, Response, Window, WindowOptions};
+
 use coupler::format::clap::*;
 use coupler::format::vst3::*;
 use coupler::{buffers::*, bus::*, editor::*, events::*, params::*, plugin::*, process::*};
@@ -24,7 +26,7 @@ pub struct Gain {
 
 impl Plugin for Gain {
     type Processor = GainProcessor;
-    type Editor = NoEditor;
+    type Editor = GainEditor;
 
     fn info() -> PluginInfo {
         PluginInfo {
@@ -46,7 +48,7 @@ impl Plugin for Gain {
                 },
             ],
             params: GainParams::params(),
-            has_editor: false,
+            has_editor: true,
         }
     }
 
@@ -82,8 +84,8 @@ impl Plugin for Gain {
         }
     }
 
-    fn editor(&mut self, _parent: Parent) -> Self::Editor {
-        NoEditor
+    fn editor(&mut self, parent: Parent) -> Self::Editor {
+        GainEditor::open(parent).unwrap()
     }
 }
 
@@ -129,4 +131,44 @@ impl Processor for GainProcessor {
             }
         }
     }
+}
+
+pub struct GainEditor {
+    _app: App,
+    window: Window,
+}
+
+impl GainEditor {
+    fn open(parent: Parent) -> portlight::Result<GainEditor> {
+        let app = AppOptions::new().mode(AppMode::Guest).build()?;
+
+        let mut options = WindowOptions::new();
+        options.size(portlight::Size::new(512.0, 512.0));
+
+        let raw_parent = match parent.as_raw() {
+            RawParent::Win32(window) => portlight::RawParent::Win32(window),
+            RawParent::Cocoa(view) => portlight::RawParent::Cocoa(view),
+            RawParent::X11(window) => portlight::RawParent::X11(window),
+        };
+        unsafe { options.raw_parent(raw_parent) };
+
+        let window = options.open(app.handle(), move |_cx, _event| Response::Ignore)?;
+
+        window.show();
+
+        Ok(GainEditor { _app: app, window })
+    }
+}
+
+impl Editor for GainEditor {
+    fn size(&self) -> Size {
+        let size = self.window.size();
+
+        Size {
+            width: size.width,
+            height: size.height,
+        }
+    }
+
+    fn param_changed(&mut self, _id: ParamId, _value: ParamValue) {}
 }
