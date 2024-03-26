@@ -1,8 +1,8 @@
 use std::io::{self, Read, Write};
-use std::sync::Arc;
 
 use crate::bus::{BusInfo, Layout};
 use crate::editor::{Editor, Parent};
+use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
 use crate::process::{Config, Processor};
 
@@ -31,19 +31,6 @@ impl Default for PluginInfo {
             params: Vec::new(),
             has_editor: false,
         }
-    }
-}
-
-pub trait HostInner {}
-
-#[derive(Clone)]
-pub struct Host {
-    _inner: Arc<dyn HostInner>,
-}
-
-impl Host {
-    pub fn from_inner(inner: Arc<dyn HostInner>) -> Host {
-        Host { _inner: inner }
     }
 }
 
