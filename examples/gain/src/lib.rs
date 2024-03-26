@@ -6,7 +6,9 @@ use portlight::{App, AppMode, AppOptions, Response, Window, WindowOptions};
 
 use coupler::format::clap::*;
 use coupler::format::vst3::*;
-use coupler::{buffers::*, bus::*, editor::*, events::*, params::*, plugin::*, process::*};
+use coupler::{
+    buffers::*, bus::*, editor::*, events::*, host::*, params::*, plugin::*, process::*,
+};
 
 #[derive(Params, Serialize, Deserialize, Clone)]
 struct GainParams {
