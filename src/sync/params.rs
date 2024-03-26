@@ -22,20 +22,20 @@ impl ParamValues {
         self.dirty.set(index, Ordering::Release);
     }
 
-    pub fn poll(&self) -> ParamChanges {
-        ParamChanges {
+    pub fn poll(&self) -> Poll {
+        Poll {
             values: &self.values,
             iter: self.dirty.drain(Ordering::Acquire),
         }
     }
 }
 
-pub struct ParamChanges<'a> {
+pub struct Poll<'a> {
     values: &'a [AtomicF64],
     iter: bitset::Drain<'a>,
 }
 
-impl<'a> Iterator for ParamChanges<'a> {
+impl<'a> Iterator for Poll<'a> {
     type Item = (usize, ParamValue);
 
     fn next(&mut self) -> Option<Self::Item> {
