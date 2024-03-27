@@ -17,7 +17,7 @@ use crate::host::Host;
 use crate::params::ParamId;
 use crate::plugin::{Plugin, PluginInfo};
 use crate::process::{Config, Processor};
-use crate::sync::params::ParamValues;
+use crate::sync::{params::ParamValues, param_gestures::GestureState};
 use crate::util::{slice_from_raw_parts_checked, DisplayParam};
 
 fn format_to_speaker_arrangement(format: &Format) -> SpeakerArrangement {
@@ -39,6 +39,7 @@ pub struct MainThreadState<P: Plugin> {
     pub config: Config,
     pub plugin: P,
     pub editor_params: Vec<f64>,
+    pub gesture_states: Vec<GestureState>,
     pub editor: Option<P::Editor>,
 }
 
@@ -93,6 +94,7 @@ impl<P: Plugin> Component<P> {
         };
 
         let editor_params = info.params.iter().map(|p| p.default).collect();
+        let gesture_states = info.params.iter().map(|p| GestureState::Off).collect();
 
         let scratch_buffers = ScratchBuffers::new(input_bus_map.len(), output_bus_map.len());
 
@@ -108,6 +110,7 @@ impl<P: Plugin> Component<P> {
                 config: config.clone(),
                 plugin: P::new(Host::from_inner(Arc::new(Vst3Host {}))),
                 editor_params,
+                gesture_states,
                 editor: None,
             })),
             process_state: UnsafeCell::new(ProcessState {
