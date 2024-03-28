@@ -38,7 +38,7 @@ pub fn expand_enum(input: &DeriveInput) -> Result<TokenStream, Error> {
         Data::Enum(body) => body,
         _ => {
             return Err(Error::new_spanned(
-                &input,
+                input,
                 "#[derive(Enum)] can only be used on enums",
             ));
         }
@@ -46,7 +46,7 @@ pub fn expand_enum(input: &DeriveInput) -> Result<TokenStream, Error> {
 
     if body.variants.is_empty() {
         return Err(Error::new_spanned(
-            &input,
+            input,
             "#[derive(Enum)] cannot be used on empty enums",
         ));
     }
@@ -56,14 +56,14 @@ pub fn expand_enum(input: &DeriveInput) -> Result<TokenStream, Error> {
             Fields::Unit => {}
             _ => {
                 return Err(Error::new_spanned(
-                    &variant,
+                    variant,
                     "#[derive(Enum)] can only be used on fieldless enums",
                 ));
             }
         }
     }
 
-    let names = parse_names(&body)?;
+    let names = parse_names(body)?;
 
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     let ident = &input.ident;

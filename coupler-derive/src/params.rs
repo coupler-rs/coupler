@@ -78,7 +78,7 @@ pub fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
 
                 if format.is_some() {
                     return Err(Error::new_spanned(
-                        &ident,
+                        ident,
                         "`format` attribute cannot be used with `display`",
                     ));
                 }
@@ -94,7 +94,7 @@ pub fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
 
                 if display.is_some() {
                     return Err(Error::new_spanned(
-                        &ident,
+                        ident,
                         "`format` attribute cannot be used with `display`",
                     ));
                 }
@@ -118,7 +118,7 @@ pub fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
     let id = if let Some(id) = id {
         id
     } else {
-        return Err(Error::new_spanned(&field, "missing `id` attribute"));
+        return Err(Error::new_spanned(field, "missing `id` attribute"));
     };
 
     Ok(Some(ParamAttr {
@@ -159,7 +159,7 @@ fn parse_fields(input: &DeriveInput) -> Result<Vec<ParamField>, Error> {
         Data::Struct(body) => body,
         _ => {
             return Err(Error::new_spanned(
-                &input,
+                input,
                 "#[derive(Params)] can only be used on structs",
             ));
         }
@@ -169,7 +169,7 @@ fn parse_fields(input: &DeriveInput) -> Result<Vec<ParamField>, Error> {
         Fields::Named(fields) => fields,
         _ => {
             return Err(Error::new_spanned(
-                &input,
+                input,
                 "#[derive(Params)] can only be used on structs with named fields",
             ));
         }
@@ -187,7 +187,7 @@ fn parse_fields(input: &DeriveInput) -> Result<Vec<ParamField>, Error> {
 }
 
 pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
-    let fields = parse_fields(&input)?;
+    let fields = parse_fields(input)?;
 
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     let ident = &input.ident;
@@ -203,7 +203,7 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
             LitStr::new(&ident.to_string(), ident.span())
         };
 
-        let default = gen_encode(&field.field, &field.param, quote! { __default.#ident });
+        let default = gen_encode(field.field, &field.param, quote! { __default.#ident });
 
         let steps = if let Some(range) = &field.param.range {
             let ty = &field.field.ty;
@@ -212,7 +212,7 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
             quote! { <#ty as ::coupler::params::Encode>::steps() }
         };
 
-        let encode = gen_encode(&field.field, &field.param, quote! { __value });
+        let encode = gen_encode(field.field, &field.param, quote! { __value });
         let parse = if let Some(parse) = &field.param.parse {
             quote! {
                 match (#parse)(__str) {
@@ -229,7 +229,7 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
             }
         };
 
-        let decode = gen_decode(&field.field, &field.param, quote! { __value });
+        let decode = gen_decode(field.field, &field.param, quote! { __value });
         let display = if let Some(display) = &field.param.display {
             quote! { (#display)(#decode, __formatter) }
         } else if let Some(format) = &field.param.format {
@@ -254,7 +254,7 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
         let ident = &field.field.ident;
         let id = &field.param.id;
 
-        let decode = gen_decode(&field.field, &field.param, quote! { __value });
+        let decode = gen_decode(field.field, &field.param, quote! { __value });
 
         quote! {
             #id => {
@@ -267,7 +267,7 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
         let ident = &field.field.ident;
         let id = &field.param.id;
 
-        let encode = gen_encode(&field.field, &field.param, quote! { &self.#ident });
+        let encode = gen_encode(field.field, &field.param, quote! { &self.#ident });
 
         quote! {
             #id => {

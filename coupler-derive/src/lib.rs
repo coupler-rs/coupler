@@ -13,7 +13,7 @@ pub fn derive_params(input: TokenStream) -> TokenStream {
 
     match expand_params(&input) {
         Ok(expanded) => expanded.into(),
-        Err(err) => return err.into_compile_error().into(),
+        Err(err) => err.into_compile_error().into(),
     }
 }
 
@@ -23,6 +23,6 @@ pub fn derive_enum(input: TokenStream) -> TokenStream {
 
     match expand_enum(&input) {
         Ok(expanded) => expanded.into(),
-        Err(err) => return err.into_compile_error().into(),
+        Err(err) => err.into_compile_error().into(),
     }
 }
