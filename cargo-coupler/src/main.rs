@@ -123,6 +123,7 @@ enum Arch {
     Aarch64X86_64, // Universal binary containing both aarch64 and x86_64
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 enum Os {
     Linux,
@@ -232,7 +233,7 @@ fn bundle(cmd: &Bundle) {
         let rustc_path =
             env::var("RUSTC").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("rustc"));
         let mut rustc = Command::new(rustc_path);
-        rustc.args(&["--version", "--verbose"]);
+        rustc.args(["--version", "--verbose"]);
 
         let result = rustc.output();
         if let Err(error) = result {
@@ -520,7 +521,7 @@ fn build_universal(
         build(cmd, Some(target), packages);
     }
 
-    fs::create_dir_all(&out_dir).unwrap();
+    fs::create_dir_all(out_dir).unwrap();
 
     for package_info in packages {
         let out_lib = out_dir.join(&package_info.lib_name);
@@ -549,7 +550,7 @@ fn build(cmd: &Bundle, target: Option<&str>, packages: &[PackageInfo]) {
     cargo.arg("build");
 
     for package_info in packages {
-        cargo.args(&["--package", &package_info.package_name]);
+        cargo.args(["--package", &package_info.package_name]);
     }
 
     cargo.arg("--lib");
@@ -558,7 +559,7 @@ fn build(cmd: &Bundle, target: Option<&str>, packages: &[PackageInfo]) {
         cargo.arg("--release");
     }
     if let Some(profile) = &cmd.profile {
-        cargo.args(&["--profile", profile]);
+        cargo.args(["--profile", profile]);
     }
 
     if !cmd.features.is_empty() {
@@ -575,7 +576,7 @@ fn build(cmd: &Bundle, target: Option<&str>, packages: &[PackageInfo]) {
     }
 
     if let Some(target) = target {
-        cargo.args(&["--target", target]);
+        cargo.args(["--target", target]);
     }
 
     if let Some(target_dir) = &cmd.target_dir {
@@ -672,6 +673,7 @@ fn bundle_vst3(package_info: &PackageInfo, out_dir: &Path, target: &Target) {
     }
 
     fs::create_dir_all(dst.parent().unwrap()).unwrap();
+    #[allow(clippy::needless_borrows_for_generic_args)]
     fs::copy(&src, &dst).unwrap();
 
     if target.os == Os::MacOs {
