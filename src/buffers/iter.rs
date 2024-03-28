@@ -158,7 +158,7 @@ pub trait BlockIterator {
     fn next_block(&mut self, len: usize) -> Self::Block;
 
     #[inline]
-    fn split_at_events<'e>(self, events: Events<'e>) -> SplitAtEvents<'e, Self>
+    fn split_at_events(self, events: Events) -> SplitAtEvents<Self>
     where
         Self: Sized,
     {
@@ -210,7 +210,7 @@ impl<'a, 'b> BlockIterator for BlocksIter<'a, 'b> {
         let len = if len > remainder { remainder } else { len };
 
         let offset = self.offset;
-        self.offset = self.offset + len as isize;
+        self.offset += len as isize;
 
         unsafe { Buffers::from_raw_parts(self.buffers, self.ptrs, offset, len) }
     }
@@ -258,7 +258,7 @@ impl<'a, 'b> BlockIterator for BlockIter<'a, 'b> {
         let len = if len > remainder { remainder } else { len };
 
         let offset = self.offset;
-        self.offset = self.offset + len as isize;
+        self.offset += len as isize;
 
         unsafe { Buffer::from_raw_parts(self.ptrs, offset, len) }
     }
@@ -306,7 +306,7 @@ impl<'a, 'b> BlockIterator for BlockIterMut<'a, 'b> {
         let len = if len > remainder { remainder } else { len };
 
         let offset = self.offset;
-        self.offset = self.offset + len as isize;
+        self.offset += len as isize;
 
         unsafe { BufferMut::from_raw_parts(self.ptrs, offset, len) }
     }

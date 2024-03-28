@@ -139,7 +139,7 @@ impl ScratchBuffers {
                 );
 
                 self.ptrs[data.start..data.end].copy_from_slice(channels);
-                self.output_ptrs.extend_from_slice(&channels);
+                self.output_ptrs.extend_from_slice(channels);
             } else {
                 // For inactive output buses, allocate a scratch buffer for each channel.
                 for ptr in &mut self.ptrs[data.start..data.end] {

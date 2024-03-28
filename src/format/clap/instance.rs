@@ -607,7 +607,7 @@ impl<P: Plugin> Instance<P> {
                 param_info.min_value = 0.0;
                 param_info.max_value = 1.0;
             }
-            param_info.default_value = map_param_out(&param, param.default);
+            param_info.default_value = map_param_out(param, param.default);
 
             return true;
         }
@@ -850,7 +850,7 @@ impl<P: Plugin> Instance<P> {
         let main_thread_state = &mut *instance.main_thread_state.get();
 
         instance.sync_plugin(main_thread_state);
-        if let Ok(_) = main_thread_state.plugin.load(&mut StreamReader(stream)) {
+        if main_thread_state.plugin.load(&mut StreamReader(stream)).is_ok() {
             for (index, param) in instance.info.params.iter().enumerate() {
                 let value = main_thread_state.plugin.get_param(param.id);
                 instance.processor_params.set(index, value);

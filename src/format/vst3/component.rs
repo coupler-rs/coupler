@@ -303,7 +303,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
 
             self.sync_plugin(&mut main_thread_state.plugin);
 
-            if let Ok(_) = main_thread_state.plugin.load(&mut StreamReader(state)) {
+            if main_thread_state.plugin.load(&mut StreamReader(state)).is_ok() {
                 for (index, param) in self.info.params.iter().enumerate() {
                     let value = main_thread_state.plugin.get_param(param.id);
                     self.processor_params.set(index, value);
@@ -350,7 +350,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
 
             self.sync_plugin(&mut main_thread_state.plugin);
 
-            if let Ok(_) = main_thread_state.plugin.save(&mut StreamWriter(state)) {
+            if main_thread_state.plugin.save(&mut StreamWriter(state)).is_ok() {
                 return kResultOk;
             }
         }
@@ -377,8 +377,8 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
             formats: Vec::new(),
         };
 
-        let mut inputs = slice_from_raw_parts_checked(inputs, input_count).into_iter();
-        let mut outputs = slice_from_raw_parts_checked(outputs, output_count).into_iter();
+        let mut inputs = slice_from_raw_parts_checked(inputs, input_count).iter();
+        let mut outputs = slice_from_raw_parts_checked(outputs, output_count).iter();
         for bus in &self.info.buses {
             let arrangement = match bus.dir {
                 BusDir::In => *inputs.next().unwrap(),
@@ -424,6 +424,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         };
 
         if let Some(&bus_index) = bus_index {
+            #[allow(clippy::unnecessary_cast)] // The type of BusDirection varies by platform
             if let Some(format) = main_thread_state.config.layout.formats.get(bus_index as usize) {
                 *arr = format_to_speaker_arrangement(format);
                 return kResultOk;
@@ -505,7 +506,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
             &self.input_bus_map,
             &self.output_bus_map,
             &process_state.config,
-            &data,
+            data,
         ) else {
             return kInvalidArgument;
         };
@@ -701,6 +702,6 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         }
 
         let view = ComWrapper::new(View::new(&self.main_thread_state));
-        return view.to_com_ptr::<IPlugView>().unwrap().into_raw();
+        view.to_com_ptr::<IPlugView>().unwrap().into_raw()
     }
 }

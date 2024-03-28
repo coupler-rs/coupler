@@ -18,6 +18,7 @@ pub struct PluginInfo {
     pub has_editor: bool,
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for PluginInfo {
     fn default() -> PluginInfo {
         PluginInfo {

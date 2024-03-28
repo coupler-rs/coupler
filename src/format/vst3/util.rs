@@ -18,7 +18,7 @@ pub fn copy_wstring(src: &str, dst: &mut [char16]) {
 
 pub unsafe fn utf16_from_ptr<'a>(ptr: *const char16) -> &'a [u16] {
     let mut len = 0;
-    while *ptr.offset(len as isize) != 0 {
+    while *ptr.add(len) != 0 {
         len += 1;
     }
 

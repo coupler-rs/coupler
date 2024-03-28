@@ -63,7 +63,7 @@ impl<'a> IntoIterator for Events<'a> {
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
         Iter {
-            iter: self.events.into_iter(),
+            iter: self.events.iter(),
         }
     }
 }

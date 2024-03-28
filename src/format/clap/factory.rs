@@ -49,8 +49,8 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
         let url = CString::new(&*info.url).unwrap().into_raw();
         let version = CString::new(&*info.version).unwrap().into_raw();
 
-        const EMPTY: &'static CStr = unsafe { CStr::from_bytes_with_nul_unchecked(b"\0") };
-        const FEATURES: &'static [*const c_char] = &[ptr::null()];
+        const EMPTY: &CStr = unsafe { CStr::from_bytes_with_nul_unchecked(b"\0") };
+        const FEATURES: &[*const c_char] = &[ptr::null()];
 
         *self.state.get() = Some(FactoryState {
             descriptor: clap_plugin_descriptor {

@@ -152,7 +152,7 @@ impl<'a, 'b> IntoIterator for Buffers<'a, 'b> {
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
         BufferIter {
-            iter: self.buffers.into_iter(),
+            iter: self.buffers.iter(),
             ptrs: self.ptrs,
             offset: self.offset,
             len: self.len,
@@ -258,7 +258,7 @@ impl<'a, 'b> IntoIterator for Samples<'a, 'b> {
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
         BufferSampleIter {
-            iter: self.buffers.into_iter(),
+            iter: self.buffers.iter(),
             ptrs: self.ptrs,
             offset: self.offset,
             _marker: PhantomData,
@@ -366,7 +366,7 @@ impl<'a, 'b> IntoIterator for Buffer<'a, 'b> {
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
         Channels {
-            iter: self.ptrs.into_iter(),
+            iter: self.ptrs.iter(),
             offset: self.offset,
             len: self.len,
             _marker: PhantomData,
@@ -432,7 +432,7 @@ impl<'a, 'b> IntoIterator for Sample<'a, 'b> {
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
         SampleChannels {
-            iter: self.ptrs.into_iter(),
+            iter: self.ptrs.iter(),
             offset: self.offset,
             _marker: PhantomData,
         }
@@ -548,7 +548,7 @@ impl<'a, 'b> IntoIterator for BufferMut<'a, 'b> {
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
         ChannelsMut {
-            iter: self.ptrs.into_iter(),
+            iter: self.ptrs.iter(),
             offset: self.offset,
             len: self.len,
             _marker: PhantomData,
@@ -621,7 +621,7 @@ impl<'a, 'b> IntoIterator for SampleMut<'a, 'b> {
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
         SampleChannelsMut {
-            iter: self.ptrs.into_iter(),
+            iter: self.ptrs.iter(),
             offset: self.offset,
             _marker: PhantomData,
         }
