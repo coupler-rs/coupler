@@ -22,7 +22,7 @@ use crate::util::{slice_from_raw_parts_checked, DisplayParam};
 
 fn format_to_speaker_arrangement(format: &Format) -> SpeakerArrangement {
     match format {
-        Format::Mono => SpeakerArr::kStereo,
+        Format::Mono => SpeakerArr::kMono,
         Format::Stereo => SpeakerArr::kStereo,
     }
 }
