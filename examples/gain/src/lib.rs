@@ -118,11 +118,8 @@ impl Processor for GainProcessor {
         let mut buffer = buffers.collect::<BufferMut>().unwrap();
         for (mut buffer, events) in buffer.split_at_events(events) {
             for event in events {
-                match event.data {
-                    Data::ParamChange { id, value } => {
-                        self.params.set_param(id, value);
-                    }
-                    _ => {}
+                if let Data::ParamChange { id, value } = event.data {
+                    self.params.set_param(id, value);
                 }
             }
 
