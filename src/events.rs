@@ -32,6 +32,11 @@ impl<'a> Events<'a> {
     }
 
     #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.events.len() == 0
+    }
+
+    #[inline]
     pub fn get<I>(&self, index: usize) -> Option<&'a Event> {
         self.events.get(index)
     }

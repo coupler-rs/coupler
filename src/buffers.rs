@@ -72,6 +72,11 @@ impl<'a, 'b> Buffers<'a, 'b> {
     }
 
     #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    #[inline]
     pub fn buffer_count(&self) -> usize {
         self.buffers.len()
     }
@@ -321,6 +326,11 @@ impl<'a, 'b> Buffer<'a, 'b> {
     }
 
     #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    #[inline]
     pub fn channel_count(&self) -> usize {
         self.ptrs.len()
     }
@@ -483,6 +493,11 @@ impl<'a, 'b> BufferMut<'a, 'b> {
     #[inline]
     pub fn len(&self) -> usize {
         self.len
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
     }
 
     #[inline]

@@ -155,6 +155,12 @@ pub trait BlockIterator {
     type Block;
 
     fn len(&self) -> usize;
+
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     fn next_block(&mut self, len: usize) -> Self::Block;
 
     #[inline]
@@ -336,7 +342,7 @@ impl<'e, B: BlockIterator> Iterator for SplitAtEvents<'e, B> {
         let len = self.blocks.len();
 
         if len == 0 {
-            if self.events.len() == 0 {
+            if self.events.is_empty() {
                 return None;
             }
 
