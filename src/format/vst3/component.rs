@@ -87,7 +87,7 @@ impl<P: Plugin> Component<P> {
         }
 
         let config = Config {
-            layout: info.layouts.first().unwrap().clone(),
+            layout: info.layouts.first().cloned().unwrap_or_default(),
             sample_rate: 0.0,
             max_buffer_size: 0,
         };
