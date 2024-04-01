@@ -10,7 +10,7 @@ pub struct BusInfo {
     pub dir: BusDir,
 }
 
-#[derive(Clone, Eq, PartialEq, Hash)]
+#[derive(Clone, Default, Eq, PartialEq, Hash)]
 pub struct Layout {
     pub formats: Vec<Format>,
 }
