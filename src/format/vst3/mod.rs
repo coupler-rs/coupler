@@ -11,6 +11,9 @@ mod host;
 mod util;
 mod view;
 
+#[cfg(test)]
+mod tests;
+
 use crate::plugin::Plugin;
 use factory::Factory;
 
