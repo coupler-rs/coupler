@@ -7,6 +7,9 @@ mod gui;
 mod host;
 mod instance;
 
+#[cfg(test)]
+mod tests;
+
 #[doc(hidden)]
 pub use factory::Factory;
 
