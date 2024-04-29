@@ -18,29 +18,15 @@ impl Host {
         Host { inner }
     }
 
-    pub fn edit_param(&self, id: ParamId) -> Gesture {
+    pub fn begin_gesture(&self, id: ParamId) {
         self.inner.begin_gesture(id);
-
-        Gesture {
-            inner: Arc::clone(&self.inner),
-            id,
-        }
     }
-}
 
-pub struct Gesture {
-    inner: Arc<dyn HostInner + Send + Sync>,
-    id: ParamId,
-}
-
-impl Gesture {
-    pub fn set_value(&self, value: ParamValue) {
-        self.inner.set_param(self.id, value);
+    pub fn end_gesture(&self, id: ParamId) {
+        self.inner.end_gesture(id);
     }
-}
 
-impl Drop for Gesture {
-    fn drop(&mut self) {
-        self.inner.end_gesture(self.id);
+    pub fn set_param(&self, id: ParamId, value: ParamValue) {
+        self.inner.set_param(id, value);
     }
 }
