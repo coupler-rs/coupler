@@ -9,7 +9,7 @@ publish = false
 [dependencies]
 coupler-derive = { path = "coupler-derive", optional = true }
 clap-sys = "0.3.0"
-vst3 = "0.1.1"
+vst3 = "0.1.2"
 
 [features]
 derive = ["coupler-derive"]
