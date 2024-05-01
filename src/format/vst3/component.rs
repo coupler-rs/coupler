@@ -57,6 +57,7 @@ pub struct Component<P: Plugin> {
     param_map: HashMap<ParamId, usize>,
     plugin_params: ParamValues,
     processor_params: ParamValues,
+    host: Arc<Vst3Host>,
     main_thread_state: Arc<UnsafeCell<MainThreadState<P>>>,
     // When the audio processor is *not* active, references to ProcessState may only be formed from
     // the main thread. When the audio processor *is* active, references to ProcessState may only
@@ -96,6 +97,8 @@ impl<P: Plugin> Component<P> {
 
         let scratch_buffers = ScratchBuffers::new(input_bus_map.len(), output_bus_map.len());
 
+        let host = Arc::new(Vst3Host::new());
+
         Component {
             info: info.clone(),
             input_bus_map,
@@ -104,9 +107,10 @@ impl<P: Plugin> Component<P> {
             param_map,
             plugin_params: ParamValues::new(&info.params),
             processor_params: ParamValues::new(&info.params),
+            host: host.clone(),
             main_thread_state: Arc::new(UnsafeCell::new(MainThreadState {
                 config: config.clone(),
-                plugin: P::new(Host::from_inner(Arc::new(Vst3Host {}))),
+                plugin: P::new(Host::from_inner(host)),
                 editor_params,
                 editor: None,
             })),
@@ -688,7 +692,14 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         kInvalidArgument
     }
 
-    unsafe fn setComponentHandler(&self, _handler: *mut IComponentHandler) -> tresult {
+    unsafe fn setComponentHandler(&self, handler: *mut IComponentHandler) -> tresult {
+        let mut current_handler = self.host.handler.write().unwrap();
+        if let Some(handler) = ComRef::from_raw(handler) {
+            *current_handler = Some(handler.to_com_ptr());
+        } else {
+            *current_handler = None;
+        }
+
         kResultOk
     }
 
