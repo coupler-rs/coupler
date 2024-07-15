@@ -1,12 +1,11 @@
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut, Range};
-use std::{array, slice};
+use std::slice;
 
-pub mod collect;
+pub mod convert;
 pub mod iter;
 
 use crate::events::Events;
-use collect::FromBuffers;
 use iter::{BlockIterator, IntoBlocks, IntoSamples};
 
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -103,19 +102,6 @@ impl<'a, 'b> Buffers<'a, 'b> {
                     self.len,
                 ))
             }
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    pub fn collect<B: FromBuffers<'a, 'b>>(self) -> Option<B> {
-        let mut iter = self.into_iter();
-
-        let result = B::from_buffers(&mut iter)?;
-
-        if iter.next().is_none() {
-            Some(result)
         } else {
             None
         }
@@ -336,17 +322,6 @@ impl<'a, 'b> Buffer<'a, 'b> {
     }
 
     #[inline]
-    pub fn collect<const N: usize>(self) -> Option<[&'b [f32]; N]> {
-        if self.channel_count() != N {
-            return None;
-        }
-
-        Some(array::from_fn(|i| unsafe {
-            slice::from_raw_parts(self.ptrs[i].offset(self.offset), self.len)
-        }))
-    }
-
-    #[inline]
     pub fn samples(&self) -> iter::SampleIter<'a, 'b> {
         self.into_samples()
     }
@@ -513,17 +488,6 @@ impl<'a, 'b> BufferMut<'a, 'b> {
             len: self.len,
             _marker: self._marker,
         }
-    }
-
-    #[inline]
-    pub fn collect<const N: usize>(self) -> Option<[&'b mut [f32]; N]> {
-        if self.channel_count() != N {
-            return None;
-        }
-
-        Some(array::from_fn(|i| unsafe {
-            slice::from_raw_parts_mut(self.ptrs[i].offset(self.offset), self.len)
-        }))
     }
 
     #[inline]
