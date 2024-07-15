@@ -112,7 +112,7 @@ impl<'a, 'b> Buffers<'a, 'b> {
     pub fn collect<B: FromBuffers<'a, 'b>>(self) -> Option<B> {
         let mut iter = self.into_iter();
 
-        let result = B::bind(&mut iter)?;
+        let result = B::from_buffers(&mut iter)?;
 
         if iter.next().is_none() {
             Some(result)
