@@ -2,7 +2,7 @@ use std::io::{self, Read, Write};
 
 use serde::{Deserialize, Serialize};
 
-use portlight::{App, AppMode, AppOptions, Response, Window, WindowOptions};
+use reflector_platform::{App, AppMode, AppOptions, Response, Window, WindowOptions};
 
 use coupler::format::clap::*;
 use coupler::format::vst3::*;
@@ -138,16 +138,16 @@ pub struct GainEditor {
 }
 
 impl GainEditor {
-    fn open(parent: Parent) -> portlight::Result<GainEditor> {
+    fn open(parent: Parent) -> reflector_platform::Result<GainEditor> {
         let app = AppOptions::new().mode(AppMode::Guest).build()?;
 
         let mut options = WindowOptions::new();
-        options.size(portlight::Size::new(512.0, 512.0));
+        options.size(reflector_platform::Size::new(512.0, 512.0));
 
         let raw_parent = match parent.as_raw() {
-            RawParent::Win32(window) => portlight::RawParent::Win32(window),
-            RawParent::Cocoa(view) => portlight::RawParent::Cocoa(view),
-            RawParent::X11(window) => portlight::RawParent::X11(window),
+            RawParent::Win32(window) => reflector_platform::RawWindow::Win32(window),
+            RawParent::Cocoa(view) => reflector_platform::RawWindow::Cocoa(view),
+            RawParent::X11(window) => reflector_platform::RawWindow::X11(window),
         };
         unsafe { options.raw_parent(raw_parent) };
 
