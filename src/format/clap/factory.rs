@@ -28,6 +28,7 @@ unsafe impl<P> Sync for Factory<P> {}
 
 #[doc(hidden)]
 impl<P: Plugin + ClapPlugin> Factory<P> {
+    #[allow(clippy::new_without_default)]
     pub const fn new() -> Self {
         Factory {
             factory: clap_plugin_factory {
