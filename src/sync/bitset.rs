@@ -31,6 +31,15 @@ impl AtomicBitset {
     }
 
     #[inline]
+    pub fn get(&self, index: usize, ordering: Ordering) -> bool {
+        assert!(index < self.len);
+
+        let mask = 1 << (index & WORD_SIZE_MASK);
+        let word = self.words[index >> WORD_SIZE_SHIFT].load(ordering);
+        word & mask != 0
+    }
+
+    #[inline]
     pub fn drain(&self, ordering: Ordering) -> Drain {
         let mut iter = self.words.iter();
         let current_word = iter.next().map(|word| word.swap(0, ordering));
@@ -81,7 +90,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn basic() {
+    fn set_get() {
+        let bitset = AtomicBitset::with_len(8);
+
+        assert!(!bitset.get(0, Ordering::Relaxed));
+        bitset.set(0, Ordering::Relaxed);
+        assert!(bitset.get(0, Ordering::Relaxed));
+
+        assert!(!bitset.get(3, Ordering::Relaxed));
+        bitset.set(3, Ordering::Relaxed);
+        assert!(bitset.get(3, Ordering::Relaxed));
+
+        assert!(!bitset.get(7, Ordering::Relaxed));
+        bitset.set(7, Ordering::Relaxed);
+        assert!(bitset.get(7, Ordering::Relaxed));
+    }
+
+    #[test]
+    fn drain() {
         let bitset = AtomicBitset::with_len(8);
 
         bitset.set(0, Ordering::Relaxed);
