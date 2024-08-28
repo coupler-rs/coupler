@@ -12,4 +12,4 @@ formats = ["clap", "vst3"]
 coupler = { workspace = true, features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-reflector-platform = { git = "https://github.com/coupler-rs/reflector", rev = "9295afd43c46b0b27e2a88456dede9adc4d7413e" }
+reflector-platform = { git = "https://github.com/coupler-rs/reflector", rev = "eadfc6da67a3da807161e9f0150bea11bf9d0401" }
