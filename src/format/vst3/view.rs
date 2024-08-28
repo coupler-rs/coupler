@@ -5,7 +5,7 @@ use std::sync::Arc;
 use vst3::{Class, Steinberg::*};
 
 use super::component::MainThreadState;
-use crate::editor::{Editor, Parent, RawParent};
+use crate::editor::{Editor, ParentWindow, RawParent};
 use crate::plugin::Plugin;
 
 pub struct View<P: Plugin> {
@@ -60,7 +60,7 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
 
         let main_thread_state = &mut *self.main_thread_state.get();
 
-        let editor = main_thread_state.plugin.editor(Parent::from_raw(raw_parent));
+        let editor = main_thread_state.plugin.editor(&ParentWindow::from_raw(raw_parent));
         main_thread_state.editor = Some(editor);
 
         kResultOk

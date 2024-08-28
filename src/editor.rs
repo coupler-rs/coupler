@@ -9,13 +9,13 @@ pub enum RawParent {
     X11(c_ulong),
 }
 
-pub struct Parent {
+pub struct ParentWindow {
     parent: RawParent,
 }
 
-impl Parent {
-    pub unsafe fn from_raw(parent: RawParent) -> Parent {
-        Parent { parent }
+impl ParentWindow {
+    pub unsafe fn from_raw(parent: RawParent) -> ParentWindow {
+        ParentWindow { parent }
     }
 
     pub fn as_raw(&self) -> RawParent {

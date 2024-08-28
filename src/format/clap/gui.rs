@@ -4,7 +4,7 @@ use clap_sys::ext::gui::*;
 use clap_sys::plugin::*;
 
 use super::instance::Instance;
-use crate::editor::{Editor, Parent, RawParent};
+use crate::editor::{Editor, ParentWindow, RawParent};
 use crate::plugin::Plugin;
 
 impl<P: Plugin> Instance<P> {
@@ -151,7 +151,7 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
         let main_thread_state = &mut *instance.main_thread_state.get();
 
-        let editor = main_thread_state.plugin.editor(Parent::from_raw(raw_parent));
+        let editor = main_thread_state.plugin.editor(&ParentWindow::from_raw(raw_parent));
         main_thread_state.editor = Some(editor);
 
         true

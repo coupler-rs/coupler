@@ -86,7 +86,7 @@ impl Plugin for Gain {
         }
     }
 
-    fn editor(&mut self, parent: Parent) -> Self::Editor {
+    fn editor(&mut self, parent: &ParentWindow) -> Self::Editor {
         GainEditor::open(parent).unwrap()
     }
 }
@@ -138,7 +138,7 @@ pub struct GainEditor {
 }
 
 impl GainEditor {
-    fn open(parent: Parent) -> reflector_platform::Result<GainEditor> {
+    fn open(parent: &ParentWindow) -> reflector_platform::Result<GainEditor> {
         let app = AppOptions::new().mode(AppMode::Guest).build()?;
 
         let mut options = WindowOptions::new();

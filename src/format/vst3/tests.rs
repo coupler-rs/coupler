@@ -4,7 +4,7 @@ use std::io::{self, Read, Write};
 use std::{ptr, slice};
 
 use crate::buffers::Buffers;
-use crate::editor::{Editor, Parent, Size};
+use crate::editor::{Editor, ParentWindow, Size};
 use crate::events::Events;
 use crate::host::Host;
 use crate::params::{ParamId, ParamValue};
@@ -64,7 +64,7 @@ impl Plugin for TestPlugin {
     fn processor(&mut self, _config: Config) -> Self::Processor {
         TestProcessor
     }
-    fn editor(&mut self, _parent: Parent) -> Self::Editor {
+    fn editor(&mut self, _parent: &ParentWindow) -> Self::Editor {
         TestEditor
     }
 

@@ -1,7 +1,7 @@
 use std::io::{self, Read, Write};
 
 use crate::bus::{BusInfo, Layout};
-use crate::editor::{Editor, Parent};
+use crate::editor::{Editor, ParentWindow};
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
 use crate::process::{Config, Processor};
@@ -46,7 +46,7 @@ pub trait Plugin: Send + Sized + 'static {
     fn save(&self, output: &mut impl Write) -> io::Result<()>;
     fn load(&mut self, input: &mut impl Read) -> io::Result<()>;
     fn processor(&mut self, config: Config) -> Self::Processor;
-    fn editor(&mut self, parent: Parent) -> Self::Editor;
+    fn editor(&mut self, parent: &ParentWindow) -> Self::Editor;
 
     #[allow(unused_variables)]
     fn latency(&self, config: &Config) -> u64 {
