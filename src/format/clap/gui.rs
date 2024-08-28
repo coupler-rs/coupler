@@ -1,11 +1,21 @@
 use std::ffi::{c_char, CStr};
+use std::rc::Rc;
 
 use clap_sys::ext::gui::*;
 use clap_sys::plugin::*;
 
 use super::instance::Instance;
-use crate::editor::{Editor, ParentWindow, RawParent};
+use crate::editor::{Editor, EditorHost, EditorHostInner, ParentWindow, RawParent};
+use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
+
+struct ClapEditorHost {}
+
+impl EditorHostInner for ClapEditorHost {
+    fn begin_gesture(&self, _id: ParamId) {}
+    fn end_gesture(&self, _id: ParamId) {}
+    fn set_param(&self, _id: ParamId, _value: ParamValue) {}
+}
 
 impl<P: Plugin> Instance<P> {
     pub(super) const GUI: clap_plugin_gui = clap_plugin_gui {
@@ -151,7 +161,9 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
         let main_thread_state = &mut *instance.main_thread_state.get();
 
-        let editor = main_thread_state.plugin.editor(&ParentWindow::from_raw(raw_parent));
+        let host = EditorHost::from_inner(Rc::new(ClapEditorHost {}));
+        let parent = ParentWindow::from_raw(raw_parent);
+        let editor = main_thread_state.plugin.editor(host, &parent);
         main_thread_state.editor = Some(editor);
 
         true

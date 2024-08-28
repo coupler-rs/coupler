@@ -86,7 +86,7 @@ impl Plugin for Gain {
         }
     }
 
-    fn editor(&mut self, parent: &ParentWindow) -> Self::Editor {
+    fn editor(&mut self, _host: EditorHost, parent: &ParentWindow) -> Self::Editor {
         GainEditor::open(parent).unwrap()
     }
 }

@@ -1,12 +1,55 @@
-use std::cell::UnsafeCell;
+use std::cell::{RefCell, UnsafeCell};
 use std::ffi::{c_void, CStr};
 use std::sync::Arc;
 
-use vst3::{Class, Steinberg::*};
+use vst3::Steinberg::Vst::{IComponentHandler, IComponentHandlerTrait};
+use vst3::{Class, ComPtr, Steinberg::*};
 
 use super::component::MainThreadState;
-use crate::editor::{Editor, ParentWindow, RawParent};
+use crate::editor::{Editor, EditorHost, EditorHostInner, ParentWindow, RawParent};
+use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
+
+pub struct Vst3EditorHost {
+    pub handler: RefCell<Option<ComPtr<IComponentHandler>>>,
+}
+
+impl Vst3EditorHost {
+    pub fn new() -> Vst3EditorHost {
+        Vst3EditorHost {
+            handler: RefCell::new(None),
+        }
+    }
+}
+
+impl EditorHostInner for Vst3EditorHost {
+    fn begin_gesture(&self, id: ParamId) {
+        let handler = self.handler.borrow();
+        if let Some(handler) = &*handler {
+            unsafe {
+                handler.beginEdit(id);
+            }
+        }
+    }
+
+    fn end_gesture(&self, id: ParamId) {
+        let handler = self.handler.borrow();
+        if let Some(handler) = &*handler {
+            unsafe {
+                handler.endEdit(id);
+            }
+        }
+    }
+
+    fn set_param(&self, id: ParamId, value: ParamValue) {
+        let handler = self.handler.borrow();
+        if let Some(handler) = &*handler {
+            unsafe {
+                handler.performEdit(id, value);
+            }
+        }
+    }
+}
 
 pub struct View<P: Plugin> {
     main_thread_state: Arc<UnsafeCell<MainThreadState<P>>>,
@@ -60,7 +103,9 @@ impl<P: Plugin> IPlugViewTrait for View<P> {
 
         let main_thread_state = &mut *self.main_thread_state.get();
 
-        let editor = main_thread_state.plugin.editor(&ParentWindow::from_raw(raw_parent));
+        let host = EditorHost::from_inner(main_thread_state.editor_host.clone());
+        let parent = ParentWindow::from_raw(raw_parent);
+        let editor = main_thread_state.plugin.editor(host, &parent);
         main_thread_state.editor = Some(editor);
 
         kResultOk

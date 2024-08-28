@@ -2,6 +2,7 @@ use std::cell::UnsafeCell;
 use std::collections::{HashMap, HashSet};
 use std::ffi::{c_void, CStr};
 use std::ptr;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use vst3::{Class, ComRef, ComWrapper, Steinberg::Vst::*, Steinberg::*};
@@ -9,7 +10,7 @@ use vst3::{Class, ComRef, ComWrapper, Steinberg::Vst::*, Steinberg::*};
 use super::buffers::ScratchBuffers;
 use super::host::Vst3Host;
 use super::util::{copy_wstring, utf16_from_ptr};
-use super::view::View;
+use super::view::{View, Vst3EditorHost};
 use crate::bus::{BusDir, Format, Layout};
 use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
@@ -39,6 +40,7 @@ pub struct MainThreadState<P: Plugin> {
     pub config: Config,
     pub plugin: P,
     pub editor_params: Vec<f64>,
+    pub editor_host: Rc<Vst3EditorHost>,
     pub editor: Option<P::Editor>,
 }
 
@@ -57,7 +59,7 @@ pub struct Component<P: Plugin> {
     param_map: HashMap<ParamId, usize>,
     plugin_params: ParamValues,
     processor_params: ParamValues,
-    host: Arc<Vst3Host>,
+    _host: Arc<Vst3Host>,
     main_thread_state: Arc<UnsafeCell<MainThreadState<P>>>,
     // When the audio processor is *not* active, references to ProcessState may only be formed from
     // the main thread. When the audio processor *is* active, references to ProcessState may only
@@ -107,11 +109,12 @@ impl<P: Plugin> Component<P> {
             param_map,
             plugin_params: ParamValues::new(&info.params),
             processor_params: ParamValues::new(&info.params),
-            host: host.clone(),
+            _host: host.clone(),
             main_thread_state: Arc::new(UnsafeCell::new(MainThreadState {
                 config: config.clone(),
                 plugin: P::new(Host::from_inner(host)),
                 editor_params,
+                editor_host: Rc::new(Vst3EditorHost::new()),
                 editor: None,
             })),
             process_state: UnsafeCell::new(ProcessState {
@@ -693,7 +696,9 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     }
 
     unsafe fn setComponentHandler(&self, handler: *mut IComponentHandler) -> tresult {
-        let mut current_handler = self.host.handler.write().unwrap();
+        let main_thread_state = &mut *self.main_thread_state.get();
+
+        let mut current_handler = main_thread_state.editor_host.handler.borrow_mut();
         if let Some(handler) = ComRef::from_raw(handler) {
             *current_handler = Some(handler.to_com_ptr());
         } else {

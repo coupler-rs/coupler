@@ -2,7 +2,7 @@ use std::ffi::{c_char, CStr};
 use std::io::{self, Read, Write};
 
 use crate::buffers::Buffers;
-use crate::editor::{Editor, ParentWindow, Size};
+use crate::editor::{Editor, EditorHost, ParentWindow, Size};
 use crate::events::Events;
 
 use clap_sys::plugin_factory::{clap_plugin_factory, CLAP_PLUGIN_FACTORY_ID};
@@ -57,7 +57,7 @@ impl Plugin for TestPlugin {
     fn processor(&mut self, _config: Config) -> Self::Processor {
         TestProcessor
     }
-    fn editor(&mut self, _parent: &ParentWindow) -> Self::Editor {
+    fn editor(&mut self, _host: EditorHost, _parent: &ParentWindow) -> Self::Editor {
         TestEditor
     }
 
