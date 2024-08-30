@@ -31,6 +31,14 @@ impl AtomicBitset {
     }
 
     #[inline]
+    pub fn reset(&self, index: usize, ordering: Ordering) {
+        assert!(index < self.len);
+
+        let mask = 1 << (index & WORD_SIZE_MASK);
+        self.words[index >> WORD_SIZE_SHIFT].fetch_and(!mask, ordering);
+    }
+
+    #[inline]
     pub fn get(&self, index: usize, ordering: Ordering) -> bool {
         assert!(index < self.len);
 
@@ -93,17 +101,15 @@ mod tests {
     fn set_get() {
         let bitset = AtomicBitset::with_len(8);
 
-        assert!(!bitset.get(0, Ordering::Relaxed));
-        bitset.set(0, Ordering::Relaxed);
-        assert!(bitset.get(0, Ordering::Relaxed));
+        for index in 0..8 {
+            assert!(!bitset.get(index, Ordering::Relaxed));
 
-        assert!(!bitset.get(3, Ordering::Relaxed));
-        bitset.set(3, Ordering::Relaxed);
-        assert!(bitset.get(3, Ordering::Relaxed));
+            bitset.set(index, Ordering::Relaxed);
+            assert!(bitset.get(index, Ordering::Relaxed));
 
-        assert!(!bitset.get(7, Ordering::Relaxed));
-        bitset.set(7, Ordering::Relaxed);
-        assert!(bitset.get(7, Ordering::Relaxed));
+            bitset.reset(index, Ordering::Relaxed);
+            assert!(!bitset.get(index, Ordering::Relaxed));
+        }
     }
 
     #[test]
