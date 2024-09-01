@@ -2,7 +2,7 @@ use std::sync::atomic::Ordering;
 
 use super::bitset::{self, AtomicBitset};
 use super::float::AtomicF64;
-use crate::params::{ParamInfo, ParamValue};
+use crate::params::ParamValue;
 
 pub struct ParamValues {
     values: Vec<AtomicF64>,
@@ -10,10 +10,10 @@ pub struct ParamValues {
 }
 
 impl ParamValues {
-    pub fn new(params: &[ParamInfo]) -> ParamValues {
+    pub fn with_count(count: usize) -> ParamValues {
         ParamValues {
-            values: params.iter().map(|p| AtomicF64::new(p.default)).collect(),
-            dirty: AtomicBitset::with_len(params.len()),
+            values: (0..count).map(|_| AtomicF64::new(0.0)).collect(),
+            dirty: AtomicBitset::with_len(count),
         }
     }
 

@@ -107,8 +107,8 @@ impl<P: Plugin> Component<P> {
             output_bus_map,
             layout_set,
             param_map,
-            plugin_params: ParamValues::new(&info.params),
-            processor_params: ParamValues::new(&info.params),
+            plugin_params: ParamValues::with_count(info.params.len()),
+            processor_params: ParamValues::with_count(info.params.len()),
             _host: host.clone(),
             main_thread_state: Arc::new(UnsafeCell::new(MainThreadState {
                 config: config.clone(),

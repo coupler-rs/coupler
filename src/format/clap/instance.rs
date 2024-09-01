@@ -120,8 +120,8 @@ impl<P: Plugin> Instance<P> {
             input_bus_map,
             output_bus_map,
             param_map,
-            plugin_params: ParamValues::new(&info.params),
-            processor_params: ParamValues::new(&info.params),
+            plugin_params: ParamValues::with_count(info.params.len()),
+            processor_params: ParamValues::with_count(info.params.len()),
             main_thread_state: UnsafeCell::new(MainThreadState {
                 layout_index: 0,
                 plugin: P::new(Host::from_inner(Arc::new(ClapHost {}))),
