@@ -5,6 +5,48 @@ const WORD_SIZE: usize = u64::BITS as usize;
 const WORD_SIZE_MASK: usize = WORD_SIZE - 1;
 const WORD_SIZE_SHIFT: usize = WORD_SIZE.trailing_zeros() as usize;
 
+pub struct Bitset {
+    words: Vec<u64>,
+    len: usize,
+}
+
+impl Bitset {
+    #[inline]
+    pub fn with_len(len: usize) -> Bitset {
+        // Round up to nearest multiple of word size
+        let bits_len = (len + WORD_SIZE - 1) >> WORD_SIZE_SHIFT;
+
+        let words = vec![0; bits_len];
+
+        Bitset { words, len }
+    }
+
+    #[inline]
+    pub fn set(&mut self, index: usize) {
+        assert!(index < self.len);
+
+        let mask = 1 << (index & WORD_SIZE_MASK);
+        self.words[index >> WORD_SIZE_SHIFT] |= mask;
+    }
+
+    #[inline]
+    pub fn reset(&mut self, index: usize) {
+        assert!(index < self.len);
+
+        let mask = 1 << (index & WORD_SIZE_MASK);
+        self.words[index >> WORD_SIZE_SHIFT] &= !mask;
+    }
+
+    #[inline]
+    pub fn get(&self, index: usize) -> bool {
+        assert!(index < self.len);
+
+        let mask = 1 << (index & WORD_SIZE_MASK);
+        let word = self.words[index >> WORD_SIZE_SHIFT];
+        word & mask != 0
+    }
+}
+
 pub struct AtomicBitset {
     words: Vec<AtomicU64>,
     len: usize,
@@ -99,6 +141,21 @@ mod tests {
 
     #[test]
     fn set_get() {
+        let mut bitset = Bitset::with_len(8);
+
+        for index in 0..8 {
+            assert!(!bitset.get(index));
+
+            bitset.set(index);
+            assert!(bitset.get(index));
+
+            bitset.reset(index);
+            assert!(!bitset.get(index));
+        }
+    }
+
+    #[test]
+    fn atomic_set_get() {
         let bitset = AtomicBitset::with_len(8);
 
         for index in 0..8 {
@@ -113,7 +170,7 @@ mod tests {
     }
 
     #[test]
-    fn drain() {
+    fn atomic_drain() {
         let bitset = AtomicBitset::with_len(8);
 
         bitset.set(0, Ordering::Relaxed);
@@ -127,7 +184,7 @@ mod tests {
     }
 
     #[test]
-    fn count() {
+    fn atomic_count() {
         let bitset = AtomicBitset::with_len(1000);
 
         for x in 0..128 {
