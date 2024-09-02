@@ -75,6 +75,21 @@ impl AtomicBitset {
     }
 
     #[inline]
+    pub fn swap(&self, index: usize, value: bool, ordering: Ordering) -> bool {
+        assert!(index < self.len);
+
+        let mask = 1 << (index & WORD_SIZE_MASK);
+        let word = &self.words[index >> WORD_SIZE_SHIFT];
+        let word_prev = if value {
+            word.fetch_or(mask, ordering)
+        } else {
+            word.fetch_and(!mask, ordering)
+        };
+
+        word_prev & mask != 0
+    }
+
+    #[inline]
     pub fn get(&self, index: usize, ordering: Ordering) -> bool {
         assert!(index < self.len);
 
@@ -160,6 +175,19 @@ mod tests {
 
             bitset.set(index, false, Ordering::Relaxed);
             assert!(!bitset.get(index, Ordering::Relaxed));
+        }
+    }
+
+    #[test]
+    fn atomic_swap() {
+        let bitset = AtomicBitset::with_len(8);
+
+        for index in 0..8 {
+            let prev = bitset.swap(index, true, Ordering::Relaxed);
+            assert!(!prev);
+
+            let prev = bitset.swap(index, false, Ordering::Relaxed);
+            assert!(prev);
         }
     }
 
