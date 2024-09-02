@@ -22,19 +22,16 @@ impl Bitset {
     }
 
     #[inline]
-    pub fn set(&mut self, index: usize) {
+    pub fn set(&mut self, index: usize, value: bool) {
         assert!(index < self.len);
 
         let mask = 1 << (index & WORD_SIZE_MASK);
-        self.words[index >> WORD_SIZE_SHIFT] |= mask;
-    }
-
-    #[inline]
-    pub fn reset(&mut self, index: usize) {
-        assert!(index < self.len);
-
-        let mask = 1 << (index & WORD_SIZE_MASK);
-        self.words[index >> WORD_SIZE_SHIFT] &= !mask;
+        let word = &mut self.words[index >> WORD_SIZE_SHIFT];
+        if value {
+            *word |= mask;
+        } else {
+            *word &= !mask;
+        }
     }
 
     #[inline]
@@ -65,19 +62,16 @@ impl AtomicBitset {
     }
 
     #[inline]
-    pub fn set(&self, index: usize, ordering: Ordering) {
+    pub fn set(&self, index: usize, value: bool, ordering: Ordering) {
         assert!(index < self.len);
 
         let mask = 1 << (index & WORD_SIZE_MASK);
-        self.words[index >> WORD_SIZE_SHIFT].fetch_or(mask, ordering);
-    }
-
-    #[inline]
-    pub fn reset(&self, index: usize, ordering: Ordering) {
-        assert!(index < self.len);
-
-        let mask = 1 << (index & WORD_SIZE_MASK);
-        self.words[index >> WORD_SIZE_SHIFT].fetch_and(!mask, ordering);
+        let word = &self.words[index >> WORD_SIZE_SHIFT];
+        if value {
+            word.fetch_or(mask, ordering);
+        } else {
+            word.fetch_and(!mask, ordering);
+        }
     }
 
     #[inline]
@@ -146,10 +140,10 @@ mod tests {
         for index in 0..8 {
             assert!(!bitset.get(index));
 
-            bitset.set(index);
+            bitset.set(index, true);
             assert!(bitset.get(index));
 
-            bitset.reset(index);
+            bitset.set(index, false);
             assert!(!bitset.get(index));
         }
     }
@@ -161,10 +155,10 @@ mod tests {
         for index in 0..8 {
             assert!(!bitset.get(index, Ordering::Relaxed));
 
-            bitset.set(index, Ordering::Relaxed);
+            bitset.set(index, true, Ordering::Relaxed);
             assert!(bitset.get(index, Ordering::Relaxed));
 
-            bitset.reset(index, Ordering::Relaxed);
+            bitset.set(index, false, Ordering::Relaxed);
             assert!(!bitset.get(index, Ordering::Relaxed));
         }
     }
@@ -173,9 +167,9 @@ mod tests {
     fn atomic_drain() {
         let bitset = AtomicBitset::with_len(8);
 
-        bitset.set(0, Ordering::Relaxed);
-        bitset.set(3, Ordering::Relaxed);
-        bitset.set(7, Ordering::Relaxed);
+        bitset.set(0, true, Ordering::Relaxed);
+        bitset.set(3, true, Ordering::Relaxed);
+        bitset.set(7, true, Ordering::Relaxed);
 
         let mut iter = bitset.drain(Ordering::Relaxed);
         assert_eq!(iter.next().unwrap(), 0);
@@ -188,7 +182,7 @@ mod tests {
         let bitset = AtomicBitset::with_len(1000);
 
         for x in 0..128 {
-            bitset.set(5 + 7 * x, Ordering::Relaxed);
+            bitset.set(5 + 7 * x, true, Ordering::Relaxed);
         }
 
         let mut count = 0;

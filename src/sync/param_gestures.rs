@@ -20,18 +20,18 @@ impl ParamGestures {
     }
 
     pub fn begin_gesture(&self, index: usize) {
-        self.gestures.set(index, Ordering::Relaxed);
-        self.dirty.set(index, Ordering::Release);
+        self.gestures.set(index, true, Ordering::Relaxed);
+        self.dirty.set(index, true, Ordering::Release);
     }
 
     pub fn end_gesture(&self, index: usize) {
-        self.gestures.reset(index, Ordering::Relaxed);
-        self.dirty.set(index, Ordering::Release);
+        self.gestures.set(index, false, Ordering::Relaxed);
+        self.dirty.set(index, true, Ordering::Release);
     }
 
     pub fn set_value(&self, index: usize, value: ParamValue) {
         self.values[index].store(value, Ordering::Relaxed);
-        self.dirty.set(index, Ordering::Release);
+        self.dirty.set(index, true, Ordering::Release);
     }
 
     pub fn poll(&self) -> Poll {

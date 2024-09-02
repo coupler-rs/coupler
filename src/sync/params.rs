@@ -19,7 +19,7 @@ impl ParamValues {
 
     pub fn set(&self, index: usize, value: ParamValue) {
         self.values[index].store(value, Ordering::Relaxed);
-        self.dirty.set(index, Ordering::Release);
+        self.dirty.set(index, true, Ordering::Release);
     }
 
     pub fn poll(&self) -> Poll {
