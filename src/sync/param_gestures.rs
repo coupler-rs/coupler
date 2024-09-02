@@ -1,81 +1,261 @@
 use std::sync::atomic::Ordering;
 
-use super::bitset::{self, AtomicBitset};
+use super::bitset::{self, AtomicBitset, Bitset};
 use super::float::AtomicF64;
 use crate::params::{ParamInfo, ParamValue};
 
 pub struct ParamGestures {
     values: Vec<AtomicF64>,
-    gestures: AtomicBitset,
+    gesture_states: AtomicBitset,
     dirty: AtomicBitset,
+    values_dirty: AtomicBitset,
 }
 
 impl ParamGestures {
-    pub fn new(params: &[ParamInfo]) -> ParamGestures {
+    pub fn with_count(count: usize) -> ParamGestures {
         ParamGestures {
-            values: params.iter().map(|p| AtomicF64::new(p.default)).collect(),
-            gestures: AtomicBitset::with_len(params.len()),
-            dirty: AtomicBitset::with_len(params.len()),
+            values: (0..count).map(|_| AtomicF64::new(0.0)).collect(),
+            gesture_states: AtomicBitset::with_len(count),
+            dirty: AtomicBitset::with_len(count),
+            values_dirty: AtomicBitset::with_len(count),
         }
     }
 
     pub fn begin_gesture(&self, index: usize) {
-        self.gestures.set(index, true, Ordering::Relaxed);
+        self.gesture_states.set(index, true, Ordering::Relaxed);
         self.dirty.set(index, true, Ordering::Release);
     }
 
     pub fn end_gesture(&self, index: usize) {
-        self.gestures.set(index, false, Ordering::Relaxed);
+        self.gesture_states.set(index, false, Ordering::Relaxed);
         self.dirty.set(index, true, Ordering::Release);
     }
 
     pub fn set_value(&self, index: usize, value: ParamValue) {
         self.values[index].store(value, Ordering::Relaxed);
+        self.values_dirty.set(index, true, Ordering::Release);
         self.dirty.set(index, true, Ordering::Release);
     }
 
-    pub fn poll(&self) -> Poll {
+    pub fn poll<'a, 'b>(&'a self, states: &'b mut GestureStates) -> Poll<'a, 'b> {
         Poll {
             values: &self.values,
-            gestures: &self.gestures,
+            gesture_states: &self.gesture_states,
+            values_dirty: &self.values_dirty,
+            current_gestures: &mut states.states,
             iter: self.dirty.drain(Ordering::Acquire),
         }
     }
 }
 
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub enum GestureState {
-    Off,
-    On,
+pub struct GestureStates {
+    states: Bitset,
 }
 
-#[derive(Copy, Clone)]
+impl GestureStates {
+    pub fn with_count(count: usize) -> GestureStates {
+        GestureStates {
+            states: Bitset::with_len(count),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct GestureUpdate {
-    value: ParamValue,
-    state: GestureState,
+    pub index: usize,
+    pub begin_gesture: bool,
+    pub set_value: Option<ParamValue>,
+    pub end_gesture: bool,
 }
 
-pub struct Poll<'a> {
+pub struct Poll<'a, 'b> {
     values: &'a [AtomicF64],
-    gestures: &'a AtomicBitset,
+    gesture_states: &'a AtomicBitset,
+    values_dirty: &'a AtomicBitset,
+    current_gestures: &'b mut Bitset,
     iter: bitset::Drain<'a>,
 }
 
-impl<'a> Iterator for Poll<'a> {
-    type Item = (usize, GestureUpdate);
+impl<'a, 'b> Iterator for Poll<'a, 'b> {
+    type Item = GestureUpdate;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(index) = self.iter.next() {
-            let value = self.values[index].load(Ordering::Relaxed);
-            let state = if self.gestures.get(index, Ordering::Relaxed) {
-                GestureState::On
+            let current_state = self.current_gestures.get(index);
+            let new_state = self.gesture_states.get(index, Ordering::Relaxed);
+            self.current_gestures.set(index, new_state);
+
+            let begin_gesture = !current_state;
+
+            let set_value = if self.values_dirty.swap(index, false, Ordering::Acquire) {
+                Some(self.values[index].load(Ordering::Relaxed))
             } else {
-                GestureState::Off
+                None
             };
 
-            Some((index, GestureUpdate { value, state }))
+            let end_gesture = !new_state;
+
+            let update = GestureUpdate {
+                index,
+                begin_gesture,
+                set_value,
+                end_gesture,
+            };
+
+            Some(update)
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gesture_updates() {
+        let gestures = ParamGestures::with_count(1);
+        let mut states = GestureStates::with_count(1);
+
+        let updates = gestures.poll(&mut states).collect::<Vec<_>>();
+        assert!(updates.is_empty());
+
+        gestures.begin_gesture(0);
+
+        let updates = gestures.poll(&mut states).collect::<Vec<_>>();
+        assert_eq!(
+            updates,
+            &[GestureUpdate {
+                index: 0,
+                begin_gesture: true,
+                set_value: None,
+                end_gesture: false,
+            }]
+        );
+
+        gestures.set_value(0, 0.0);
+
+        let updates = gestures.poll(&mut states).collect::<Vec<_>>();
+        assert_eq!(
+            updates,
+            &[GestureUpdate {
+                index: 0,
+                begin_gesture: false,
+                set_value: Some(0.0),
+                end_gesture: false,
+            }]
+        );
+
+        gestures.end_gesture(0);
+
+        let updates = gestures.poll(&mut states).collect::<Vec<_>>();
+        assert_eq!(
+            updates,
+            &[GestureUpdate {
+                index: 0,
+                begin_gesture: false,
+                set_value: None,
+                end_gesture: true,
+            }]
+        );
+
+        gestures.begin_gesture(0);
+        gestures.end_gesture(0);
+
+        let updates = gestures.poll(&mut states).collect::<Vec<_>>();
+        assert_eq!(
+            updates,
+            &[GestureUpdate {
+                index: 0,
+                begin_gesture: true,
+                set_value: None,
+                end_gesture: true,
+            }]
+        );
+
+        gestures.begin_gesture(0);
+        gestures.set_value(0, 1.0);
+
+        let updates = gestures.poll(&mut states).collect::<Vec<_>>();
+        assert_eq!(
+            updates,
+            &[GestureUpdate {
+                index: 0,
+                begin_gesture: true,
+                set_value: Some(1.0),
+                end_gesture: false,
+            }]
+        );
+
+        gestures.set_value(0, 2.0);
+        gestures.end_gesture(0);
+
+        let updates = gestures.poll(&mut states).collect::<Vec<_>>();
+        assert_eq!(
+            updates,
+            &[GestureUpdate {
+                index: 0,
+                begin_gesture: false,
+                set_value: Some(2.0),
+                end_gesture: true,
+            }]
+        );
+
+        gestures.begin_gesture(0);
+        gestures.set_value(0, 3.0);
+        gestures.end_gesture(0);
+
+        let updates = gestures.poll(&mut states).collect::<Vec<_>>();
+        assert_eq!(
+            updates,
+            &[GestureUpdate {
+                index: 0,
+                begin_gesture: true,
+                set_value: Some(3.0),
+                end_gesture: true,
+            }]
+        );
+
+        gestures.begin_gesture(0);
+        gestures.set_value(0, 4.0);
+        gestures.set_value(0, 5.0);
+        gestures.set_value(0, 6.0);
+        gestures.end_gesture(0);
+
+        let updates = gestures.poll(&mut states).collect::<Vec<_>>();
+        assert_eq!(
+            updates,
+            &[GestureUpdate {
+                index: 0,
+                begin_gesture: true,
+                set_value: Some(6.0),
+                end_gesture: true,
+            }]
+        );
+
+        gestures.begin_gesture(0);
+        gestures.set_value(0, 7.0);
+        gestures.end_gesture(0);
+        gestures.begin_gesture(0);
+        gestures.set_value(0, 8.0);
+        gestures.end_gesture(0);
+        gestures.begin_gesture(0);
+        gestures.set_value(0, 9.0);
+        gestures.end_gesture(0);
+
+        let updates = gestures.poll(&mut states).collect::<Vec<_>>();
+        assert_eq!(
+            updates,
+            &[GestureUpdate {
+                index: 0,
+                begin_gesture: true,
+                set_value: Some(9.0),
+                end_gesture: true,
+            }]
+        );
+
+        let updates = gestures.poll(&mut states).collect::<Vec<_>>();
+        assert!(updates.is_empty());
     }
 }
