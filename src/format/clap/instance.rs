@@ -146,6 +146,18 @@ impl<P: Plugin> Instance<P> {
             }
         }
     }
+
+    fn sync_processor(&self, events: &mut Vec<Event>) {
+        for (index, value) in self.processor_params.poll() {
+            events.push(Event {
+                time: 0,
+                data: Data::ParamChange {
+                    id: self.info.params[index].id,
+                    value,
+                },
+            });
+        }
+    }
 }
 
 impl<P: Plugin> Instance<P> {
@@ -229,15 +241,7 @@ impl<P: Plugin> Instance<P> {
         if let Some(processor) = &mut process_state.processor {
             // Flush plugin -> processor parameter changes
             process_state.events.clear();
-            for (index, value) in instance.processor_params.poll() {
-                process_state.events.push(Event {
-                    time: 0,
-                    data: Data::ParamChange {
-                        id: instance.info.params[index].id,
-                        value,
-                    },
-                });
-            }
+            instance.sync_processor(&mut process_state.events);
 
             if !process_state.events.is_empty() {
                 process_state.buffer_ptrs.fill(NonNull::dangling().as_ptr());
@@ -326,16 +330,7 @@ impl<P: Plugin> Instance<P> {
         }
 
         process_state.events.clear();
-
-        for (index, value) in instance.processor_params.poll() {
-            process_state.events.push(Event {
-                time: 0,
-                data: Data::ParamChange {
-                    id: instance.info.params[index].id,
-                    value,
-                },
-            });
-        }
+        instance.sync_processor(&mut process_state.events);
 
         let mut params_changed = false;
 
@@ -693,16 +688,7 @@ impl<P: Plugin> Instance<P> {
             process_state.buffer_ptrs.fill(NonNull::dangling().as_ptr());
 
             process_state.events.clear();
-
-            for (index, value) in instance.processor_params.poll() {
-                process_state.events.push(Event {
-                    time: 0,
-                    data: Data::ParamChange {
-                        id: instance.info.params[index].id,
-                        value,
-                    },
-                });
-            }
+            instance.sync_processor(&mut process_state.events);
 
             let mut params_changed = false;
 
