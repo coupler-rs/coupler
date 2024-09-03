@@ -4,7 +4,7 @@ use std::ffi::{c_char, c_void, CStr};
 use std::iter::zip;
 use std::ptr::NonNull;
 use std::sync::Arc;
-use std::{io, ptr, slice};
+use std::{io, mem, ptr, slice};
 
 use clap_sys::ext::{audio_ports::*, audio_ports_config::*, gui::*, params::*, state::*};
 use clap_sys::{events::*, host::*, id::*, plugin::*, process::*, stream::*};
@@ -18,6 +18,7 @@ use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
 use crate::plugin::{Plugin, PluginInfo};
 use crate::process::{Config, Processor};
+use crate::sync::param_gestures::{GestureStates, GestureUpdate, ParamGestures};
 use crate::sync::params::ParamValues;
 use crate::util::{copy_cstring, slice_from_raw_parts_checked, DisplayParam};
 
@@ -45,12 +46,14 @@ fn map_param_out(param: &ParamInfo, value: ParamValue) -> f64 {
 }
 
 pub struct MainThreadState<P: Plugin> {
+    pub host_params: Option<*const clap_host_params>,
     pub layout_index: usize,
     pub plugin: P,
     pub editor: Option<P::Editor>,
 }
 
 pub struct ProcessState<P: Plugin> {
+    gesture_states: GestureStates,
     buffer_data: Vec<BufferData>,
     buffer_ptrs: Vec<*mut f32>,
     events: Vec<Event>,
@@ -65,11 +68,12 @@ pub struct Instance<P: Plugin> {
     pub info: Arc<PluginInfo>,
     pub input_bus_map: Vec<usize>,
     pub output_bus_map: Vec<usize>,
-    pub param_map: HashMap<ParamId, usize>,
+    pub param_map: Arc<HashMap<ParamId, usize>>,
     // Processor -> plugin parameter changes
     pub plugin_params: ParamValues,
     // Plugin -> processor parameter changes
     pub processor_params: ParamValues,
+    pub param_gestures: Arc<ParamGestures>,
     pub main_thread_state: UnsafeCell<MainThreadState<P>>,
     pub process_state: UnsafeCell<ProcessState<P>>,
 }
@@ -119,15 +123,18 @@ impl<P: Plugin> Instance<P> {
             info: info.clone(),
             input_bus_map,
             output_bus_map,
-            param_map,
+            param_map: Arc::new(param_map),
             plugin_params: ParamValues::with_count(info.params.len()),
             processor_params: ParamValues::with_count(info.params.len()),
+            param_gestures: Arc::new(ParamGestures::with_count(info.params.len())),
             main_thread_state: UnsafeCell::new(MainThreadState {
+                host_params: None,
                 layout_index: 0,
                 plugin: P::new(Host::from_inner(Arc::new(ClapHost {}))),
                 editor: None,
             }),
             process_state: UnsafeCell::new(ProcessState {
+                gesture_states: GestureStates::with_count(info.params.len()),
                 buffer_data: Vec::new(),
                 buffer_ptrs: Vec::new(),
                 events: Vec::with_capacity(4096),
@@ -197,10 +204,114 @@ impl<P: Plugin> Instance<P> {
             (*self.host).request_callback.unwrap()(self.host);
         }
     }
+
+    unsafe fn process_gestures(
+        &self,
+        gesture_states: &mut GestureStates,
+        events: &mut Vec<Event>,
+        out_events: *const clap_output_events,
+        time: u32,
+    ) {
+        for update in self.param_gestures.poll(gesture_states) {
+            let param = &self.info.params[update.index];
+
+            if let Some(value) = update.set_value {
+                events.push(Event {
+                    time: time as i64,
+                    data: Data::ParamChange {
+                        id: param.id,
+                        value,
+                    },
+                });
+
+                self.plugin_params.set(update.index, value);
+            }
+
+            self.send_gesture_events(&update, out_events, time);
+        }
+    }
+
+    unsafe fn send_gesture_events(
+        &self,
+        update: &GestureUpdate,
+        out_events: *const clap_output_events,
+        time: u32,
+    ) {
+        let param = &self.info.params[update.index];
+
+        if update.begin_gesture {
+            let event = clap_event_param_gesture {
+                header: clap_event_header {
+                    size: mem::size_of::<clap_event_param_gesture>() as u32,
+                    time,
+                    space_id: CLAP_CORE_EVENT_SPACE_ID,
+                    type_: CLAP_EVENT_PARAM_GESTURE_BEGIN,
+                    flags: CLAP_EVENT_IS_LIVE,
+                },
+                param_id: param.id,
+            };
+
+            (*out_events).try_push.unwrap()(
+                out_events,
+                &event as *const clap_event_param_gesture as *const clap_event_header,
+            );
+        }
+
+        if let Some(value) = update.set_value {
+            let event = clap_event_param_value {
+                header: clap_event_header {
+                    size: mem::size_of::<clap_event_param_value>() as u32,
+                    time,
+                    space_id: CLAP_CORE_EVENT_SPACE_ID,
+                    type_: CLAP_EVENT_PARAM_VALUE,
+                    flags: CLAP_EVENT_IS_LIVE,
+                },
+                param_id: param.id,
+                cookie: ptr::null_mut(),
+                note_id: -1,
+                port_index: -1,
+                channel: -1,
+                key: -1,
+                value: map_param_out(param, value),
+            };
+
+            (*out_events).try_push.unwrap()(
+                out_events,
+                &event as *const clap_event_param_value as *const clap_event_header,
+            );
+        }
+
+        if update.end_gesture {
+            let event = clap_event_param_gesture {
+                header: clap_event_header {
+                    size: mem::size_of::<clap_event_param_gesture>() as u32,
+                    time,
+                    space_id: CLAP_CORE_EVENT_SPACE_ID,
+                    type_: CLAP_EVENT_PARAM_GESTURE_END,
+                    flags: CLAP_EVENT_IS_LIVE,
+                },
+                param_id: param.id,
+            };
+
+            (*out_events).try_push.unwrap()(
+                out_events,
+                &event as *const clap_event_param_gesture as *const clap_event_header,
+            );
+        }
+    }
 }
 
 impl<P: Plugin> Instance<P> {
-    unsafe extern "C" fn init(_plugin: *const clap_plugin) -> bool {
+    unsafe extern "C" fn init(plugin: *const clap_plugin) -> bool {
+        let instance = &*(plugin as *const Self);
+        let main_thread_state = &mut *instance.main_thread_state.get();
+
+        let host_params =
+            (*instance.host).get_extension.unwrap()(instance.host, CLAP_EXT_PARAMS.as_ptr());
+        if !host_params.is_null() {
+            main_thread_state.host_params = Some(host_params as *const clap_host_params);
+        }
+
         true
     }
 
@@ -371,6 +482,14 @@ impl<P: Plugin> Instance<P> {
         process_state.events.clear();
         instance.sync_processor(&mut process_state.events);
         instance.process_param_events(process.in_events, &mut process_state.events);
+
+        let last_sample = process.frames_count.saturating_sub(1);
+        instance.process_gestures(
+            &mut process_state.gesture_states,
+            &mut process_state.events,
+            process.out_events,
+            last_sample,
+        );
 
         processor.process(
             Buffers::from_raw_parts(
@@ -684,7 +803,7 @@ impl<P: Plugin> Instance<P> {
     unsafe extern "C" fn params_flush(
         plugin: *const clap_plugin,
         in_: *const clap_input_events,
-        _out: *const clap_output_events,
+        out: *const clap_output_events,
     ) {
         let instance = &*(plugin as *const Self);
         let process_state = &mut *instance.process_state.get();
@@ -696,6 +815,12 @@ impl<P: Plugin> Instance<P> {
             process_state.events.clear();
             instance.sync_processor(&mut process_state.events);
             instance.process_param_events(in_, &mut process_state.events);
+            instance.process_gestures(
+                &mut process_state.gesture_states,
+                &mut process_state.events,
+                out,
+                0,
+            );
 
             processor.process(
                 Buffers::from_raw_parts(
@@ -729,6 +854,20 @@ impl<P: Plugin> Instance<P> {
                         }
                     }
                 }
+            }
+
+            for update in instance.param_gestures.poll(&mut process_state.gesture_states) {
+                let param = &instance.info.params[update.index];
+
+                if let Some(value) = update.set_value {
+                    main_thread_state.plugin.set_param(param.id, value);
+
+                    if let Some(editor) = &mut main_thread_state.editor {
+                        editor.param_changed(param.id, value);
+                    }
+                }
+
+                instance.send_gesture_events(&update, out, 0);
             }
         }
     }

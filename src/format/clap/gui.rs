@@ -1,20 +1,48 @@
+use std::collections::HashMap;
 use std::ffi::{c_char, CStr};
 use std::rc::Rc;
+use std::sync::Arc;
 
-use clap_sys::ext::gui::*;
-use clap_sys::plugin::*;
+use clap_sys::ext::{gui::*, params::*};
+use clap_sys::{host::*, plugin::*};
 
 use super::instance::Instance;
 use crate::editor::{Editor, EditorHost, EditorHostInner, ParentWindow, RawParent};
 use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
+use crate::sync::param_gestures::ParamGestures;
 
-struct ClapEditorHost {}
+struct ClapEditorHost {
+    host: *const clap_host,
+    host_params: Option<*const clap_host_params>,
+    param_map: Arc<HashMap<ParamId, usize>>,
+    param_gestures: Arc<ParamGestures>,
+}
 
 impl EditorHostInner for ClapEditorHost {
-    fn begin_gesture(&self, _id: ParamId) {}
-    fn end_gesture(&self, _id: ParamId) {}
-    fn set_param(&self, _id: ParamId, _value: ParamValue) {}
+    fn begin_gesture(&self, id: ParamId) {
+        self.param_gestures.begin_gesture(self.param_map[&id]);
+
+        if let Some(host_params) = self.host_params {
+            unsafe { (*host_params).request_flush.unwrap()(self.host) };
+        }
+    }
+
+    fn end_gesture(&self, id: ParamId) {
+        self.param_gestures.end_gesture(self.param_map[&id]);
+
+        if let Some(host_params) = self.host_params {
+            unsafe { (*host_params).request_flush.unwrap()(self.host) };
+        }
+    }
+
+    fn set_param(&self, id: ParamId, value: ParamValue) {
+        self.param_gestures.set_value(self.param_map[&id], value);
+
+        if let Some(host_params) = self.host_params {
+            unsafe { (*host_params).request_flush.unwrap()(self.host) };
+        }
+    }
 }
 
 impl<P: Plugin> Instance<P> {
@@ -161,7 +189,12 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
         let main_thread_state = &mut *instance.main_thread_state.get();
 
-        let host = EditorHost::from_inner(Rc::new(ClapEditorHost {}));
+        let host = EditorHost::from_inner(Rc::new(ClapEditorHost {
+            host: instance.host,
+            host_params: main_thread_state.host_params,
+            param_map: Arc::clone(&instance.param_map),
+            param_gestures: Arc::clone(&instance.param_gestures),
+        }));
         let parent = ParentWindow::from_raw(raw_parent);
         let editor = main_thread_state.plugin.editor(host, &parent);
         main_thread_state.editor = Some(editor);
