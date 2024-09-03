@@ -81,26 +81,32 @@ impl<'a, 'b> Iterator for Poll<'a, 'b> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(index) = self.iter.next() {
-            let current_state = self.current_gestures.get(index);
-            let new_state = self.gesture_states.get(index, Ordering::Relaxed);
-            self.current_gestures.set(index, new_state);
-
-            let begin_gesture = !current_state;
-
-            let set_value = if self.values_dirty.swap(index, false, Ordering::Acquire) {
-                Some(self.values[index].load(Ordering::Relaxed))
-            } else {
-                None
-            };
-
-            let end_gesture = !new_state;
-
-            let update = GestureUpdate {
+            let mut update = GestureUpdate {
                 index,
-                begin_gesture,
-                set_value,
-                end_gesture,
+                begin_gesture: false,
+                set_value: None,
+                end_gesture: false,
             };
+
+            let mut current_state = self.current_gestures.get(index);
+
+            if self.values_dirty.swap(index, false, Ordering::Acquire) {
+                if !current_state {
+                    update.begin_gesture = true;
+                    current_state = true;
+                }
+
+                update.set_value = Some(self.values[index].load(Ordering::Relaxed));
+            }
+
+            let next_state = self.gesture_states.get(index, Ordering::Relaxed);
+            if !current_state && next_state {
+                update.begin_gesture = true;
+            } else if current_state && !next_state {
+                update.end_gesture = true;
+            }
+
+            self.current_gestures.set(index, next_state);
 
             Some(update)
         } else {
@@ -168,9 +174,9 @@ mod tests {
             updates,
             &[GestureUpdate {
                 index: 0,
-                begin_gesture: true,
+                begin_gesture: false,
                 set_value: None,
-                end_gesture: true,
+                end_gesture: false,
             }]
         );
 
