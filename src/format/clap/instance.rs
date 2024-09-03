@@ -158,6 +158,45 @@ impl<P: Plugin> Instance<P> {
             });
         }
     }
+
+    unsafe fn process_param_events(
+        &self,
+        in_events: *const clap_input_events,
+        events: &mut Vec<Event>,
+    ) {
+        let mut params_changed = false;
+
+        let size = (*in_events).size.unwrap()(in_events);
+        for i in 0..size {
+            let event = (*in_events).get.unwrap()(in_events, i);
+
+            if (*event).space_id == CLAP_CORE_EVENT_SPACE_ID
+                && (*event).type_ == CLAP_EVENT_PARAM_VALUE
+            {
+                let event = &*(event as *const clap_event_param_value);
+
+                if let Some(&index) = self.param_map.get(&event.param_id) {
+                    let value = map_param_in(&self.info.params[index], event.value);
+
+                    events.push(Event {
+                        time: event.header.time as i64,
+                        data: Data::ParamChange {
+                            id: event.param_id,
+                            value,
+                        },
+                    });
+
+                    self.plugin_params.set(index, value);
+
+                    params_changed = true;
+                }
+            }
+        }
+
+        if params_changed {
+            (*self.host).request_callback.unwrap()(self.host);
+        }
+    }
 }
 
 impl<P: Plugin> Instance<P> {
@@ -331,40 +370,7 @@ impl<P: Plugin> Instance<P> {
 
         process_state.events.clear();
         instance.sync_processor(&mut process_state.events);
-
-        let mut params_changed = false;
-
-        let in_events = process.in_events;
-        let size = (*in_events).size.unwrap()(in_events);
-        for i in 0..size {
-            let event = (*in_events).get.unwrap()(in_events, i);
-
-            if (*event).space_id == CLAP_CORE_EVENT_SPACE_ID
-                && (*event).type_ == CLAP_EVENT_PARAM_VALUE
-            {
-                let event = &*(event as *const clap_event_param_value);
-
-                if let Some(&index) = instance.param_map.get(&event.param_id) {
-                    let value = map_param_in(&instance.info.params[index], event.value);
-
-                    process_state.events.push(Event {
-                        time: event.header.time as i64,
-                        data: Data::ParamChange {
-                            id: event.param_id,
-                            value,
-                        },
-                    });
-
-                    instance.plugin_params.set(index, value);
-
-                    params_changed = true;
-                }
-            }
-        }
-
-        if params_changed {
-            (*instance.host).request_callback.unwrap()(instance.host);
-        }
+        instance.process_param_events(process.in_events, &mut process_state.events);
 
         processor.process(
             Buffers::from_raw_parts(
@@ -689,39 +695,7 @@ impl<P: Plugin> Instance<P> {
 
             process_state.events.clear();
             instance.sync_processor(&mut process_state.events);
-
-            let mut params_changed = false;
-
-            let size = (*in_).size.unwrap()(in_);
-            for i in 0..size {
-                let event = (*in_).get.unwrap()(in_, i);
-
-                if (*event).space_id == CLAP_CORE_EVENT_SPACE_ID
-                    && (*event).type_ == CLAP_EVENT_PARAM_VALUE
-                {
-                    let event = &*(event as *const clap_event_param_value);
-
-                    if let Some(&index) = instance.param_map.get(&event.param_id) {
-                        let value = map_param_in(&instance.info.params[index], event.value);
-
-                        process_state.events.push(Event {
-                            time: event.header.time as i64,
-                            data: Data::ParamChange {
-                                id: event.param_id,
-                                value,
-                            },
-                        });
-
-                        instance.plugin_params.set(index, value);
-
-                        params_changed = true;
-                    }
-                }
-            }
-
-            if params_changed {
-                (*instance.host).request_callback.unwrap()(instance.host);
-            }
+            instance.process_param_events(in_, &mut process_state.events);
 
             processor.process(
                 Buffers::from_raw_parts(
