@@ -2,7 +2,9 @@ use std::io::{self, Read, Write};
 
 use serde::{Deserialize, Serialize};
 
-use reflector_platform::{App, AppMode, AppOptions, Response, Window, WindowOptions};
+use reflector_platform::{
+    App, AppMode, AppOptions, Bitmap, Response, Window, WindowContext, WindowOptions,
+};
 
 use coupler::format::clap::*;
 use coupler::format::vst3::*;
@@ -86,8 +88,8 @@ impl Plugin for Gain {
         }
     }
 
-    fn editor(&mut self, _host: EditorHost, parent: &ParentWindow) -> Self::Editor {
-        GainEditor::open(parent).unwrap()
+    fn editor(&mut self, host: EditorHost, parent: &ParentWindow) -> Self::Editor {
+        GainEditor::open(host, parent).unwrap()
     }
 }
 
@@ -132,13 +134,46 @@ impl Processor for GainProcessor {
     }
 }
 
+struct EditorState {
+    framebuffer: Vec<u32>,
+    _host: EditorHost,
+}
+
+impl EditorState {
+    fn new(host: EditorHost) -> EditorState {
+        EditorState {
+            framebuffer: Vec::new(),
+            _host: host,
+        }
+    }
+
+    fn handle_event(&mut self, cx: &WindowContext, event: reflector_platform::Event) -> Response {
+        use reflector_platform::Event;
+
+        match event {
+            Event::Frame => {
+                let scale = cx.window().scale();
+                let size = cx.window().size();
+                let width = (size.width * scale) as usize;
+                let height = (size.height * scale) as usize;
+                self.framebuffer.resize(width * height, 0xFF000000);
+
+                cx.window().present(Bitmap::new(&self.framebuffer, width, height));
+            }
+            _ => {}
+        }
+
+        Response::Ignore
+    }
+}
+
 pub struct GainEditor {
     _app: App,
     window: Window,
 }
 
 impl GainEditor {
-    fn open(parent: &ParentWindow) -> reflector_platform::Result<GainEditor> {
+    fn open(host: EditorHost, parent: &ParentWindow) -> reflector_platform::Result<GainEditor> {
         let app = AppOptions::new().mode(AppMode::Guest).build()?;
 
         let mut options = WindowOptions::new();
@@ -151,7 +186,8 @@ impl GainEditor {
         };
         unsafe { options.raw_parent(raw_parent) };
 
-        let window = options.open(app.handle(), move |_cx, _event| Response::Ignore)?;
+        let mut state = EditorState::new(host);
+        let window = options.open(app.handle(), move |cx, event| state.handle_event(cx, event))?;
 
         window.show();
 
