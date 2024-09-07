@@ -87,6 +87,18 @@ impl ScratchBuffers {
         self.moves.reserve(in_out_channels);
     }
 
+    /// Set up buffer pointers for the processor given a VST3 `ProcessData` struct.
+    ///
+    /// This method is responsible for detecting if any of the buffers for an input bus are aliased
+    /// by a output buffer and, if so, copying those inputs to scratch buffers. It is also
+    /// responsible for detecting if separate input and output buffers have been passed for an
+    /// in-out bus and copying those inputs to the corresponding outputs.
+    ///
+    /// This method will return `Err` if the channel counts do not match the current layout or if
+    /// the buffer's length exceeds the maximum buffer size. It will return `Ok(None)` if the
+    /// buffer's length is 0, as hosts are not guaranteed to provide the correct number of inputs
+    /// and outputs in that case, and we don't need to construct a `Buffers` object as we will be
+    /// calling `Processor::flush` instead of `Processor::process`.
     pub unsafe fn get_buffers(
         &mut self,
         buses: &[BusInfo],
@@ -94,7 +106,7 @@ impl ScratchBuffers {
         output_bus_map: &[usize],
         config: &Config,
         data: &ProcessData,
-    ) -> Result<Buffers, ()> {
+    ) -> Result<Option<Buffers>, ()> {
         let len = data.numSamples as usize;
         if len > config.max_buffer_size {
             return Err(());
@@ -103,7 +115,7 @@ impl ScratchBuffers {
         let mut scratch = &mut self.buffers[..];
 
         if len == 0 {
-            return Ok(self.get_empty_buffers());
+            return Ok(None);
         }
 
         let input_count = data.numInputs as usize;
@@ -242,11 +254,8 @@ impl ScratchBuffers {
 
         self.output_ptrs.clear();
 
-        Ok(Buffers::from_raw_parts(&self.data, &self.ptrs, 0, len))
-    }
-
-    pub fn get_empty_buffers(&mut self) -> Buffers {
-        self.ptrs.fill(NonNull::dangling().as_ptr());
-        unsafe { Buffers::from_raw_parts(&self.data, &self.ptrs, 0, 0) }
+        Ok(Some(Buffers::from_raw_parts(
+            &self.data, &self.ptrs, 0, len,
+        )))
     }
 }

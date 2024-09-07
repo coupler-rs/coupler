@@ -11,5 +11,6 @@ pub struct Config {
 
 pub trait Processor: Send + Sized + 'static {
     fn reset(&mut self);
+    fn flush(&mut self, events: Events);
     fn process(&mut self, buffers: Buffers, events: Events);
 }

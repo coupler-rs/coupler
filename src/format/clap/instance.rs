@@ -394,16 +394,7 @@ impl<P: Plugin> Instance<P> {
             instance.sync_processor(&mut process_state.events);
 
             if !process_state.events.is_empty() {
-                process_state.buffer_ptrs.fill(NonNull::dangling().as_ptr());
-                processor.process(
-                    Buffers::from_raw_parts(
-                        &process_state.buffer_data,
-                        &process_state.buffer_ptrs,
-                        0,
-                        0,
-                    ),
-                    Events::new(&process_state.events),
-                );
+                processor.flush(Events::new(&process_state.events));
             }
 
             processor.reset();
@@ -810,8 +801,6 @@ impl<P: Plugin> Instance<P> {
 
         // If we are in the active state, flush will be called on the audio thread.
         if let Some(processor) = &mut process_state.processor {
-            process_state.buffer_ptrs.fill(NonNull::dangling().as_ptr());
-
             process_state.events.clear();
             instance.sync_processor(&mut process_state.events);
             instance.process_param_events(in_, &mut process_state.events);
@@ -822,15 +811,7 @@ impl<P: Plugin> Instance<P> {
                 0,
             );
 
-            processor.process(
-                Buffers::from_raw_parts(
-                    &process_state.buffer_data,
-                    &process_state.buffer_ptrs,
-                    0,
-                    0,
-                ),
-                Events::new(&process_state.events),
-            );
+            processor.flush(Events::new(&process_state.events));
         }
         // Otherwise, flush will be called on the main thread.
         else {

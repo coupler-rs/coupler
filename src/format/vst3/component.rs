@@ -487,10 +487,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
             }
 
             if !process_state.events.is_empty() {
-                processor.process(
-                    process_state.scratch_buffers.get_empty_buffers(),
-                    Events::new(&process_state.events),
-                );
+                processor.flush(Events::new(&process_state.events));
             }
 
             processor.reset();
@@ -563,7 +560,12 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
             }
         }
 
-        processor.process(buffers, Events::new(&process_state.events));
+        let events = Events::new(&process_state.events);
+        if let Some(buffers) = buffers {
+            processor.process(buffers, events);
+        } else {
+            processor.flush(events);
+        }
 
         kResultOk
     }
