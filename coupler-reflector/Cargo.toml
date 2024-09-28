@@ -1,0 +1,11 @@
+[package]
+name = "coupler-reflector"
+version = "0.1.0"
+authors = ["Micah Johnston <micah@photophore.systems>"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+coupler = { path = ".." }
+reflector = { git = "https://github.com/coupler-rs/reflector", rev = "aac3ff9a1d692052e49b23ced82fe071a667a165" }

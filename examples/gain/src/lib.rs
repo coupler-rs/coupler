@@ -2,15 +2,13 @@ use std::io::{self, Read, Write};
 
 use serde::{Deserialize, Serialize};
 
-use reflector_platform::{
-    App, AppMode, AppOptions, Bitmap, Response, Window, WindowContext, WindowOptions,
-};
-
 use coupler::format::clap::*;
 use coupler::format::vst3::*;
 use coupler::{
     buffers::*, bus::*, editor::*, events::*, host::*, params::*, plugin::*, process::*,
 };
+
+use coupler_reflector::EditorWindow;
 
 #[derive(Params, Serialize, Deserialize, Clone)]
 struct GainParams {
@@ -30,7 +28,7 @@ pub struct Gain {
 
 impl Plugin for Gain {
     type Processor = GainProcessor;
-    type Editor = GainEditor;
+    type Editor = EditorWindow;
 
     fn info() -> PluginInfo {
         PluginInfo {
@@ -88,8 +86,13 @@ impl Plugin for Gain {
         }
     }
 
-    fn editor(&mut self, host: EditorHost, parent: &ParentWindow) -> Self::Editor {
-        GainEditor::open(host, parent).unwrap()
+    fn editor(&mut self, _host: EditorHost, parent: &ParentWindow) -> Self::Editor {
+        let size = Size {
+            width: 512.0,
+            height: 512.0,
+        };
+
+        EditorWindow::open(parent, size).unwrap()
     }
 }
 
@@ -144,78 +147,4 @@ impl Processor for GainProcessor {
             }
         }
     }
-}
-
-struct EditorState {
-    framebuffer: Vec<u32>,
-    _host: EditorHost,
-}
-
-impl EditorState {
-    fn new(host: EditorHost) -> EditorState {
-        EditorState {
-            framebuffer: Vec::new(),
-            _host: host,
-        }
-    }
-
-    fn handle_event(&mut self, cx: &WindowContext, event: reflector_platform::Event) -> Response {
-        use reflector_platform::Event;
-
-        match event {
-            Event::Frame => {
-                let scale = cx.window().scale();
-                let size = cx.window().size();
-                let width = (size.width * scale) as usize;
-                let height = (size.height * scale) as usize;
-                self.framebuffer.resize(width * height, 0xFF000000);
-
-                cx.window().present(Bitmap::new(&self.framebuffer, width, height));
-            }
-            _ => {}
-        }
-
-        Response::Ignore
-    }
-}
-
-pub struct GainEditor {
-    _app: App,
-    window: Window,
-}
-
-impl GainEditor {
-    fn open(host: EditorHost, parent: &ParentWindow) -> reflector_platform::Result<GainEditor> {
-        let app = AppOptions::new().mode(AppMode::Guest).build()?;
-
-        let mut options = WindowOptions::new();
-        options.size(reflector_platform::Size::new(512.0, 512.0));
-
-        let raw_parent = match parent.as_raw() {
-            RawParent::Win32(window) => reflector_platform::RawWindow::Win32(window),
-            RawParent::Cocoa(view) => reflector_platform::RawWindow::Cocoa(view),
-            RawParent::X11(window) => reflector_platform::RawWindow::X11(window),
-        };
-        unsafe { options.raw_parent(raw_parent) };
-
-        let mut state = EditorState::new(host);
-        let window = options.open(app.handle(), move |cx, event| state.handle_event(cx, event))?;
-
-        window.show();
-
-        Ok(GainEditor { _app: app, window })
-    }
-}
-
-impl Editor for GainEditor {
-    fn size(&self) -> Size {
-        let size = self.window.size();
-
-        Size {
-            width: size.width,
-            height: size.height,
-        }
-    }
-
-    fn param_changed(&mut self, _id: ParamId, _value: ParamValue) {}
 }
