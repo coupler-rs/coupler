@@ -51,23 +51,23 @@ impl EditorHostInner for Vst3EditorHost {
     }
 }
 
-pub struct View<P: Plugin> {
+pub struct PlugView<P: Plugin> {
     main_thread_state: Arc<UnsafeCell<MainThreadState<P>>>,
 }
 
-impl<P: Plugin> View<P> {
-    pub fn new(main_thread_state: &Arc<UnsafeCell<MainThreadState<P>>>) -> View<P> {
-        View {
+impl<P: Plugin> PlugView<P> {
+    pub fn new(main_thread_state: &Arc<UnsafeCell<MainThreadState<P>>>) -> PlugView<P> {
+        PlugView {
             main_thread_state: main_thread_state.clone(),
         }
     }
 }
 
-impl<P: Plugin> Class for View<P> {
+impl<P: Plugin> Class for PlugView<P> {
     type Interfaces = (IPlugView,);
 }
 
-impl<P: Plugin> IPlugViewTrait for View<P> {
+impl<P: Plugin> IPlugViewTrait for PlugView<P> {
     unsafe fn isPlatformTypeSupported(&self, type_: FIDString) -> tresult {
         #[cfg(target_os = "windows")]
         if CStr::from_ptr(type_) == CStr::from_ptr(kPlatformTypeHWND) {

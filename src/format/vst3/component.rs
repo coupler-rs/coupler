@@ -10,7 +10,7 @@ use vst3::{Class, ComRef, ComWrapper, Steinberg::Vst::*, Steinberg::*};
 use super::buffers::ScratchBuffers;
 use super::host::Vst3Host;
 use super::util::{copy_wstring, utf16_from_ptr};
-use super::view::{View, Vst3EditorHost};
+use super::view::{PlugView, Vst3EditorHost};
 use crate::bus::{BusDir, Format, Layout};
 use crate::editor::Editor;
 use crate::engine::{Config, Engine};
@@ -719,7 +719,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
             return ptr::null_mut();
         }
 
-        let view = ComWrapper::new(View::new(&self.main_thread_state));
+        let view = ComWrapper::new(PlugView::new(&self.main_thread_state));
         view.to_com_ptr::<IPlugView>().unwrap().into_raw()
     }
 }
