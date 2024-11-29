@@ -5,13 +5,13 @@ use reflector::platform::{
     WindowOptions,
 };
 
-struct EditorState {
+struct State {
     framebuffer: Vec<u32>,
 }
 
-impl EditorState {
-    fn new() -> EditorState {
-        EditorState {
+impl State {
+    fn new() -> State {
+        State {
             framebuffer: Vec::new(),
         }
     }
@@ -34,14 +34,14 @@ impl EditorState {
     }
 }
 
-pub struct EditorWindow {
+pub struct PluginWindow {
     #[allow(unused)]
     app: App,
     window: Window,
 }
 
-impl EditorWindow {
-    pub fn open(parent: &ParentWindow, size: Size) -> Result<EditorWindow> {
+impl PluginWindow {
+    pub fn open(parent: &ParentWindow, size: Size) -> Result<PluginWindow> {
         let app = AppOptions::new().mode(AppMode::Guest).build()?;
 
         let mut options = WindowOptions::new();
@@ -54,16 +54,16 @@ impl EditorWindow {
         };
         unsafe { options.raw_parent(raw_parent) };
 
-        let mut state = EditorState::new();
+        let mut state = State::new();
         let window = options.open(app.handle(), move |cx, event| state.handle_event(cx, event))?;
 
         window.show();
 
-        Ok(EditorWindow { app, window })
+        Ok(PluginWindow { app, window })
     }
 }
 
-impl Editor for EditorWindow {
+impl Editor for PluginWindow {
     fn size(&self) -> Size {
         let size = self.window.size();
 

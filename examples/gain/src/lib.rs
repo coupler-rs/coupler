@@ -6,7 +6,7 @@ use coupler::format::clap::*;
 use coupler::format::vst3::*;
 use coupler::{buffers::*, bus::*, editor::*, engine::*, events::*, host::*, params::*, plugin::*};
 
-use coupler_reflector::EditorWindow;
+use coupler_reflector::PluginWindow;
 
 #[derive(Params, Serialize, Deserialize, Clone)]
 struct GainParams {
@@ -26,7 +26,7 @@ pub struct Gain {
 
 impl Plugin for Gain {
     type Engine = GainEngine;
-    type Editor = EditorWindow;
+    type Editor = PluginWindow;
 
     fn info() -> PluginInfo {
         PluginInfo {
@@ -90,7 +90,7 @@ impl Plugin for Gain {
             height: 512.0,
         };
 
-        EditorWindow::open(parent, size).unwrap()
+        PluginWindow::open(parent, size).unwrap()
     }
 }
 
