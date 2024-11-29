@@ -2,9 +2,9 @@ use std::io::{self, Read, Write};
 
 use crate::bus::{BusInfo, Layout};
 use crate::editor::{Editor, EditorHost, ParentWindow};
+use crate::engine::{Config, Engine};
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
-use crate::process::{Config, Processor};
 
 pub struct PluginInfo {
     pub name: String,
@@ -36,7 +36,7 @@ impl Default for PluginInfo {
 }
 
 pub trait Plugin: Send + Sized + 'static {
-    type Processor: Processor;
+    type Engine: Engine;
     type Editor: Editor;
 
     fn info() -> PluginInfo;
@@ -45,7 +45,7 @@ pub trait Plugin: Send + Sized + 'static {
     fn get_param(&self, id: ParamId) -> ParamValue;
     fn save(&self, output: &mut impl Write) -> io::Result<()>;
     fn load(&mut self, input: &mut impl Read) -> io::Result<()>;
-    fn processor(&mut self, config: Config) -> Self::Processor;
+    fn engine(&mut self, config: Config) -> Self::Engine;
     fn editor(&mut self, host: EditorHost, parent: &ParentWindow) -> Self::Editor;
 
     #[allow(unused_variables)]

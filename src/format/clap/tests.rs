@@ -8,10 +8,10 @@ use crate::events::Events;
 use clap_sys::plugin_factory::{clap_plugin_factory, CLAP_PLUGIN_FACTORY_ID};
 use clap_sys::version::CLAP_VERSION;
 
+use crate::engine::{Config, Engine};
 use crate::host::Host;
 use crate::params::{ParamId, ParamValue};
 use crate::plugin::{Plugin, PluginInfo};
-use crate::process::{Config, Processor};
 
 use super::{ClapInfo, ClapPlugin, Factory};
 
@@ -25,7 +25,7 @@ const ID: &str = "com.example.plugin";
 struct TestPlugin;
 
 impl Plugin for TestPlugin {
-    type Processor = TestProcessor;
+    type Engine = TestEngine;
     type Editor = TestEditor;
 
     fn info() -> PluginInfo {
@@ -54,8 +54,8 @@ impl Plugin for TestPlugin {
     fn load(&mut self, _input: &mut impl Read) -> io::Result<()> {
         Ok(())
     }
-    fn processor(&mut self, _config: Config) -> Self::Processor {
-        TestProcessor
+    fn engine(&mut self, _config: Config) -> Self::Engine {
+        TestEngine
     }
     fn editor(&mut self, _host: EditorHost, _parent: &ParentWindow) -> Self::Editor {
         TestEditor
@@ -73,9 +73,9 @@ impl ClapPlugin for TestPlugin {
     }
 }
 
-struct TestProcessor;
+struct TestEngine;
 
-impl Processor for TestProcessor {
+impl Engine for TestEngine {
     fn reset(&mut self) {}
     fn flush(&mut self, _events: Events) {}
     fn process(&mut self, _buffers: Buffers, _events: Events) {}

@@ -4,9 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use coupler::format::clap::*;
 use coupler::format::vst3::*;
-use coupler::{
-    buffers::*, bus::*, editor::*, events::*, host::*, params::*, plugin::*, process::*,
-};
+use coupler::{buffers::*, bus::*, editor::*, engine::*, events::*, host::*, params::*, plugin::*};
 
 use coupler_reflector::EditorWindow;
 
@@ -27,7 +25,7 @@ pub struct Gain {
 }
 
 impl Plugin for Gain {
-    type Processor = GainProcessor;
+    type Engine = GainEngine;
     type Editor = EditorWindow;
 
     fn info() -> PluginInfo {
@@ -80,8 +78,8 @@ impl Plugin for Gain {
         Ok(())
     }
 
-    fn processor(&mut self, _config: Config) -> Self::Processor {
-        GainProcessor {
+    fn engine(&mut self, _config: Config) -> Self::Engine {
+        GainEngine {
             params: self.params.clone(),
         }
     }
@@ -112,11 +110,11 @@ impl ClapPlugin for Gain {
     }
 }
 
-pub struct GainProcessor {
+pub struct GainEngine {
     params: GainParams,
 }
 
-impl GainProcessor {
+impl GainEngine {
     fn handle_event(&mut self, event: &Event) {
         if let Data::ParamChange { id, value } = event.data {
             self.params.set_param(id, value);
@@ -124,7 +122,7 @@ impl GainProcessor {
     }
 }
 
-impl Processor for GainProcessor {
+impl Engine for GainEngine {
     fn reset(&mut self) {}
 
     fn flush(&mut self, events: Events) {
