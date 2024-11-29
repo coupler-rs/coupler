@@ -12,7 +12,6 @@ use clap_sys::{events::*, host::*, id::*, plugin::*, process::*, stream::*};
 use super::host::ClapHost;
 use crate::buffers::{BufferData, BufferType, Buffers};
 use crate::bus::{BusDir, Format};
-use crate::editor::Editor;
 use crate::engine::{Config, Engine};
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
@@ -21,6 +20,7 @@ use crate::plugin::{Plugin, PluginInfo};
 use crate::sync::param_gestures::{GestureStates, GestureUpdate, ParamGestures};
 use crate::sync::params::ParamValues;
 use crate::util::{copy_cstring, slice_from_raw_parts_checked, DisplayParam};
+use crate::view::View;
 
 fn port_type_from_format(format: &Format) -> &'static CStr {
     match format {
@@ -49,7 +49,7 @@ pub struct MainThreadState<P: Plugin> {
     pub host_params: Option<*const clap_host_params>,
     pub layout_index: usize,
     pub plugin: P,
-    pub editor: Option<P::Editor>,
+    pub view: Option<P::View>,
 }
 
 pub struct ProcessState<P: Plugin> {
@@ -131,7 +131,7 @@ impl<P: Plugin> Instance<P> {
                 host_params: None,
                 layout_index: 0,
                 plugin: P::new(Host::from_inner(Arc::new(ClapHost {}))),
-                editor: None,
+                view: None,
             }),
             process_state: UnsafeCell::new(ProcessState {
                 gesture_states: GestureStates::with_count(info.params.len()),
@@ -148,8 +148,8 @@ impl<P: Plugin> Instance<P> {
             let id = self.info.params[index].id;
             main_thread_state.plugin.set_param(id, value);
 
-            if let Some(editor) = &mut main_thread_state.editor {
-                editor.param_changed(id, value);
+            if let Some(view) = &mut main_thread_state.view {
+                view.param_changed(id, value);
             }
         }
     }
@@ -519,7 +519,7 @@ impl<P: Plugin> Instance<P> {
 
         if id == CLAP_EXT_GUI {
             let instance = &*(plugin as *const Self);
-            if instance.info.has_editor {
+            if instance.info.has_view {
                 return &Self::GUI as *const _ as *const c_void;
             }
         }
@@ -830,8 +830,8 @@ impl<P: Plugin> Instance<P> {
                         let value = map_param_in(&instance.info.params[index], event.value);
                         main_thread_state.plugin.set_param(event.param_id, value);
 
-                        if let Some(editor) = &mut main_thread_state.editor {
-                            editor.param_changed(event.param_id, value);
+                        if let Some(view) = &mut main_thread_state.view {
+                            view.param_changed(event.param_id, value);
                         }
                     }
                 }
@@ -843,8 +843,8 @@ impl<P: Plugin> Instance<P> {
                 if let Some(value) = update.set_value {
                     main_thread_state.plugin.set_param(param.id, value);
 
-                    if let Some(editor) = &mut main_thread_state.editor {
-                        editor.param_changed(param.id, value);
+                    if let Some(view) = &mut main_thread_state.view {
+                        view.param_changed(param.id, value);
                     }
                 }
 
@@ -935,8 +935,8 @@ impl<P: Plugin> Instance<P> {
                 let value = main_thread_state.plugin.get_param(param.id);
                 instance.engine_params.set(index, value);
 
-                if let Some(editor) = &mut main_thread_state.editor {
-                    editor.param_changed(param.id, value);
+                if let Some(view) = &mut main_thread_state.view {
+                    view.param_changed(param.id, value);
                 }
             }
 

@@ -1,10 +1,10 @@
 use std::io::{self, Read, Write};
 
 use crate::bus::{BusInfo, Layout};
-use crate::editor::{Editor, EditorHost, ParentWindow};
 use crate::engine::{Config, Engine};
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
+use crate::view::{ParentWindow, View, ViewHost};
 
 pub struct PluginInfo {
     pub name: String,
@@ -15,7 +15,7 @@ pub struct PluginInfo {
     pub buses: Vec<BusInfo>,
     pub layouts: Vec<Layout>,
     pub params: Vec<ParamInfo>,
-    pub has_editor: bool,
+    pub has_view: bool,
 }
 
 #[allow(clippy::derivable_impls)]
@@ -30,14 +30,14 @@ impl Default for PluginInfo {
             buses: Vec::new(),
             layouts: Vec::new(),
             params: Vec::new(),
-            has_editor: false,
+            has_view: false,
         }
     }
 }
 
 pub trait Plugin: Send + Sized + 'static {
     type Engine: Engine;
-    type Editor: Editor;
+    type View: View;
 
     fn info() -> PluginInfo;
     fn new(host: Host) -> Self;
@@ -46,7 +46,7 @@ pub trait Plugin: Send + Sized + 'static {
     fn save(&self, output: &mut impl Write) -> io::Result<()>;
     fn load(&mut self, input: &mut impl Read) -> io::Result<()>;
     fn engine(&mut self, config: Config) -> Self::Engine;
-    fn editor(&mut self, host: EditorHost, parent: &ParentWindow) -> Self::Editor;
+    fn view(&mut self, host: ViewHost, parent: &ParentWindow) -> Self::View;
 
     #[allow(unused_variables)]
     fn latency(&self, config: &Config) -> u64 {

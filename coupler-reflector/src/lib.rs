@@ -1,5 +1,5 @@
-use coupler::editor::{Editor, ParentWindow, RawParent, Size};
 use coupler::params::{ParamId, ParamValue};
+use coupler::view::{ParentWindow, RawParent, Size, View};
 use reflector::platform::{
     App, AppMode, AppOptions, Bitmap, Event, RawWindow, Response, Result, Window, WindowContext,
     WindowOptions,
@@ -63,7 +63,7 @@ impl PluginWindow {
     }
 }
 
-impl Editor for PluginWindow {
+impl View for PluginWindow {
     fn size(&self) -> Size {
         let size = self.window.size();
 

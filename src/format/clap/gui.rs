@@ -7,19 +7,19 @@ use clap_sys::ext::{gui::*, params::*};
 use clap_sys::{host::*, plugin::*};
 
 use super::instance::Instance;
-use crate::editor::{Editor, EditorHost, EditorHostInner, ParentWindow, RawParent};
 use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
 use crate::sync::param_gestures::ParamGestures;
+use crate::view::{ParentWindow, RawParent, View, ViewHost, ViewHostInner};
 
-struct ClapEditorHost {
+struct ClapViewHost {
     host: *const clap_host,
     host_params: Option<*const clap_host_params>,
     param_map: Arc<HashMap<ParamId, usize>>,
     param_gestures: Arc<ParamGestures>,
 }
 
-impl EditorHostInner for ClapEditorHost {
+impl ViewHostInner for ClapViewHost {
     fn begin_gesture(&self, id: ParamId) {
         self.param_gestures.begin_gesture(self.param_map[&id]);
 
@@ -113,7 +113,7 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
         let main_thread_state = &mut *instance.main_thread_state.get();
 
-        main_thread_state.editor = None;
+        main_thread_state.view = None;
     }
 
     unsafe extern "C" fn gui_set_scale(_plugin: *const clap_plugin, _scale: f64) -> bool {
@@ -128,8 +128,8 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
         let main_thread_state = &mut *instance.main_thread_state.get();
 
-        if let Some(editor) = &main_thread_state.editor {
-            let size = editor.size();
+        if let Some(view) = &main_thread_state.view {
+            let size = view.size();
 
             *width = size.width.round() as u32;
             *height = size.height.round() as u32;
@@ -189,15 +189,15 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
         let main_thread_state = &mut *instance.main_thread_state.get();
 
-        let host = EditorHost::from_inner(Rc::new(ClapEditorHost {
+        let host = ViewHost::from_inner(Rc::new(ClapViewHost {
             host: instance.host,
             host_params: main_thread_state.host_params,
             param_map: Arc::clone(&instance.param_map),
             param_gestures: Arc::clone(&instance.param_gestures),
         }));
         let parent = ParentWindow::from_raw(raw_parent);
-        let editor = main_thread_state.plugin.editor(host, &parent);
-        main_thread_state.editor = Some(editor);
+        let view = main_thread_state.plugin.view(host, &parent);
+        main_thread_state.view = Some(view);
 
         true
     }

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use coupler::format::clap::*;
 use coupler::format::vst3::*;
-use coupler::{buffers::*, bus::*, editor::*, engine::*, events::*, host::*, params::*, plugin::*};
+use coupler::{buffers::*, bus::*, engine::*, events::*, host::*, params::*, plugin::*, view::*};
 
 use coupler_reflector::PluginWindow;
 
@@ -26,7 +26,7 @@ pub struct Gain {
 
 impl Plugin for Gain {
     type Engine = GainEngine;
-    type Editor = PluginWindow;
+    type View = PluginWindow;
 
     fn info() -> PluginInfo {
         PluginInfo {
@@ -48,7 +48,7 @@ impl Plugin for Gain {
                 },
             ],
             params: GainParams::params(),
-            has_editor: true,
+            has_view: true,
         }
     }
 
@@ -84,7 +84,7 @@ impl Plugin for Gain {
         }
     }
 
-    fn editor(&mut self, _host: EditorHost, parent: &ParentWindow) -> Self::Editor {
+    fn view(&mut self, _host: ViewHost, parent: &ParentWindow) -> Self::View {
         let size = Size {
             width: 512.0,
             height: 512.0,

@@ -4,12 +4,12 @@ use std::io::{self, Read, Write};
 use std::{ptr, slice};
 
 use crate::buffers::Buffers;
-use crate::editor::{Editor, EditorHost, ParentWindow, Size};
 use crate::engine::{Config, Engine};
 use crate::events::Events;
 use crate::host::Host;
 use crate::params::{ParamId, ParamValue};
 use crate::plugin::{Plugin, PluginInfo};
+use crate::view::{ParentWindow, Size, View, ViewHost};
 
 use vst3::Steinberg::Vst::{IComponent, SDKVersionString};
 use vst3::Steinberg::{char16, char8, int32};
@@ -33,7 +33,7 @@ struct TestPlugin;
 
 impl Plugin for TestPlugin {
     type Engine = TestEngine;
-    type Editor = TestEditor;
+    type View = TestView;
 
     fn info() -> PluginInfo {
         PluginInfo {
@@ -45,7 +45,7 @@ impl Plugin for TestPlugin {
             buses: Vec::new(),
             layouts: vec![],
             params: Vec::new(),
-            has_editor: false,
+            has_view: false,
         }
     }
     fn new(_host: Host) -> Self {
@@ -64,8 +64,8 @@ impl Plugin for TestPlugin {
     fn engine(&mut self, _config: Config) -> Self::Engine {
         TestEngine
     }
-    fn editor(&mut self, _host: EditorHost, _parent: &ParentWindow) -> Self::Editor {
-        TestEditor
+    fn view(&mut self, _host: ViewHost, _parent: &ParentWindow) -> Self::View {
+        TestView
     }
 
     #[allow(unused_variables)]
@@ -90,9 +90,9 @@ impl Engine for TestEngine {
     fn process(&mut self, _buffers: Buffers, _events: Events) {}
 }
 
-struct TestEditor;
+struct TestView;
 
-impl Editor for TestEditor {
+impl View for TestView {
     fn size(&self) -> Size {
         Size {
             width: 0.0,
