@@ -39,7 +39,6 @@ fn speaker_arrangement_to_format(speaker_arrangement: SpeakerArrangement) -> Opt
 pub struct MainThreadState<P: Plugin> {
     pub config: Config,
     pub plugin: P,
-    pub view_params: Vec<f64>,
     pub view_host: Rc<Vst3ViewHost>,
     pub view: Option<P::View>,
 }
@@ -95,8 +94,6 @@ impl<P: Plugin> Component<P> {
             max_buffer_size: 0,
         };
 
-        let view_params = info.params.iter().map(|p| p.default).collect();
-
         let scratch_buffers = ScratchBuffers::new(input_bus_map.len(), output_bus_map.len());
 
         let host = Arc::new(Vst3Host::new());
@@ -113,7 +110,6 @@ impl<P: Plugin> Component<P> {
             main_thread_state: Arc::new(UnsafeCell::new(MainThreadState {
                 config: config.clone(),
                 plugin: P::new(Host::from_inner(host)),
-                view_params,
                 view_host: Rc::new(Vst3ViewHost::new()),
                 view: None,
             })),
@@ -314,7 +310,6 @@ impl<P: Plugin> IComponentTrait for Component<P> {
                 for (index, param) in self.info.params.iter().enumerate() {
                     let value = main_thread_state.plugin.get_param(param.id);
                     self.engine_params.set(index, value);
-                    main_thread_state.view_params[index] = value;
 
                     if let Some(view) = &mut main_thread_state.view {
                         view.param_changed(param.id, value);
@@ -674,8 +669,8 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     unsafe fn getParamNormalized(&self, id: ParamID) -> ParamValue {
         let main_thread_state = &*self.main_thread_state.get();
 
-        if let Some(&index) = self.param_map.get(&id) {
-            return main_thread_state.view_params[index];
+        if self.param_map.contains_key(&id) {
+            return main_thread_state.plugin.get_param(id);
         }
 
         0.0
@@ -684,8 +679,8 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     unsafe fn setParamNormalized(&self, id: ParamID, value: ParamValue) -> tresult {
         let main_thread_state = &mut *self.main_thread_state.get();
 
-        if let Some(&index) = self.param_map.get(&id) {
-            main_thread_state.view_params[index] = value;
+        if self.param_map.contains_key(&id) {
+            main_thread_state.plugin.set_param(id, value);
 
             if let Some(view) = &mut main_thread_state.view {
                 view.param_changed(id, value);
