@@ -3,13 +3,13 @@ use std::slice;
 
 use crate::params::{ParamId, ParamValue};
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Event {
     pub time: i64,
     pub data: Data,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 #[non_exhaustive]
 pub enum Data {
     ParamChange { id: ParamId, value: ParamValue },
