@@ -18,7 +18,6 @@ derive = ["coupler-derive"]
 members = [
     "cargo-coupler",
     "coupler-derive",
-    "coupler-reflector",
     "examples/*",
     "examples/*/format/*",
 ]
