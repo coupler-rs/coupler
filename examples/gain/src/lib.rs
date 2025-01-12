@@ -10,8 +10,9 @@ use coupler::params::{ParamId, ParamValue};
 use coupler::view::{ParentWindow, RawParent, Size, View};
 use coupler::{buffers::*, bus::*, engine::*, events::*, host::*, params::*, plugin::*, view::*};
 
-use reflector::graphics::Renderer;
-use reflector::platform::{
+use flicker::Renderer;
+
+use portlight::{
     App, AppMode, AppOptions, Bitmap, Cursor, MouseButton, Point, RawWindow, Response, Result,
     Window, WindowContext, WindowOptions,
 };
@@ -185,9 +186,9 @@ impl ViewState {
         }
     }
 
-    fn handle_event(&mut self, cx: &WindowContext, event: reflector::platform::Event) -> Response {
-        use reflector::graphics::{Affine, Color, Path, Point};
-        use reflector::platform::Event;
+    fn handle_event(&mut self, cx: &WindowContext, event: portlight::Event) -> Response {
+        use flicker::{Affine, Color, Path, Point};
+        use portlight::Event;
 
         match event {
             Event::Frame => {
@@ -197,9 +198,9 @@ impl ViewState {
                 let height = (size.height * scale) as usize;
                 self.framebuffer.resize(width * height, 0xFF000000);
 
-                let mut canvas = self.renderer.canvas(&mut self.framebuffer, width, height);
+                let mut target = self.renderer.attach(&mut self.framebuffer, width, height);
 
-                canvas.clear(Color::rgba(21, 26, 31, 255));
+                target.clear(Color::rgba(21, 26, 31, 255));
 
                 let transform = Affine::scale(scale as f32);
 
@@ -215,7 +216,7 @@ impl ViewState {
                 path.line_to(center + (radius - 4.0) * Point::new(angle2.cos(), angle2.sin()));
                 path.arc(radius - 4.0, angle2, angle1);
                 path.close();
-                canvas.fill_path(&path, transform, Color::rgba(240, 240, 245, 255));
+                target.fill_path(&path, transform, Color::rgba(240, 240, 245, 255));
 
                 let center = Point::new(128.0, 128.0);
                 let radius = 32.0;
@@ -227,7 +228,7 @@ impl ViewState {
                 path.line_to(center + (radius - 4.0) * Point::new(-angle.cos(), angle.sin()));
                 path.arc(radius - 4.0, angle + span, angle);
                 path.close();
-                canvas.stroke_path(&path, 1.0, transform, Color::rgba(240, 240, 245, 255));
+                target.stroke_path(&path, 1.0, transform, Color::rgba(240, 240, 245, 255));
 
                 cx.window().present(Bitmap::new(&self.framebuffer, width, height));
             }
@@ -288,7 +289,7 @@ impl GainView {
         let app = AppOptions::new().mode(AppMode::Guest).build()?;
 
         let mut options = WindowOptions::new();
-        options.size(reflector::platform::Size::new(256.0, 256.0));
+        options.size(portlight::Size::new(256.0, 256.0));
 
         let raw_parent = match parent.as_raw() {
             RawParent::Win32(window) => RawWindow::Win32(window),

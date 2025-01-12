@@ -10,6 +10,7 @@ formats = ["clap", "vst3"]
 
 [dependencies]
 coupler = { workspace = true, features = ["derive"] }
-reflector = { git = "https://github.com/coupler-rs/reflector", rev = "eb40c59a71470077b4f58a26685796d1609ea8ed" }
+portlight = { git = "https://github.com/coupler-rs/portlight", rev = "fff171e9f3f70a9604102e1e1877ad67d0c2badd" }
+flicker = { git = "https://github.com/coupler-rs/flicker", rev = "80aca05cb6c7406f8c2a4ba66d85849dc344afaa" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
