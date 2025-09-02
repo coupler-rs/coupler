@@ -753,11 +753,19 @@ impl<P: Plugin> Instance<P> {
         size: u32,
     ) -> bool {
         let instance = &*(plugin as *const Self);
+        let main_thread_state = &mut *instance.main_thread_state.get();
 
         if let Some(&index) = instance.param_map.get(&param_id) {
             let param = &instance.info.params[index];
 
-            let text = format!("{}", DisplayParam(param, map_param_in(param, value)));
+            let text = format!(
+                "{}",
+                DisplayParam::new(
+                    &main_thread_state.plugin,
+                    param_id,
+                    map_param_in(param, value)
+                )
+            );
 
             let dst = slice::from_raw_parts_mut(display, size as usize);
             copy_cstring(&text, dst);
@@ -775,11 +783,12 @@ impl<P: Plugin> Instance<P> {
         value: *mut f64,
     ) -> bool {
         let instance = &*(plugin as *const Self);
+        let main_thread_state = &mut *instance.main_thread_state.get();
 
         if let Some(&index) = instance.param_map.get(&param_id) {
             if let Ok(text) = CStr::from_ptr(display).to_str() {
                 let param = &instance.info.params[index];
-                if let Some(out) = (param.parse)(text) {
+                if let Some(out) = main_thread_state.plugin.parse_param(param_id, text) {
                     *value = map_param_out(param, out);
                     return true;
                 }

@@ -276,6 +276,8 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
         }
     });
 
+    // parse_cases and display_cases
+
     Ok(quote! {
         impl #impl_generics ::coupler::params::Params for #ident #ty_generics #where_clause {
             fn params() -> ::std::vec::Vec<::coupler::params::ParamInfo> {

@@ -622,10 +622,13 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         valueNormalized: ParamValue,
         string: *mut String128,
     ) -> tresult {
-        if let Some(&index) = self.param_map.get(&id) {
-            let param = &self.info.params[index];
+        let main_thread_state = &*self.main_thread_state.get();
 
-            let display = format!("{}", DisplayParam(param, valueNormalized));
+        if self.param_map.contains_key(&id) {
+            let display = format!(
+                "{}",
+                DisplayParam::new(&main_thread_state.plugin, id, valueNormalized)
+            );
             copy_wstring(&display, &mut *string);
 
             return kResultOk;
@@ -640,11 +643,11 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         string: *mut TChar,
         valueNormalized: *mut ParamValue,
     ) -> tresult {
-        if let Some(&index) = self.param_map.get(&id) {
-            let param = &self.info.params[index];
+        let main_thread_state = &*self.main_thread_state.get();
 
+        if self.param_map.contains_key(&id) {
             if let Ok(display) = String::from_utf16(utf16_from_ptr(string)) {
-                if let Some(value) = (param.parse)(&display) {
+                if let Some(value) = main_thread_state.plugin.parse_param(id, &display) {
                     *valueNormalized = value;
                     return kResultOk;
                 }
