@@ -1,4 +1,5 @@
 use std::ffi::{c_char, CStr};
+use std::fmt::{self, Formatter};
 use std::io::{self, Read, Write};
 
 use crate::buffers::Buffers;
@@ -47,6 +48,17 @@ impl Plugin for TestPlugin {
     fn set_param(&mut self, _id: ParamId, _value: ParamValue) {}
     fn get_param(&self, _id: ParamId) -> ParamValue {
         0.0
+    }
+    fn parse_param(&self, _id: ParamId, _text: &str) -> Option<ParamValue> {
+        None
+    }
+    fn display_param(
+        &self,
+        _id: ParamId,
+        _value: ParamValue,
+        _fmt: &mut Formatter,
+    ) -> Result<(), fmt::Error> {
+        Ok(())
     }
     fn save(&self, _output: &mut impl Write) -> io::Result<()> {
         Ok(())
