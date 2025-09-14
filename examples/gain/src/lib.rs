@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::fmt::{self, Formatter};
 use std::io::{self, Read, Write};
 use std::rc::Rc;
 
@@ -13,8 +14,8 @@ use coupler::{buffers::*, bus::*, engine::*, events::*, host::*, params::*, plug
 use flicker::Renderer;
 
 use portlight::{
-    App, AppMode, AppOptions, Bitmap, Cursor, MouseButton, Point, RawWindow, Response, Result,
-    Window, WindowContext, WindowOptions,
+    App, AppMode, AppOptions, Bitmap, Cursor, MouseButton, Point, RawWindow, Response, Window,
+    WindowContext, WindowOptions,
 };
 
 #[derive(Params, Serialize, Deserialize, Clone)]
@@ -73,6 +74,19 @@ impl Plugin for Gain {
 
     fn get_param(&self, id: ParamId) -> ParamValue {
         self.params.get_param(id)
+    }
+
+    fn parse_param(&self, id: ParamId, text: &str) -> Option<ParamValue> {
+        self.params.parse_param(id, text)
+    }
+
+    fn display_param(
+        &self,
+        id: ParamId,
+        value: ParamValue,
+        fmt: &mut Formatter,
+    ) -> Result<(), fmt::Error> {
+        self.params.display_param(id, value, fmt)
     }
 
     fn save(&self, output: &mut impl Write) -> io::Result<()> {
@@ -285,7 +299,11 @@ pub struct GainView {
 }
 
 impl GainView {
-    fn open(host: ViewHost, parent: &ParentWindow, params: &GainParams) -> Result<GainView> {
+    fn open(
+        host: ViewHost,
+        parent: &ParentWindow,
+        params: &GainParams,
+    ) -> portlight::Result<GainView> {
         let app = AppOptions::new().mode(AppMode::Guest).build()?;
 
         let mut options = WindowOptions::new();

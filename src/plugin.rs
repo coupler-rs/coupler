@@ -1,3 +1,4 @@
+use std::fmt::{self, Formatter};
 use std::io::{self, Read, Write};
 
 use crate::bus::{BusInfo, Layout};
@@ -43,6 +44,13 @@ pub trait Plugin: Send + Sized + 'static {
     fn new(host: Host) -> Self;
     fn set_param(&mut self, id: ParamId, value: ParamValue);
     fn get_param(&self, id: ParamId) -> ParamValue;
+    fn parse_param(&self, id: ParamId, text: &str) -> Option<ParamValue>;
+    fn display_param(
+        &self,
+        id: ParamId,
+        value: ParamValue,
+        fmt: &mut Formatter,
+    ) -> Result<(), fmt::Error>;
     fn save(&self, output: &mut impl Write) -> io::Result<()>;
     fn load(&mut self, input: &mut impl Read) -> io::Result<()>;
     fn engine(&mut self, config: Config) -> Self::Engine;

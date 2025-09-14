@@ -212,40 +212,12 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
             quote! { <#ty as ::coupler::params::Encode>::steps() }
         };
 
-        let encode = gen_encode(field.field, &field.param, quote! { __value });
-        let parse = if let Some(parse) = &field.param.parse {
-            quote! {
-                match (#parse)(__str) {
-                    ::std::option::Option::Some(__value) => ::std::option::Option::Some(#encode),
-                    _ => ::std::option::Option::None,
-                }
-            }
-        } else {
-            quote! {
-                match <#ty as ::std::str::FromStr>::from_str(__str) {
-                    ::std::result::Result::Ok(__value) => ::std::option::Option::Some(#encode),
-                    _ => ::std::option::Option::None,
-                }
-            }
-        };
-
-        let decode = gen_decode(field.field, &field.param, quote! { __value });
-        let display = if let Some(display) = &field.param.display {
-            quote! { (#display)(#decode, __formatter) }
-        } else if let Some(format) = &field.param.format {
-            quote! { write!(__formatter, #format, #decode) }
-        } else {
-            quote! { write!(__formatter, "{}", #decode) }
-        };
-
         quote! {
             ::coupler::params::ParamInfo {
                 id: #id,
                 name: ::std::string::ToString::to_string(#name),
                 default: #default,
                 steps: #steps,
-                parse: ::std::boxed::Box::new(|__str| #parse),
-                display: ::std::boxed::Box::new(|__value, __formatter| #display),
             }
         }
     });
@@ -276,6 +248,53 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
         }
     });
 
+    let parse_cases = fields.iter().map(|field| {
+        let ty = &field.field.ty;
+        let id = &field.param.id;
+
+        let encode = gen_encode(field.field, &field.param, quote! { __value });
+        let parse = if let Some(parse) = &field.param.parse {
+            quote! {
+                match (#parse)(__text) {
+                    ::std::option::Option::Some(__value) => ::std::option::Option::Some(#encode),
+                    _ => ::std::option::Option::None,
+                }
+            }
+        } else {
+            quote! {
+                match <#ty as ::std::str::FromStr>::from_str(__text) {
+                    ::std::result::Result::Ok(__value) => ::std::option::Option::Some(#encode),
+                    _ => ::std::option::Option::None,
+                }
+            }
+        };
+
+        quote! {
+            #id => {
+                #parse
+            }
+        }
+    });
+
+    let display_cases = fields.iter().map(|field| {
+        let id = &field.param.id;
+
+        let decode = gen_decode(field.field, &field.param, quote! { __value });
+        let display = if let Some(display) = &field.param.display {
+            quote! { (#display)(#decode, __fmt) }
+        } else if let Some(format) = &field.param.format {
+            quote! { write!(__fmt, #format, #decode) }
+        } else {
+            quote! { write!(__fmt, "{}", #decode) }
+        };
+
+        quote! {
+            #id => {
+                #display
+            }
+        }
+    });
+
     Ok(quote! {
         impl #impl_generics ::coupler::params::Params for #ident #ty_generics #where_clause {
             fn params() -> ::std::vec::Vec<::coupler::params::ParamInfo> {
@@ -297,6 +316,25 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
                 match __id {
                     #(#get_cases)*
                     _ => 0.0,
+                }
+            }
+
+            fn parse_param(&self, __id: ::coupler::params::ParamId, __text: &::std::primitive::str) -> ::std::option::Option<::coupler::params::ParamValue> {
+                match __id {
+                    #(#parse_cases)*
+                    _ => ::std::option::Option::None
+                }
+            }
+
+            fn display_param(
+                &self,
+                __id: ::coupler::params::ParamId,
+                __value: ::coupler::params::ParamValue,
+                __fmt: &mut ::std::fmt::Formatter,
+            ) -> ::std::result::Result<(), ::std::fmt::Error> {
+                match __id {
+                    #(#display_cases)*
+                    _ => Ok(())
                 }
             }
         }
