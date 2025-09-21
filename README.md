@@ -17,7 +17,7 @@ First, see the usage instructions for the [`vst3` crate](https://github.com/coup
 To build the `gain` example, run:
 
 ```console
-cargo run -p cargo-coupler -- coupler bundle -p gain --release
+cargo run -p cargo-coupler -- coupler bundle -p gain-vst3 gain-clap --release
 ```
 
 VST3 and CLAP plugin bundles will be placed in the `target/release/bundle` directory.

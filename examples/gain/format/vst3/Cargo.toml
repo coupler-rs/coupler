@@ -5,6 +5,10 @@ authors = ["Micah Johnston <micah@photophore.systems>"]
 edition = "2021"
 publish = false
 
+[package.metadata.coupler]
+name = "gain"
+formats = ["vst3"]
+
 [lib]
 crate-type = ["cdylib"]
 

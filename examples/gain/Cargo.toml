@@ -5,9 +5,6 @@ authors = ["Micah Johnston <micah@photophore.systems>"]
 edition = "2021"
 publish = false
 
-[package.metadata.coupler]
-formats = ["clap", "vst3"]
-
 [dependencies]
 coupler = { workspace = true, features = ["derive"] }
 portlight = { git = "https://github.com/coupler-rs/portlight", rev = "fff171e9f3f70a9604102e1e1877ad67d0c2badd" }

@@ -187,7 +187,7 @@ struct PackageInfo {
     package_name: String,
     lib_name: String,
     name: String,
-    format: Format,
+    formats: Vec<Format>,
 }
 
 fn main() {
@@ -383,10 +383,10 @@ fn bundle(cmd: &Bundle) {
         }
     }
 
-    let mut formats = Vec::new();
+    let mut formats_to_build = Vec::new();
     for format_str in &cmd.format {
         if let Ok(format) = Format::from_str(format_str) {
-            formats.push(format);
+            formats_to_build.push(format);
         } else {
             eprintln!("error: invalid format `{}`", format_str);
             process::exit(1);
@@ -420,6 +420,7 @@ fn bundle(cmd: &Bundle) {
                 continue;
             }
 
+            let mut formats = Vec::new();
             for format_str in &coupler_metadata.formats {
                 let format = if let Ok(format) = Format::from_str(format_str) {
                     format
@@ -431,47 +432,34 @@ fn bundle(cmd: &Bundle) {
                     process::exit(1);
                 };
 
-                if !formats.is_empty() && !formats.contains(&format) {
-                    continue;
+                if formats_to_build.is_empty() || formats_to_build.contains(&format) {
+                    formats.push(format);
                 }
-
-                let package_name = format!("{}-{}", &package.name, format);
-                let index = if let Some(&index) = packages_by_name.get(&package_name) {
-                    index
-                } else {
-                    eprintln!(
-                        "error: package `{}` specifies format `{}`, but no package named `{}` was found in workspace `{}`",
-                        &package.name, format, package_name, &metadata.workspace_root
-                    );
-                    process::exit(1);
-                };
-
-                let has_cdylib = metadata.packages[index]
-                    .targets
-                    .iter()
-                    .any(|t| t.crate_types.iter().any(|c| c == "cdylib"));
-                if !has_cdylib {
-                    eprintln!(
-                        "error: package `{}` does not have a lib target of type cdylib",
-                        package_name
-                    );
-                    process::exit(1);
-                }
-
-                let crate_name = package_name.replace('-', "_");
-                let lib_name = match target.os {
-                    Os::Linux => format!("lib{crate_name}.so"),
-                    Os::MacOs => format!("lib{crate_name}.dylib"),
-                    Os::Windows => format!("{crate_name}.dll"),
-                };
-
-                packages_to_build.push(PackageInfo {
-                    package_name,
-                    lib_name,
-                    name: coupler_metadata.name.as_ref().unwrap_or(&package.name).clone(),
-                    format,
-                });
             }
+
+            let has_cdylib =
+                package.targets.iter().any(|t| t.crate_types.iter().any(|c| c == "cdylib"));
+            if !has_cdylib {
+                eprintln!(
+                    "error: package `{}` does not have a lib target of type cdylib",
+                    package.name
+                );
+                process::exit(1);
+            }
+
+            let crate_name = package.name.replace('-', "_");
+            let lib_name = match target.os {
+                Os::Linux => format!("lib{crate_name}.so"),
+                Os::MacOs => format!("lib{crate_name}.dylib"),
+                Os::Windows => format!("{crate_name}.dll"),
+            };
+
+            packages_to_build.push(PackageInfo {
+                package_name: package.name.to_owned(),
+                lib_name,
+                name: coupler_metadata.name.as_ref().unwrap_or(&package.name).clone(),
+                formats,
+            });
         }
     }
 
@@ -499,12 +487,14 @@ fn bundle(cmd: &Bundle) {
     // Create bundles
 
     for package_info in &packages_to_build {
-        match package_info.format {
-            Format::Clap => {
-                bundle_clap(package_info, &out_dir, &target);
-            }
-            Format::Vst3 => {
-                bundle_vst3(package_info, &out_dir, &target);
+        for format in &package_info.formats {
+            match format {
+                Format::Clap => {
+                    bundle_clap(package_info, &out_dir, &target);
+                }
+                Format::Vst3 => {
+                    bundle_vst3(package_info, &out_dir, &target);
+                }
             }
         }
     }
