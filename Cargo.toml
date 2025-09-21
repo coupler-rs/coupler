@@ -10,6 +10,7 @@ publish = false
 coupler-derive = { path = "coupler-derive", optional = true }
 clap-sys = "0.3.0"
 vst3 = "0.1.2"
+uuid = { version = "1.18.1", features = ["v5"] }
 
 [features]
 derive = ["coupler-derive"]
