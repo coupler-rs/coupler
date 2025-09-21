@@ -53,7 +53,7 @@ pub trait Plugin: Send + Sized + 'static {
     ) -> Result<(), fmt::Error>;
     fn save(&self, output: &mut impl Write) -> io::Result<()>;
     fn load(&mut self, input: &mut impl Read) -> io::Result<()>;
-    fn engine(&mut self, config: Config) -> Self::Engine;
+    fn engine(&mut self, config: &Config) -> Self::Engine;
     fn view(&mut self, host: ViewHost, parent: &ParentWindow) -> Self::View;
 
     #[allow(unused_variables)]

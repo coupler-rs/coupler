@@ -101,7 +101,7 @@ impl Plugin for Gain {
         Ok(())
     }
 
-    fn engine(&mut self, _config: Config) -> Self::Engine {
+    fn engine(&mut self, _config: &Config) -> Self::Engine {
         GainEngine {
             params: self.params.clone(),
         }

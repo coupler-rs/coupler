@@ -361,7 +361,7 @@ impl<P: Plugin> Instance<P> {
         // reflected in the initial state of the engine.
         for _ in instance.engine_params.poll() {}
 
-        process_state.engine = Some(main_thread_state.plugin.engine(config));
+        process_state.engine = Some(main_thread_state.plugin.engine(&config));
 
         true
     }

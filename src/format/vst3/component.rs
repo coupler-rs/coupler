@@ -267,15 +267,14 @@ impl<P: Plugin> IComponentTrait for Component<P> {
 
             process_state.engine = None;
         } else {
-            let config = main_thread_state.config.clone();
-            process_state.config = config.clone();
-            process_state.scratch_buffers.resize(&self.info.buses, &config);
+            process_state.config = main_thread_state.config.clone();
+            process_state.scratch_buffers.resize(&self.info.buses, &process_state.config);
 
             // Discard any pending plugin -> engine parameter changes, since they will already be
             // reflected in the initial state of the engine.
             for _ in self.engine_params.poll() {}
 
-            process_state.engine = Some(main_thread_state.plugin.engine(config));
+            process_state.engine = Some(main_thread_state.plugin.engine(&process_state.config));
         }
 
         kResultOk

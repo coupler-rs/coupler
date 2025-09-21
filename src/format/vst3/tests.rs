@@ -73,7 +73,7 @@ impl Plugin for TestPlugin {
     fn load(&mut self, _input: &mut impl Read) -> io::Result<()> {
         Ok(())
     }
-    fn engine(&mut self, _config: Config) -> Self::Engine {
+    fn engine(&mut self, _config: &Config) -> Self::Engine {
         TestEngine
     }
     fn view(&mut self, _host: ViewHost, _parent: &ParentWindow) -> Self::View {
