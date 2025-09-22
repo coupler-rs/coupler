@@ -15,7 +15,7 @@ use crate::bus::{BusDir, Format, Layout};
 use crate::engine::{Config, Engine};
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
-use crate::params::ParamId;
+use crate::params::{ParamId, ParamInfo};
 use crate::plugin::{Plugin, PluginInfo};
 use crate::sync::params::ParamValues;
 use crate::util::{slice_from_raw_parts_checked, DisplayParam};
@@ -55,6 +55,7 @@ pub struct Component<P: Plugin> {
     input_bus_map: Vec<usize>,
     output_bus_map: Vec<usize>,
     layout_set: HashSet<Layout>,
+    params: Vec<ParamInfo>,
     param_map: HashMap<ParamId, usize>,
     plugin_params: ParamValues,
     engine_params: ParamValues,
@@ -84,11 +85,6 @@ impl<P: Plugin> Component<P> {
 
         let layout_set = info.layouts.iter().cloned().collect::<HashSet<_>>();
 
-        let mut param_map = HashMap::new();
-        for (index, param) in info.params.iter().enumerate() {
-            param_map.insert(param.id, index);
-        }
-
         let config = Config {
             layout: info.layouts.first().cloned().unwrap_or_default(),
             sample_rate: 0.0,
@@ -101,6 +97,14 @@ impl<P: Plugin> Component<P> {
 
         let plugin = P::new(Host::from_inner(host.clone()));
 
+        let params = plugin.params();
+        let param_count = params.len();
+
+        let mut param_map = HashMap::new();
+        for (index, param) in params.iter().enumerate() {
+            param_map.insert(param.id, index);
+        }
+
         let has_view = plugin.has_view();
 
         Component {
@@ -108,9 +112,10 @@ impl<P: Plugin> Component<P> {
             input_bus_map,
             output_bus_map,
             layout_set,
+            params,
             param_map,
-            plugin_params: ParamValues::with_count(info.params.len()),
-            engine_params: ParamValues::with_count(info.params.len()),
+            plugin_params: ParamValues::with_count(param_count),
+            engine_params: ParamValues::with_count(param_count),
             _host: host,
             has_view,
             main_thread_state: Arc::new(UnsafeCell::new(MainThreadState {
@@ -130,7 +135,7 @@ impl<P: Plugin> Component<P> {
 
     fn sync_plugin(&self, plugin: &mut P) {
         for (index, value) in self.plugin_params.poll() {
-            let id = self.info.params[index].id;
+            let id = self.params[index].id;
             plugin.set_param(id, value);
         }
     }
@@ -312,7 +317,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
             self.sync_plugin(&mut main_thread_state.plugin);
 
             if main_thread_state.plugin.load(&mut StreamReader(state)).is_ok() {
-                for (index, param) in self.info.params.iter().enumerate() {
+                for (index, param) in self.params.iter().enumerate() {
                     let value = main_thread_state.plugin.get_param(param.id);
                     self.engine_params.set(index, value);
 
@@ -480,7 +485,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
                 process_state.events.push(Event {
                     time: 0,
                     data: Data::ParamChange {
-                        id: self.info.params[index].id,
+                        id: self.params[index].id,
                         value,
                     },
                 });
@@ -521,7 +526,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
             process_state.events.push(Event {
                 time: 0,
                 data: Data::ParamChange {
-                    id: self.info.params[index].id,
+                    id: self.params[index].id,
                     value,
                 },
             });
@@ -595,11 +600,11 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     }
 
     unsafe fn getParameterCount(&self) -> int32 {
-        self.info.params.len() as int32
+        self.params.len() as int32
     }
 
     unsafe fn getParameterInfo(&self, paramIndex: int32, info: *mut ParameterInfo) -> tresult {
-        if let Some(param) = self.info.params.get(paramIndex as usize) {
+        if let Some(param) = self.params.get(paramIndex as usize) {
             let info = &mut *info;
 
             info.id = param.id as ParamID;
