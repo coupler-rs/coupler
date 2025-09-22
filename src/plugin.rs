@@ -15,7 +15,6 @@ pub struct PluginInfo {
     pub email: String,
     pub buses: Vec<BusInfo>,
     pub layouts: Vec<Layout>,
-    pub params: Vec<ParamInfo>,
 }
 
 #[allow(clippy::derivable_impls)]
@@ -29,7 +28,6 @@ impl Default for PluginInfo {
             email: String::new(),
             buses: Vec::new(),
             layouts: Vec::new(),
-            params: Vec::new(),
         }
     }
 }
@@ -40,6 +38,8 @@ pub trait Plugin: Send + Sized + 'static {
 
     fn info() -> PluginInfo;
     fn new(host: Host) -> Self;
+
+    fn params(&self) -> Vec<ParamInfo>;
     fn set_param(&mut self, id: ParamId, value: ParamValue);
     fn get_param(&self, id: ParamId) -> ParamValue;
     fn parse_param(&self, id: ParamId, text: &str) -> Option<ParamValue>;
@@ -49,8 +49,10 @@ pub trait Plugin: Send + Sized + 'static {
         value: ParamValue,
         fmt: &mut Formatter,
     ) -> Result<(), fmt::Error>;
+
     fn save(&self, output: impl Write) -> io::Result<()>;
     fn load(&mut self, input: impl Read) -> io::Result<()>;
+
     fn engine(&mut self, config: &Config) -> Self::Engine;
 
     fn has_view(&self) -> bool;

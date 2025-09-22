@@ -11,7 +11,7 @@ use clap_sys::version::CLAP_VERSION;
 
 use crate::engine::{Config, Engine};
 use crate::host::Host;
-use crate::params::{ParamId, ParamValue};
+use crate::params::{ParamId, ParamInfo, ParamValue};
 use crate::plugin::{Plugin, PluginInfo};
 
 use super::{ClapInfo, ClapPlugin, Factory};
@@ -38,11 +38,13 @@ impl Plugin for TestPlugin {
             email: EMAIL.to_string(),
             buses: Vec::new(),
             layouts: vec![],
-            params: Vec::new(),
         }
     }
     fn new(_host: Host) -> Self {
         TestPlugin
+    }
+    fn params(&self) -> Vec<ParamInfo> {
+        Vec::new()
     }
     fn set_param(&mut self, _id: ParamId, _value: ParamValue) {}
     fn get_param(&self, _id: ParamId) -> ParamValue {

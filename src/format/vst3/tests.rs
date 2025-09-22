@@ -8,7 +8,7 @@ use crate::buffers::Buffers;
 use crate::engine::{Config, Engine};
 use crate::events::Events;
 use crate::host::Host;
-use crate::params::{ParamId, ParamValue};
+use crate::params::{ParamId, ParamInfo, ParamValue};
 use crate::plugin::{Plugin, PluginInfo};
 use crate::view::{ParentWindow, Size, View, ViewHost};
 
@@ -45,11 +45,13 @@ impl Plugin for TestPlugin {
             email: EMAIL.to_string(),
             buses: Vec::new(),
             layouts: vec![],
-            params: Vec::new(),
         }
     }
     fn new(_host: Host) -> Self {
         TestPlugin
+    }
+    fn params(&self) -> Vec<ParamInfo> {
+        Vec::new()
     }
     fn set_param(&mut self, _id: ParamId, _value: ParamValue) {}
     fn get_param(&self, _id: ParamId) -> ParamValue {

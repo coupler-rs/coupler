@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use coupler::format::clap::*;
 use coupler::format::vst3::*;
-use coupler::params::{ParamId, ParamValue};
+use coupler::params::{ParamId, ParamInfo, ParamValue};
 use coupler::view::{ParentWindow, RawParent, Size, View};
 use coupler::{buffers::*, bus::*, engine::*, events::*, host::*, params::*, plugin::*, view::*};
 
@@ -57,7 +57,6 @@ impl Plugin for Gain {
                     formats: vec![Format::Mono],
                 },
             ],
-            params: GainParams::params(),
         }
     }
 
@@ -65,6 +64,10 @@ impl Plugin for Gain {
         Gain {
             params: GainParams::default(),
         }
+    }
+
+    fn params(&self) -> Vec<ParamInfo> {
+        GainParams::params()
     }
 
     fn set_param(&mut self, id: ParamId, value: ParamValue) {
