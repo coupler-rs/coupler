@@ -9,6 +9,7 @@ use crate::view::{ParentWindow, Size, View, ViewHost};
 use clap_sys::plugin_factory::{clap_plugin_factory, CLAP_PLUGIN_FACTORY_ID};
 use clap_sys::version::CLAP_VERSION;
 
+use crate::bus::{BusInfo, Layout};
 use crate::engine::{Config, Engine};
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
@@ -36,12 +37,16 @@ impl Plugin for TestPlugin {
             vendor: VENDOR.to_string(),
             url: URL.to_string(),
             email: EMAIL.to_string(),
-            buses: Vec::new(),
-            layouts: vec![],
         }
     }
     fn new(_host: Host) -> Self {
         TestPlugin
+    }
+    fn buses(&self) -> Vec<BusInfo> {
+        Vec::new()
+    }
+    fn layouts(&self) -> Vec<Layout> {
+        Vec::new()
     }
     fn params(&self) -> Vec<ParamInfo> {
         Vec::new()

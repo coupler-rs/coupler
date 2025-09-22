@@ -11,7 +11,7 @@ use clap_sys::{events::*, host::*, id::*, plugin::*, process::*, stream::*};
 
 use super::host::ClapHost;
 use crate::buffers::{BufferData, BufferType, Buffers};
-use crate::bus::{BusDir, Format};
+use crate::bus::{BusDir, BusInfo, Format, Layout};
 use crate::engine::{Config, Engine};
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
@@ -66,6 +66,8 @@ pub struct Instance<P: Plugin> {
     pub clap_plugin: clap_plugin,
     pub host: *const clap_host,
     pub info: Arc<PluginInfo>,
+    pub buses: Vec<BusInfo>,
+    pub layouts: Vec<Layout>,
     pub input_bus_map: Vec<usize>,
     pub output_bus_map: Vec<usize>,
     pub params: Vec<ParamInfo>,
@@ -88,9 +90,14 @@ impl<P: Plugin> Instance<P> {
         info: &Arc<PluginInfo>,
         host: *const clap_host,
     ) -> Self {
+        let plugin = P::new(Host::from_inner(Arc::new(ClapHost {})));
+
+        let buses = plugin.buses();
+        let layouts = plugin.layouts();
+
         let mut input_bus_map = Vec::new();
         let mut output_bus_map = Vec::new();
-        for (index, bus) in info.buses.iter().enumerate() {
+        for (index, bus) in buses.iter().enumerate() {
             match bus.dir {
                 BusDir::In => input_bus_map.push(index),
                 BusDir::Out => output_bus_map.push(index),
@@ -100,8 +107,6 @@ impl<P: Plugin> Instance<P> {
                 }
             }
         }
-
-        let plugin = P::new(Host::from_inner(Arc::new(ClapHost {})));
 
         let params = plugin.params();
         let param_count = params.len();
@@ -130,6 +135,8 @@ impl<P: Plugin> Instance<P> {
             },
             host,
             info: info.clone(),
+            buses,
+            layouts,
             input_bus_map,
             output_bus_map,
             params,
@@ -340,11 +347,11 @@ impl<P: Plugin> Instance<P> {
         let main_thread_state = &mut *instance.main_thread_state.get();
         let process_state = &mut *instance.process_state.get();
 
-        let layout = &instance.info.layouts[main_thread_state.layout_index];
+        let layout = &instance.layouts[main_thread_state.layout_index];
 
         process_state.buffer_data.clear();
         let mut total_channels = 0;
-        for (info, format) in zip(&instance.info.buses, &layout.formats) {
+        for (info, format) in zip(&instance.buses, &layout.formats) {
             let buffer_type = match info.dir {
                 BusDir::In => BufferType::Const,
                 BusDir::Out | BusDir::InOut => BufferType::Mut,
@@ -453,7 +460,7 @@ impl<P: Plugin> Instance<P> {
 
         for (&bus_index, input) in zip(&instance.input_bus_map, inputs) {
             let data = &process_state.buffer_data[bus_index];
-            let bus_info = &instance.info.buses[bus_index];
+            let bus_info = &instance.buses[bus_index];
 
             let channel_count = input.channel_count as usize;
             if channel_count != data.end - data.start {
@@ -578,9 +585,9 @@ impl<P: Plugin> Instance<P> {
         };
 
         if let Some(&bus_index) = bus_index {
-            let bus_info = instance.info.buses.get(bus_index);
+            let bus_info = instance.buses.get(bus_index);
 
-            let layout = &instance.info.layouts[main_thread_state.layout_index];
+            let layout = &instance.layouts[main_thread_state.layout_index];
             let format = layout.formats.get(bus_index);
 
             if let (Some(bus_info), Some(format)) = (bus_info, format) {
@@ -626,7 +633,7 @@ impl<P: Plugin> Instance<P> {
     unsafe extern "C" fn audio_ports_config_count(plugin: *const clap_plugin) -> u32 {
         let instance = &*(plugin as *const Self);
 
-        instance.info.layouts.len() as u32
+        instance.layouts.len() as u32
     }
 
     unsafe extern "C" fn audio_ports_config_get(
@@ -636,7 +643,7 @@ impl<P: Plugin> Instance<P> {
     ) -> bool {
         let instance = &*(plugin as *const Self);
 
-        if let Some(layout) = instance.info.layouts.get(index as usize) {
+        if let Some(layout) = instance.layouts.get(index as usize) {
             let config = &mut *config;
 
             config.id = index;
@@ -681,7 +688,7 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
         let main_thread_state = &mut *instance.main_thread_state.get();
 
-        if instance.info.layouts.get(config_id as usize).is_some() {
+        if instance.layouts.get(config_id as usize).is_some() {
             main_thread_state.layout_index = config_id as usize;
             return true;
         }
