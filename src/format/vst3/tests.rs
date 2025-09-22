@@ -5,6 +5,7 @@ use std::io::{self, Read, Write};
 use std::{ptr, slice};
 
 use crate::buffers::Buffers;
+use crate::bus::{BusInfo, Layout};
 use crate::engine::{Config, Engine};
 use crate::events::Events;
 use crate::host::Host;
@@ -43,12 +44,16 @@ impl Plugin for TestPlugin {
             vendor: VENDOR.to_string(),
             url: URL.to_string(),
             email: EMAIL.to_string(),
-            buses: Vec::new(),
-            layouts: vec![],
         }
     }
     fn new(_host: Host) -> Self {
         TestPlugin
+    }
+    fn buses(&self) -> Vec<BusInfo> {
+        Vec::new()
+    }
+    fn layouts(&self) -> Vec<Layout> {
+        Vec::new()
     }
     fn params(&self) -> Vec<ParamInfo> {
         Vec::new()
