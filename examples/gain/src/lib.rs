@@ -89,13 +89,13 @@ impl Plugin for Gain {
         self.params.display_param(id, value, fmt)
     }
 
-    fn save(&self, output: &mut impl Write) -> io::Result<()> {
+    fn save(&self, output: impl Write) -> io::Result<()> {
         serde_json::to_writer(output, &self.params)?;
 
         Ok(())
     }
 
-    fn load(&mut self, input: &mut impl Read) -> io::Result<()> {
+    fn load(&mut self, input: impl Read) -> io::Result<()> {
         self.params = serde_json::from_reader(input)?;
 
         Ok(())

@@ -51,8 +51,8 @@ pub trait Plugin: Send + Sized + 'static {
         value: ParamValue,
         fmt: &mut Formatter,
     ) -> Result<(), fmt::Error>;
-    fn save(&self, output: &mut impl Write) -> io::Result<()>;
-    fn load(&mut self, input: &mut impl Read) -> io::Result<()>;
+    fn save(&self, output: impl Write) -> io::Result<()>;
+    fn load(&mut self, input: impl Read) -> io::Result<()>;
     fn engine(&mut self, config: &Config) -> Self::Engine;
     fn view(&mut self, host: ViewHost, parent: &ParentWindow) -> Self::View;
 

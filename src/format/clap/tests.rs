@@ -60,10 +60,10 @@ impl Plugin for TestPlugin {
     ) -> Result<(), fmt::Error> {
         Ok(())
     }
-    fn save(&self, _output: &mut impl Write) -> io::Result<()> {
+    fn save(&self, _output: impl Write) -> io::Result<()> {
         Ok(())
     }
-    fn load(&mut self, _input: &mut impl Read) -> io::Result<()> {
+    fn load(&mut self, _input: impl Read) -> io::Result<()> {
         Ok(())
     }
     fn engine(&mut self, _config: &Config) -> Self::Engine {
