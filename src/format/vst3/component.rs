@@ -59,6 +59,7 @@ pub struct Component<P: Plugin> {
     plugin_params: ParamValues,
     engine_params: ParamValues,
     _host: Arc<Vst3Host>,
+    has_view: bool,
     main_thread_state: Arc<UnsafeCell<MainThreadState<P>>>,
     // When the audio processor is *not* active, references to ProcessState may only be formed from
     // the main thread. When the audio processor *is* active, references to ProcessState may only
@@ -98,6 +99,10 @@ impl<P: Plugin> Component<P> {
 
         let host = Arc::new(Vst3Host::new());
 
+        let plugin = P::new(Host::from_inner(host.clone()));
+
+        let has_view = plugin.has_view();
+
         Component {
             info: info.clone(),
             input_bus_map,
@@ -106,10 +111,11 @@ impl<P: Plugin> Component<P> {
             param_map,
             plugin_params: ParamValues::with_count(info.params.len()),
             engine_params: ParamValues::with_count(info.params.len()),
-            _host: host.clone(),
+            _host: host,
+            has_view,
             main_thread_state: Arc::new(UnsafeCell::new(MainThreadState {
                 config: config.clone(),
-                plugin: P::new(Host::from_inner(host)),
+                plugin,
                 view_host: Rc::new(Vst3ViewHost::new()),
                 view: None,
             })),
@@ -708,7 +714,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     }
 
     unsafe fn createView(&self, name: FIDString) -> *mut IPlugView {
-        if !self.info.has_view {
+        if !self.has_view {
             return ptr::null_mut();
         }
 

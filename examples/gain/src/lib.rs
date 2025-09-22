@@ -58,7 +58,6 @@ impl Plugin for Gain {
                 },
             ],
             params: GainParams::params(),
-            has_view: true,
         }
     }
 
@@ -105,6 +104,10 @@ impl Plugin for Gain {
         GainEngine {
             params: self.params.clone(),
         }
+    }
+
+    fn has_view(&self) -> bool {
+        true
     }
 
     fn view(&mut self, host: ViewHost, parent: &ParentWindow) -> Self::View {

@@ -74,6 +74,7 @@ pub struct Instance<P: Plugin> {
     // Plugin -> engine parameter changes
     pub engine_params: ParamValues,
     pub param_gestures: Arc<ParamGestures>,
+    pub has_view: bool,
     pub main_thread_state: UnsafeCell<MainThreadState<P>>,
     pub process_state: UnsafeCell<ProcessState<P>>,
 }
@@ -104,6 +105,10 @@ impl<P: Plugin> Instance<P> {
             param_map.insert(param.id, index);
         }
 
+        let plugin = P::new(Host::from_inner(Arc::new(ClapHost {})));
+
+        let has_view = plugin.has_view();
+
         Instance {
             clap_plugin: clap_plugin {
                 desc,
@@ -127,10 +132,11 @@ impl<P: Plugin> Instance<P> {
             plugin_params: ParamValues::with_count(info.params.len()),
             engine_params: ParamValues::with_count(info.params.len()),
             param_gestures: Arc::new(ParamGestures::with_count(info.params.len())),
+            has_view,
             main_thread_state: UnsafeCell::new(MainThreadState {
                 host_params: None,
                 layout_index: 0,
-                plugin: P::new(Host::from_inner(Arc::new(ClapHost {}))),
+                plugin,
                 view: None,
             }),
             process_state: UnsafeCell::new(ProcessState {
@@ -519,7 +525,7 @@ impl<P: Plugin> Instance<P> {
 
         if id == CLAP_EXT_GUI {
             let instance = &*(plugin as *const Self);
-            if instance.info.has_view {
+            if instance.has_view {
                 return &Self::GUI as *const _ as *const c_void;
             }
         }
