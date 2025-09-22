@@ -5,10 +5,11 @@ use std::io::{self, Read, Write};
 use std::{ptr, slice};
 
 use crate::buffers::Buffers;
+use crate::bus::{BusInfo, Layout};
 use crate::engine::{Config, Engine};
 use crate::events::Events;
 use crate::host::Host;
-use crate::params::{ParamId, ParamValue};
+use crate::params::{ParamId, ParamInfo, ParamValue};
 use crate::plugin::{Plugin, PluginInfo};
 use crate::view::{ParentWindow, Size, View, ViewHost};
 
@@ -43,14 +44,19 @@ impl Plugin for TestPlugin {
             vendor: VENDOR.to_string(),
             url: URL.to_string(),
             email: EMAIL.to_string(),
-            buses: Vec::new(),
-            layouts: vec![],
-            params: Vec::new(),
-            has_view: false,
         }
     }
     fn new(_host: Host) -> Self {
         TestPlugin
+    }
+    fn buses(&self) -> Vec<BusInfo> {
+        Vec::new()
+    }
+    fn layouts(&self) -> Vec<Layout> {
+        Vec::new()
+    }
+    fn params(&self) -> Vec<ParamInfo> {
+        Vec::new()
     }
     fn set_param(&mut self, _id: ParamId, _value: ParamValue) {}
     fn get_param(&self, _id: ParamId) -> ParamValue {
@@ -75,6 +81,9 @@ impl Plugin for TestPlugin {
     }
     fn engine(&mut self, _config: &Config) -> Self::Engine {
         TestEngine
+    }
+    fn has_view(&self) -> bool {
+        false
     }
     fn view(&mut self, _host: ViewHost, _parent: &ParentWindow) -> Self::View {
         TestView

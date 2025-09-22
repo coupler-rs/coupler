@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use coupler::format::clap::*;
 use coupler::format::vst3::*;
-use coupler::params::{ParamId, ParamValue};
+use coupler::params::{ParamId, ParamInfo, ParamValue};
 use coupler::view::{ParentWindow, RawParent, Size, View};
 use coupler::{buffers::*, bus::*, engine::*, events::*, host::*, params::*, plugin::*, view::*};
 
@@ -45,20 +45,6 @@ impl Plugin for Gain {
             vendor: "Vendor".to_string(),
             url: "https://example.com".to_string(),
             email: "example@example.com".to_string(),
-            buses: vec![BusInfo {
-                name: "Main".to_string(),
-                dir: BusDir::InOut,
-            }],
-            layouts: vec![
-                Layout {
-                    formats: vec![Format::Stereo],
-                },
-                Layout {
-                    formats: vec![Format::Mono],
-                },
-            ],
-            params: GainParams::params(),
-            has_view: true,
         }
     }
 
@@ -66,6 +52,28 @@ impl Plugin for Gain {
         Gain {
             params: GainParams::default(),
         }
+    }
+
+    fn buses(&self) -> Vec<BusInfo> {
+        vec![BusInfo {
+            name: "Main".to_string(),
+            dir: BusDir::InOut,
+        }]
+    }
+
+    fn layouts(&self) -> Vec<Layout> {
+        vec![
+            Layout {
+                formats: vec![Format::Stereo],
+            },
+            Layout {
+                formats: vec![Format::Mono],
+            },
+        ]
+    }
+
+    fn params(&self) -> Vec<ParamInfo> {
+        GainParams::params()
     }
 
     fn set_param(&mut self, id: ParamId, value: ParamValue) {
@@ -105,6 +113,10 @@ impl Plugin for Gain {
         GainEngine {
             params: self.params.clone(),
         }
+    }
+
+    fn has_view(&self) -> bool {
+        true
     }
 
     fn view(&mut self, host: ViewHost, parent: &ParentWindow) -> Self::View {

@@ -11,12 +11,12 @@ use super::buffers::ScratchBuffers;
 use super::host::Vst3Host;
 use super::util::{copy_wstring, utf16_from_ptr};
 use super::view::{PlugView, Vst3ViewHost};
-use crate::bus::{BusDir, Format, Layout};
+use crate::bus::{BusDir, BusInfo, Format, Layout};
 use crate::engine::{Config, Engine};
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
-use crate::params::ParamId;
-use crate::plugin::{Plugin, PluginInfo};
+use crate::params::{ParamId, ParamInfo};
+use crate::plugin::Plugin;
 use crate::sync::params::ParamValues;
 use crate::util::{slice_from_raw_parts_checked, DisplayParam};
 use crate::view::View;
@@ -51,14 +51,16 @@ struct ProcessState<P: Plugin> {
 }
 
 pub struct Component<P: Plugin> {
-    info: Arc<PluginInfo>,
+    buses: Vec<BusInfo>,
     input_bus_map: Vec<usize>,
     output_bus_map: Vec<usize>,
     layout_set: HashSet<Layout>,
+    params: Vec<ParamInfo>,
     param_map: HashMap<ParamId, usize>,
     plugin_params: ParamValues,
     engine_params: ParamValues,
     _host: Arc<Vst3Host>,
+    has_view: bool,
     main_thread_state: Arc<UnsafeCell<MainThreadState<P>>>,
     // When the audio processor is *not* active, references to ProcessState may only be formed from
     // the main thread. When the audio processor *is* active, references to ProcessState may only
@@ -67,10 +69,17 @@ pub struct Component<P: Plugin> {
 }
 
 impl<P: Plugin> Component<P> {
-    pub fn new(info: &Arc<PluginInfo>) -> Component<P> {
+    pub fn new() -> Component<P> {
+        let host = Arc::new(Vst3Host::new());
+
+        let plugin = P::new(Host::from_inner(host.clone()));
+
+        let buses = plugin.buses();
+        let layouts = plugin.layouts();
+
         let mut input_bus_map = Vec::new();
         let mut output_bus_map = Vec::new();
-        for (index, bus) in info.buses.iter().enumerate() {
+        for (index, bus) in buses.iter().enumerate() {
             match bus.dir {
                 BusDir::In => input_bus_map.push(index),
                 BusDir::Out => output_bus_map.push(index),
@@ -81,35 +90,40 @@ impl<P: Plugin> Component<P> {
             }
         }
 
-        let layout_set = info.layouts.iter().cloned().collect::<HashSet<_>>();
-
-        let mut param_map = HashMap::new();
-        for (index, param) in info.params.iter().enumerate() {
-            param_map.insert(param.id, index);
-        }
+        let layout_set = layouts.iter().cloned().collect::<HashSet<_>>();
 
         let config = Config {
-            layout: info.layouts.first().cloned().unwrap_or_default(),
+            layout: layouts.first().cloned().unwrap_or_default(),
             sample_rate: 0.0,
             max_buffer_size: 0,
         };
 
         let scratch_buffers = ScratchBuffers::new(input_bus_map.len(), output_bus_map.len());
 
-        let host = Arc::new(Vst3Host::new());
+        let params = plugin.params();
+        let param_count = params.len();
+
+        let mut param_map = HashMap::new();
+        for (index, param) in params.iter().enumerate() {
+            param_map.insert(param.id, index);
+        }
+
+        let has_view = plugin.has_view();
 
         Component {
-            info: info.clone(),
+            buses,
             input_bus_map,
             output_bus_map,
             layout_set,
+            params,
             param_map,
-            plugin_params: ParamValues::with_count(info.params.len()),
-            engine_params: ParamValues::with_count(info.params.len()),
-            _host: host.clone(),
+            plugin_params: ParamValues::with_count(param_count),
+            engine_params: ParamValues::with_count(param_count),
+            _host: host,
+            has_view,
             main_thread_state: Arc::new(UnsafeCell::new(MainThreadState {
                 config: config.clone(),
-                plugin: P::new(Host::from_inner(host)),
+                plugin,
                 view_host: Rc::new(Vst3ViewHost::new()),
                 view: None,
             })),
@@ -124,7 +138,7 @@ impl<P: Plugin> Component<P> {
 
     fn sync_plugin(&self, plugin: &mut P) {
         for (index, value) in self.plugin_params.poll() {
-            let id = self.info.params[index].id;
+            let id = self.params[index].id;
             plugin.set_param(id, value);
         }
     }
@@ -175,7 +189,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
         type_: MediaType,
         dir: BusDirection,
         index: int32,
-        bus: *mut BusInfo,
+        bus: *mut vst3::Steinberg::Vst::BusInfo,
     ) -> tresult {
         let main_thread_state = &*self.main_thread_state.get();
 
@@ -188,7 +202,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
                 };
 
                 if let Some(&bus_index) = bus_index {
-                    let info = self.info.buses.get(bus_index);
+                    let info = self.buses.get(bus_index);
                     let format = main_thread_state.config.layout.formats.get(bus_index);
 
                     if let (Some(info), Some(format)) = (info, format) {
@@ -268,7 +282,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
             process_state.engine = None;
         } else {
             process_state.config = main_thread_state.config.clone();
-            process_state.scratch_buffers.resize(&self.info.buses, &process_state.config);
+            process_state.scratch_buffers.resize(&self.buses, &process_state.config);
 
             // Discard any pending plugin -> engine parameter changes, since they will already be
             // reflected in the initial state of the engine.
@@ -306,7 +320,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
             self.sync_plugin(&mut main_thread_state.plugin);
 
             if main_thread_state.plugin.load(&mut StreamReader(state)).is_ok() {
-                for (index, param) in self.info.params.iter().enumerate() {
+                for (index, param) in self.params.iter().enumerate() {
                     let value = main_thread_state.plugin.get_param(param.id);
                     self.engine_params.set(index, value);
 
@@ -380,7 +394,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
 
         let mut inputs = slice_from_raw_parts_checked(inputs, input_count).iter();
         let mut outputs = slice_from_raw_parts_checked(outputs, output_count).iter();
-        for bus in &self.info.buses {
+        for bus in &self.buses {
             let arrangement = match bus.dir {
                 BusDir::In => *inputs.next().unwrap(),
                 BusDir::Out => *outputs.next().unwrap(),
@@ -474,7 +488,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
                 process_state.events.push(Event {
                     time: 0,
                     data: Data::ParamChange {
-                        id: self.info.params[index].id,
+                        id: self.params[index].id,
                         value,
                     },
                 });
@@ -500,7 +514,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         let data = &*data;
 
         let Ok(buffers) = process_state.scratch_buffers.get_buffers(
-            &self.info.buses,
+            &self.buses,
             &self.input_bus_map,
             &self.output_bus_map,
             &process_state.config,
@@ -515,7 +529,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
             process_state.events.push(Event {
                 time: 0,
                 data: Data::ParamChange {
-                    id: self.info.params[index].id,
+                    id: self.params[index].id,
                     value,
                 },
             });
@@ -589,11 +603,11 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     }
 
     unsafe fn getParameterCount(&self) -> int32 {
-        self.info.params.len() as int32
+        self.params.len() as int32
     }
 
     unsafe fn getParameterInfo(&self, paramIndex: int32, info: *mut ParameterInfo) -> tresult {
-        if let Some(param) = self.info.params.get(paramIndex as usize) {
+        if let Some(param) = self.params.get(paramIndex as usize) {
             let info = &mut *info;
 
             info.id = param.id as ParamID;
@@ -708,7 +722,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     }
 
     unsafe fn createView(&self, name: FIDString) -> *mut IPlugView {
-        if !self.info.has_view {
+        if !self.has_view {
             return ptr::null_mut();
         }
 

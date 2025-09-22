@@ -1,6 +1,5 @@
 use std::ffi::{c_void, CStr};
 use std::marker::PhantomData;
-use std::sync::Arc;
 
 use vst3::{uid, Class, ComWrapper, Steinberg::Vst::*, Steinberg::*};
 
@@ -15,7 +14,7 @@ fn uuid_to_tuid(uuid: &Uuid) -> TUID {
 }
 
 pub struct Factory<P> {
-    info: Arc<PluginInfo>,
+    info: PluginInfo,
     vst3_info: Vst3Info,
     _marker: PhantomData<P>,
 }
@@ -23,7 +22,7 @@ pub struct Factory<P> {
 impl<P: Plugin + Vst3Plugin> Factory<P> {
     pub fn new() -> Factory<P> {
         Factory {
-            info: Arc::new(P::info()),
+            info: P::info(),
             vst3_info: P::vst3_info(),
             _marker: PhantomData,
         }
@@ -74,7 +73,7 @@ impl<P: Plugin> IPluginFactoryTrait for Factory<P> {
         let cid = &*(cid as *const TUID);
         let class_id = uuid_to_tuid(&self.vst3_info.class_id);
         if cid == &class_id {
-            let component = ComWrapper::new(Component::<P>::new(&self.info));
+            let component = ComWrapper::new(Component::<P>::new());
             let unknown = component.as_com_ref::<FUnknown>().unwrap();
             let ptr = unknown.as_ptr();
             return ((*(*ptr).vtbl).queryInterface)(ptr, iid as *const TUID, obj);

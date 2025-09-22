@@ -11,12 +11,12 @@ use clap_sys::{events::*, host::*, id::*, plugin::*, process::*, stream::*};
 
 use super::host::ClapHost;
 use crate::buffers::{BufferData, BufferType, Buffers};
-use crate::bus::{BusDir, Format};
+use crate::bus::{BusDir, BusInfo, Format, Layout};
 use crate::engine::{Config, Engine};
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
-use crate::plugin::{Plugin, PluginInfo};
+use crate::plugin::Plugin;
 use crate::sync::param_gestures::{GestureStates, GestureUpdate, ParamGestures};
 use crate::sync::params::ParamValues;
 use crate::util::{copy_cstring, slice_from_raw_parts_checked, DisplayParam};
@@ -65,15 +65,18 @@ pub struct Instance<P: Plugin> {
     #[allow(unused)]
     pub clap_plugin: clap_plugin,
     pub host: *const clap_host,
-    pub info: Arc<PluginInfo>,
+    pub buses: Vec<BusInfo>,
+    pub layouts: Vec<Layout>,
     pub input_bus_map: Vec<usize>,
     pub output_bus_map: Vec<usize>,
+    pub params: Vec<ParamInfo>,
     pub param_map: Arc<HashMap<ParamId, usize>>,
     // Engine -> plugin parameter changes
     pub plugin_params: ParamValues,
     // Plugin -> engine parameter changes
     pub engine_params: ParamValues,
     pub param_gestures: Arc<ParamGestures>,
+    pub has_view: bool,
     pub main_thread_state: UnsafeCell<MainThreadState<P>>,
     pub process_state: UnsafeCell<ProcessState<P>>,
 }
@@ -81,14 +84,15 @@ pub struct Instance<P: Plugin> {
 unsafe impl<P: Plugin> Sync for Instance<P> {}
 
 impl<P: Plugin> Instance<P> {
-    pub fn new(
-        desc: *const clap_plugin_descriptor,
-        info: &Arc<PluginInfo>,
-        host: *const clap_host,
-    ) -> Self {
+    pub fn new(desc: *const clap_plugin_descriptor, host: *const clap_host) -> Self {
+        let plugin = P::new(Host::from_inner(Arc::new(ClapHost {})));
+
+        let buses = plugin.buses();
+        let layouts = plugin.layouts();
+
         let mut input_bus_map = Vec::new();
         let mut output_bus_map = Vec::new();
-        for (index, bus) in info.buses.iter().enumerate() {
+        for (index, bus) in buses.iter().enumerate() {
             match bus.dir {
                 BusDir::In => input_bus_map.push(index),
                 BusDir::Out => output_bus_map.push(index),
@@ -99,10 +103,15 @@ impl<P: Plugin> Instance<P> {
             }
         }
 
+        let params = plugin.params();
+        let param_count = params.len();
+
         let mut param_map = HashMap::new();
-        for (index, param) in info.params.iter().enumerate() {
+        for (index, param) in params.iter().enumerate() {
             param_map.insert(param.id, index);
         }
+
+        let has_view = plugin.has_view();
 
         Instance {
             clap_plugin: clap_plugin {
@@ -120,21 +129,24 @@ impl<P: Plugin> Instance<P> {
                 on_main_thread: Some(Self::on_main_thread),
             },
             host,
-            info: info.clone(),
+            buses,
+            layouts,
             input_bus_map,
             output_bus_map,
+            params,
             param_map: Arc::new(param_map),
-            plugin_params: ParamValues::with_count(info.params.len()),
-            engine_params: ParamValues::with_count(info.params.len()),
-            param_gestures: Arc::new(ParamGestures::with_count(info.params.len())),
+            plugin_params: ParamValues::with_count(param_count),
+            engine_params: ParamValues::with_count(param_count),
+            param_gestures: Arc::new(ParamGestures::with_count(param_count)),
+            has_view,
             main_thread_state: UnsafeCell::new(MainThreadState {
                 host_params: None,
                 layout_index: 0,
-                plugin: P::new(Host::from_inner(Arc::new(ClapHost {}))),
+                plugin,
                 view: None,
             }),
             process_state: UnsafeCell::new(ProcessState {
-                gesture_states: GestureStates::with_count(info.params.len()),
+                gesture_states: GestureStates::with_count(param_count),
                 buffer_data: Vec::new(),
                 buffer_ptrs: Vec::new(),
                 events: Vec::with_capacity(4096),
@@ -145,7 +157,7 @@ impl<P: Plugin> Instance<P> {
 
     fn sync_plugin(&self, main_thread_state: &mut MainThreadState<P>) {
         for (index, value) in self.plugin_params.poll() {
-            let id = self.info.params[index].id;
+            let id = self.params[index].id;
             main_thread_state.plugin.set_param(id, value);
 
             if let Some(view) = &mut main_thread_state.view {
@@ -159,7 +171,7 @@ impl<P: Plugin> Instance<P> {
             events.push(Event {
                 time: 0,
                 data: Data::ParamChange {
-                    id: self.info.params[index].id,
+                    id: self.params[index].id,
                     value,
                 },
             });
@@ -183,7 +195,7 @@ impl<P: Plugin> Instance<P> {
                 let event = &*(event as *const clap_event_param_value);
 
                 if let Some(&index) = self.param_map.get(&event.param_id) {
-                    let value = map_param_in(&self.info.params[index], event.value);
+                    let value = map_param_in(&self.params[index], event.value);
 
                     events.push(Event {
                         time: event.header.time as i64,
@@ -213,7 +225,7 @@ impl<P: Plugin> Instance<P> {
         time: u32,
     ) {
         for update in self.param_gestures.poll(gesture_states) {
-            let param = &self.info.params[update.index];
+            let param = &self.params[update.index];
 
             if let Some(value) = update.set_value {
                 events.push(Event {
@@ -237,7 +249,7 @@ impl<P: Plugin> Instance<P> {
         out_events: *const clap_output_events,
         time: u32,
     ) {
-        let param = &self.info.params[update.index];
+        let param = &self.params[update.index];
 
         if update.begin_gesture {
             let event = clap_event_param_gesture {
@@ -329,11 +341,11 @@ impl<P: Plugin> Instance<P> {
         let main_thread_state = &mut *instance.main_thread_state.get();
         let process_state = &mut *instance.process_state.get();
 
-        let layout = &instance.info.layouts[main_thread_state.layout_index];
+        let layout = &instance.layouts[main_thread_state.layout_index];
 
         process_state.buffer_data.clear();
         let mut total_channels = 0;
-        for (info, format) in zip(&instance.info.buses, &layout.formats) {
+        for (info, format) in zip(&instance.buses, &layout.formats) {
             let buffer_type = match info.dir {
                 BusDir::In => BufferType::Const,
                 BusDir::Out | BusDir::InOut => BufferType::Mut,
@@ -442,7 +454,7 @@ impl<P: Plugin> Instance<P> {
 
         for (&bus_index, input) in zip(&instance.input_bus_map, inputs) {
             let data = &process_state.buffer_data[bus_index];
-            let bus_info = &instance.info.buses[bus_index];
+            let bus_info = &instance.buses[bus_index];
 
             let channel_count = input.channel_count as usize;
             if channel_count != data.end - data.start {
@@ -519,7 +531,7 @@ impl<P: Plugin> Instance<P> {
 
         if id == CLAP_EXT_GUI {
             let instance = &*(plugin as *const Self);
-            if instance.info.has_view {
+            if instance.has_view {
                 return &Self::GUI as *const _ as *const c_void;
             }
         }
@@ -567,9 +579,9 @@ impl<P: Plugin> Instance<P> {
         };
 
         if let Some(&bus_index) = bus_index {
-            let bus_info = instance.info.buses.get(bus_index);
+            let bus_info = instance.buses.get(bus_index);
 
-            let layout = &instance.info.layouts[main_thread_state.layout_index];
+            let layout = &instance.layouts[main_thread_state.layout_index];
             let format = layout.formats.get(bus_index);
 
             if let (Some(bus_info), Some(format)) = (bus_info, format) {
@@ -615,7 +627,7 @@ impl<P: Plugin> Instance<P> {
     unsafe extern "C" fn audio_ports_config_count(plugin: *const clap_plugin) -> u32 {
         let instance = &*(plugin as *const Self);
 
-        instance.info.layouts.len() as u32
+        instance.layouts.len() as u32
     }
 
     unsafe extern "C" fn audio_ports_config_get(
@@ -625,7 +637,7 @@ impl<P: Plugin> Instance<P> {
     ) -> bool {
         let instance = &*(plugin as *const Self);
 
-        if let Some(layout) = instance.info.layouts.get(index as usize) {
+        if let Some(layout) = instance.layouts.get(index as usize) {
             let config = &mut *config;
 
             config.id = index;
@@ -670,7 +682,7 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
         let main_thread_state = &mut *instance.main_thread_state.get();
 
-        if instance.info.layouts.get(config_id as usize).is_some() {
+        if instance.layouts.get(config_id as usize).is_some() {
             main_thread_state.layout_index = config_id as usize;
             return true;
         }
@@ -692,7 +704,7 @@ impl<P: Plugin> Instance<P> {
     unsafe extern "C" fn params_count(plugin: *const clap_plugin) -> u32 {
         let instance = &*(plugin as *const Self);
 
-        instance.info.params.len() as u32
+        instance.params.len() as u32
     }
 
     unsafe extern "C" fn params_get_info(
@@ -702,7 +714,7 @@ impl<P: Plugin> Instance<P> {
     ) -> bool {
         let instance = &*(plugin as *const Self);
 
-        if let Some(param) = instance.info.params.get(param_index as usize) {
+        if let Some(param) = instance.params.get(param_index as usize) {
             let param_info = &mut *param_info;
 
             param_info.id = param.id;
@@ -737,7 +749,7 @@ impl<P: Plugin> Instance<P> {
         if let Some(&index) = instance.param_map.get(&param_id) {
             instance.sync_plugin(main_thread_state);
 
-            let param = &instance.info.params[index];
+            let param = &instance.params[index];
             *value = map_param_out(param, main_thread_state.plugin.get_param(param_id));
             return true;
         }
@@ -756,7 +768,7 @@ impl<P: Plugin> Instance<P> {
         let main_thread_state = &mut *instance.main_thread_state.get();
 
         if let Some(&index) = instance.param_map.get(&param_id) {
-            let param = &instance.info.params[index];
+            let param = &instance.params[index];
 
             let text = format!(
                 "{}",
@@ -787,7 +799,7 @@ impl<P: Plugin> Instance<P> {
 
         if let Some(&index) = instance.param_map.get(&param_id) {
             if let Ok(text) = CStr::from_ptr(display).to_str() {
-                let param = &instance.info.params[index];
+                let param = &instance.params[index];
                 if let Some(out) = main_thread_state.plugin.parse_param(param_id, text) {
                     *value = map_param_out(param, out);
                     return true;
@@ -836,7 +848,7 @@ impl<P: Plugin> Instance<P> {
                     let event = &*(event as *const clap_event_param_value);
 
                     if let Some(&index) = instance.param_map.get(&event.param_id) {
-                        let value = map_param_in(&instance.info.params[index], event.value);
+                        let value = map_param_in(&instance.params[index], event.value);
                         main_thread_state.plugin.set_param(event.param_id, value);
 
                         if let Some(view) = &mut main_thread_state.view {
@@ -847,7 +859,7 @@ impl<P: Plugin> Instance<P> {
             }
 
             for update in instance.param_gestures.poll(&mut process_state.gesture_states) {
-                let param = &instance.info.params[update.index];
+                let param = &instance.params[update.index];
 
                 if let Some(value) = update.set_value {
                     main_thread_state.plugin.set_param(param.id, value);
@@ -940,7 +952,7 @@ impl<P: Plugin> Instance<P> {
 
         instance.sync_plugin(main_thread_state);
         if main_thread_state.plugin.load(&mut StreamReader(stream)).is_ok() {
-            for (index, param) in instance.info.params.iter().enumerate() {
+            for (index, param) in instance.params.iter().enumerate() {
                 let value = main_thread_state.plugin.get_param(param.id);
                 instance.engine_params.set(index, value);
 
