@@ -16,7 +16,7 @@ use crate::engine::{Config, Engine};
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo};
-use crate::plugin::{Plugin, PluginInfo};
+use crate::plugin::Plugin;
 use crate::sync::params::ParamValues;
 use crate::util::{slice_from_raw_parts_checked, DisplayParam};
 use crate::view::View;
@@ -51,7 +51,6 @@ struct ProcessState<P: Plugin> {
 }
 
 pub struct Component<P: Plugin> {
-    info: Arc<PluginInfo>,
     buses: Vec<BusInfo>,
     input_bus_map: Vec<usize>,
     output_bus_map: Vec<usize>,
@@ -70,7 +69,7 @@ pub struct Component<P: Plugin> {
 }
 
 impl<P: Plugin> Component<P> {
-    pub fn new(info: &Arc<PluginInfo>) -> Component<P> {
+    pub fn new() -> Component<P> {
         let host = Arc::new(Vst3Host::new());
 
         let plugin = P::new(Host::from_inner(host.clone()));
@@ -112,7 +111,6 @@ impl<P: Plugin> Component<P> {
         let has_view = plugin.has_view();
 
         Component {
-            info: info.clone(),
             buses,
             input_bus_map,
             output_bus_map,

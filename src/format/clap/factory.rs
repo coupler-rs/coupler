@@ -2,17 +2,15 @@ use std::cell::UnsafeCell;
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::marker::PhantomData;
 use std::ptr;
-use std::sync::Arc;
 
 use clap_sys::{host::*, plugin::*, plugin_factory::*, version::*};
 
 use super::instance::Instance;
 use super::ClapPlugin;
-use crate::plugin::{Plugin, PluginInfo};
+use crate::plugin::Plugin;
 
 struct FactoryState {
     descriptor: clap_plugin_descriptor,
-    info: Arc<PluginInfo>,
 }
 
 #[doc(hidden)]
@@ -42,7 +40,7 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
     }
 
     pub unsafe fn init(&self) -> bool {
-        let info = Arc::new(P::info());
+        let info = P::info();
         let clap_info = P::clap_info();
 
         let id = CString::new(&*clap_info.id).unwrap().into_raw();
@@ -67,7 +65,6 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
                 description: EMPTY.as_ptr(),
                 features: FEATURES.as_ptr(),
             },
-            info,
         });
 
         true
@@ -119,7 +116,7 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
 
         if let Some(state) = &*factory.state.get() {
             if CStr::from_ptr(plugin_id) == CStr::from_ptr(state.descriptor.id) {
-                let instance = Box::new(Instance::<P>::new(&state.descriptor, &state.info, host));
+                let instance = Box::new(Instance::<P>::new(&state.descriptor, host));
                 return Box::into_raw(instance) as *const clap_plugin;
             }
         }
