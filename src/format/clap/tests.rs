@@ -39,7 +39,6 @@ impl Plugin for TestPlugin {
             buses: Vec::new(),
             layouts: vec![],
             params: Vec::new(),
-            has_view: false,
         }
     }
     fn new(_host: Host) -> Self {
@@ -68,6 +67,9 @@ impl Plugin for TestPlugin {
     }
     fn engine(&mut self, _config: &Config) -> Self::Engine {
         TestEngine
+    }
+    fn has_view(&self) -> bool {
+        false
     }
     fn view(&mut self, _host: ViewHost, _parent: &ParentWindow) -> Self::View {
         TestView

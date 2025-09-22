@@ -16,7 +16,6 @@ pub struct PluginInfo {
     pub buses: Vec<BusInfo>,
     pub layouts: Vec<Layout>,
     pub params: Vec<ParamInfo>,
-    pub has_view: bool,
 }
 
 #[allow(clippy::derivable_impls)]
@@ -31,7 +30,6 @@ impl Default for PluginInfo {
             buses: Vec::new(),
             layouts: Vec::new(),
             params: Vec::new(),
-            has_view: false,
         }
     }
 }
@@ -54,6 +52,8 @@ pub trait Plugin: Send + Sized + 'static {
     fn save(&self, output: impl Write) -> io::Result<()>;
     fn load(&mut self, input: impl Read) -> io::Result<()>;
     fn engine(&mut self, config: &Config) -> Self::Engine;
+
+    fn has_view(&self) -> bool;
     fn view(&mut self, host: ViewHost, parent: &ParentWindow) -> Self::View;
 
     #[allow(unused_variables)]
