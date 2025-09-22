@@ -16,7 +16,7 @@ use crate::engine::{Config, Engine};
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
-use crate::plugin::{Plugin, PluginInfo};
+use crate::plugin::Plugin;
 use crate::sync::param_gestures::{GestureStates, GestureUpdate, ParamGestures};
 use crate::sync::params::ParamValues;
 use crate::util::{copy_cstring, slice_from_raw_parts_checked, DisplayParam};
@@ -65,7 +65,6 @@ pub struct Instance<P: Plugin> {
     #[allow(unused)]
     pub clap_plugin: clap_plugin,
     pub host: *const clap_host,
-    pub info: Arc<PluginInfo>,
     pub buses: Vec<BusInfo>,
     pub layouts: Vec<Layout>,
     pub input_bus_map: Vec<usize>,
@@ -85,11 +84,7 @@ pub struct Instance<P: Plugin> {
 unsafe impl<P: Plugin> Sync for Instance<P> {}
 
 impl<P: Plugin> Instance<P> {
-    pub fn new(
-        desc: *const clap_plugin_descriptor,
-        info: &Arc<PluginInfo>,
-        host: *const clap_host,
-    ) -> Self {
+    pub fn new(desc: *const clap_plugin_descriptor, host: *const clap_host) -> Self {
         let plugin = P::new(Host::from_inner(Arc::new(ClapHost {})));
 
         let buses = plugin.buses();
@@ -134,7 +129,6 @@ impl<P: Plugin> Instance<P> {
                 on_main_thread: Some(Self::on_main_thread),
             },
             host,
-            info: info.clone(),
             buses,
             layouts,
             input_bus_map,
