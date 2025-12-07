@@ -99,7 +99,7 @@ impl AtomicBitset {
     }
 
     #[inline]
-    pub fn drain(&self, ordering: Ordering) -> Drain {
+    pub fn drain(&self, ordering: Ordering) -> Drain<'_> {
         let mut iter = self.words.iter();
         let current_word = iter.next().map(|word| word.swap(0, ordering));
 

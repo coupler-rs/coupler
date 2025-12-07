@@ -22,7 +22,7 @@ impl ParamValues {
         self.dirty.set(index, true, Ordering::Release);
     }
 
-    pub fn poll(&self) -> Poll {
+    pub fn poll(&self) -> Poll<'_> {
         Poll {
             values: &self.values,
             iter: self.dirty.drain(Ordering::Acquire),
