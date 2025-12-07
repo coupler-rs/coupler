@@ -8,9 +8,6 @@ on:
     branches:
       master
 
-env:
-  VST3_SDK_DIR: ${{ github.workspace }}/vst3sdk
-
 jobs:
   ci:
     name: Build and run tests
@@ -21,22 +18,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v3
-      - name: Check out VST3 SDK
-        uses: actions/checkout@v3
-        with:
-          repository: coupler-rs/vst3_pluginterfaces
-          path: vst3sdk/pluginterfaces
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-      - name: Install libclang (Linux)
-        if: contains(matrix.os, 'ubuntu')
-        run: |
-          sudo apt-get update
-          sudo apt-get install llvm-dev libclang-dev clang
-      - name: Install libclang (Windows)
-        if: contains(matrix.os, 'windows')
-        run: |
-          choco install llvm
       - name: Build
         run: cargo build --workspace
       - name: Run tests
