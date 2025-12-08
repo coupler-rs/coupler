@@ -99,14 +99,14 @@ impl ScratchBuffers {
     /// buffer's length is 0, as hosts are not guaranteed to provide the correct number of inputs
     /// and outputs in that case, and we don't need to construct a `Buffers` object as we will be
     /// calling `Engine::flush` instead of `Engine::process`.
-    pub unsafe fn get_buffers(
-        &mut self,
+    pub unsafe fn get_buffers<'a, 'b>(
+        &'a mut self,
         buses: &[BusInfo],
         input_bus_map: &[usize],
         output_bus_map: &[usize],
         config: &Config,
         data: &ProcessData,
-    ) -> Result<Option<Buffers>, ()> {
+    ) -> Result<Option<Buffers<'a, 'b>>, ()> {
         let len = data.numSamples as usize;
         if len > config.max_buffer_size {
             return Err(());

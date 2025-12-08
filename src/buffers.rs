@@ -92,7 +92,7 @@ impl<'a, 'b> Buffers<'a, 'b> {
     }
 
     #[inline]
-    pub fn get(&mut self, index: usize) -> Option<AnyBuffer> {
+    pub fn get<'c>(&'c mut self, index: usize) -> Option<AnyBuffer<'a, 'c>> {
         if let Some(buffer) = self.buffers.get(index) {
             unsafe {
                 Some(AnyBuffer::from_raw_parts(
@@ -108,7 +108,7 @@ impl<'a, 'b> Buffers<'a, 'b> {
     }
 
     #[inline]
-    pub fn slice(&mut self, range: Range<usize>) -> Option<Buffers> {
+    pub fn slice<'c>(&'c mut self, range: Range<usize>) -> Option<Buffers<'a, 'c>> {
         if range.start > range.end || range.end > self.len {
             None
         } else {
@@ -227,7 +227,7 @@ impl<'a, 'b> Samples<'a, 'b> {
     }
 
     #[inline]
-    pub fn get(&mut self, index: usize) -> Option<AnySample> {
+    pub fn get<'c>(&'c mut self, index: usize) -> Option<AnySample<'a, 'c>> {
         if let Some(buffer) = self.buffers.get(index) {
             unsafe {
                 Some(AnySample::from_raw_parts(
