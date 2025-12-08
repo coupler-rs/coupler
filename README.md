@@ -12,8 +12,6 @@ Coupler is still early in development and should not be considered production-re
 
 ## Building
 
-First, see the usage instructions for the [`vst3` crate](https://github.com/coupler-rs/vst3-rs?tab=readme-ov-file#usage).
-
 To build the `gain` example, run:
 
 ```console
