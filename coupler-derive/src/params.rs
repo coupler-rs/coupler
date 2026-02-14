@@ -154,7 +154,7 @@ struct ParamField<'a> {
     param: ParamAttr,
 }
 
-fn parse_fields(input: &DeriveInput) -> Result<Vec<ParamField>, Error> {
+fn parse_fields(input: &DeriveInput) -> Result<Vec<ParamField<'_>>, Error> {
     let body = match &input.data {
         Data::Struct(body) => body,
         _ => {
