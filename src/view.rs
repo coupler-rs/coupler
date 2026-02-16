@@ -1,5 +1,6 @@
 use std::ffi::{c_ulong, c_void};
 use std::marker::PhantomData;
+use std::os::raw::c_int;
 use std::rc::Rc;
 
 use crate::params::{ParamId, ParamValue};
@@ -67,6 +68,10 @@ pub struct Size {
 pub trait View: Sized + 'static {
     fn size(&self) -> Size;
     fn param_changed(&mut self, id: ParamId, value: ParamValue);
+    #[cfg(target_os = "linux")]
+    fn file_descriptor(&self) -> Option<std::os::raw::c_int>;
+    #[cfg(target_os = "linux")]
+    fn poll(&mut self);
 }
 
 pub struct NoView;
@@ -80,4 +85,10 @@ impl View for NoView {
     }
 
     fn param_changed(&mut self, _id: ParamId, _value: ParamValue) {}
+
+    fn file_descriptor(&self) -> Option<c_int> {
+        None
+    }
+
+    fn poll(&mut self) {}
 }
