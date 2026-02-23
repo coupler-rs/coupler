@@ -2,13 +2,13 @@ use std::cell::{RefCell, UnsafeCell};
 use std::ffi::{c_void, CStr};
 use std::sync::Arc;
 
-use vst3::Steinberg::Vst::{IComponentHandler, IComponentHandlerTrait};
-use vst3::{Class, ComPtr, ComRef, ComWrapper, Steinberg::*};
-
 use super::component::MainThreadState;
 use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
 use crate::view::{ParentWindow, RawParent, View, ViewHost, ViewHostInner};
+use vst3::Steinberg::Linux::IEventHandlerTrait;
+use vst3::Steinberg::Vst::{IComponentHandler, IComponentHandlerTrait};
+use vst3::{Class, ComPtr, ComRef, ComWrapper, Steinberg::*};
 
 pub struct Vst3ViewHost {
     pub handler: RefCell<Option<ComPtr<IComponentHandler>>>,
@@ -61,11 +61,24 @@ pub struct PlugView<P: Plugin> {
     handler: ComWrapper<linux::EventHandler<P>>,
 }
 
+impl<P: Plugin> IEventHandlerTrait for PlugView<P> {
+    unsafe fn onFDIsSet(&self, _fd: FileDescriptor) {
+        // todo: VERY NOT SURE if this is actually safe -
+        // guard at least against re-entrant calls with Cell?
+        let state = unsafe { &mut *self.main_thread_state.get() };
+        state.view.as_mut().unwrap().poll();
+    }
+}
+
 // todo: not sure where to organize this
 #[cfg(target_os = "linux")]
 mod linux {
     use super::*;
     use vst3::Steinberg::Linux::*;
+
+    impl<P: Plugin> Class for PlugView<P> {
+        type Interfaces = (IEventHandler, ITimerHandler, IPlugView);
+    }
 
     pub(super) struct EventHandler<P: Plugin> {
         // TODO: old code had this as JUST an Arc,
@@ -112,10 +125,6 @@ impl<P: Plugin> PlugView<P> {
             handler: ComWrapper::new(linux::EventHandler::new(main_thread_state)),
         }
     }
-}
-
-impl<P: Plugin> Class for PlugView<P> {
-    type Interfaces = (IPlugView,);
 }
 
 impl<P: Plugin> IPlugViewTrait for PlugView<P> {
@@ -174,14 +183,12 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
                 if let Some(fd) =
                     (*self.main_thread_state.get()).view.as_ref().unwrap().file_descriptor()
                 {
-                    let event_handler = self.handler.as_com_ref::<IEventHandler>().unwrap();
-                    run_loop.registerEventHandler(event_handler.as_ptr(), fd);
+                    if let Some(event_handler) = self.as_com_ref::<IEventHandler>() {
+                        run_loop.registerEventHandler(event_handler, fd);
+                    }
                 }
             }
         }
-
-        // todo: old code had this - do we need it?
-        // editor_state.editor.replace(Some(editor));
 
         kResultOk
     }
