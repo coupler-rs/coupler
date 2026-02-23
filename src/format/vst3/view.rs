@@ -56,12 +56,7 @@ impl ViewHostInner for Vst3ViewHost {
 
 pub struct PlugView<P: Plugin> {
     main_thread_state: Arc<UnsafeCell<MainThreadState<P>>>,
-    // TODO: not sure this should go here, or nested somewhere
-    //  under plugin state.
-    //  In old code, it lived right under view (essentially same as PlugView)
-    //  so this is kinda the same.
-    //  Also - do we really want to be bringing back EventHandler? I'm guessing
-    //  it was removed for a reason.
+    //  TODO: consider having PlugView directly implement IEvent/ITimerHandler
     #[cfg(target_os = "linux")]
     handler: ComWrapper<linux::EventHandler<P>>,
 }
@@ -83,7 +78,7 @@ mod linux {
     }
 
     impl<P: Plugin> EventHandler<P> {
-        pub fn new(state: &Arc<UnsafeCell<MainThreadState<P>>>,) -> EventHandler<P> {
+        pub fn new(state: &Arc<UnsafeCell<MainThreadState<P>>>) -> EventHandler<P> {
             EventHandler {
                 state: state.clone(),
             }
@@ -176,7 +171,9 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
                 let timer_handler = self.handler.as_com_ref::<ITimerHandler>().unwrap();
                 run_loop.registerTimer(timer_handler.as_ptr(), 16);
 
-                if let Some(fd) = (*self.main_thread_state.get()).view.as_ref().unwrap().file_descriptor() {
+                if let Some(fd) =
+                    (*self.main_thread_state.get()).view.as_ref().unwrap().file_descriptor()
+                {
                     let event_handler = self.handler.as_com_ref::<IEventHandler>().unwrap();
                     run_loop.registerEventHandler(event_handler.as_ptr(), fd);
                 }
@@ -243,10 +240,7 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
         let main_thread_state = &mut *self.main_thread_state.get();
 
         if let Some(frame) = ComRef::from_raw(_frame) {
-            main_thread_state
-                .view_host
-                .plug_frame
-                .replace(Some(frame.to_com_ptr()));
+            main_thread_state.view_host.plug_frame.replace(Some(frame.to_com_ptr()));
         }
 
         kResultOk
