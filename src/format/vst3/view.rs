@@ -6,7 +6,7 @@ use super::component::MainThreadState;
 use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
 use crate::view::{ParentWindow, RawParent, View, ViewHost, ViewHostInner};
-use vst3::Steinberg::Linux::IEventHandlerTrait;
+use vst3::Steinberg::Linux::{FileDescriptor, IEventHandlerTrait};
 use vst3::Steinberg::Vst::{IComponentHandler, IComponentHandlerTrait};
 use vst3::{Class, ComPtr, ComRef, ComWrapper, Steinberg::*};
 
@@ -56,25 +56,31 @@ impl ViewHostInner for Vst3ViewHost {
 
 pub struct PlugView<P: Plugin> {
     main_thread_state: Arc<UnsafeCell<MainThreadState<P>>>,
-    //  TODO: consider having PlugView directly implement IEvent/ITimerHandler
-    #[cfg(target_os = "linux")]
-    handler: ComWrapper<linux::EventHandler<P>>,
 }
 
-impl<P: Plugin> IEventHandlerTrait for PlugView<P> {
-    unsafe fn onFDIsSet(&self, _fd: FileDescriptor) {
-        // todo: VERY NOT SURE if this is actually safe -
-        // guard at least against re-entrant calls with Cell?
-        let state = unsafe { &mut *self.main_thread_state.get() };
-        state.view.as_mut().unwrap().poll();
-    }
-}
+
 
 // todo: not sure where to organize this
 #[cfg(target_os = "linux")]
 mod linux {
     use super::*;
     use vst3::Steinberg::Linux::*;
+
+    impl<P: Plugin> IEventHandlerTrait for PlugView<P> {
+        unsafe fn onFDIsSet(&self, _fd: FileDescriptor) {
+            // todo: VERY NOT SURE if this is actually safe -
+            // guard at least against re-entrant calls with Cell?
+            let state = unsafe { &mut *self.main_thread_state.get() };
+            state.view.as_mut().unwrap().poll();
+        }
+    }
+
+    impl<P: Plugin> ITimerHandlerTrait for PlugView<P> {
+        unsafe fn onTimer(&self) {
+            let state = unsafe { &mut *self.main_thread_state.get() };
+            state.view.as_mut().unwrap().poll();
+        }
+    }
 
     impl<P: Plugin> Class for PlugView<P> {
         type Interfaces = (IEventHandler, ITimerHandler, IPlugView);
@@ -122,7 +128,6 @@ impl<P: Plugin> PlugView<P> {
     pub fn new(main_thread_state: &Arc<UnsafeCell<MainThreadState<P>>>) -> PlugView<P> {
         PlugView {
             main_thread_state: main_thread_state.clone(),
-            handler: ComWrapper::new(linux::EventHandler::new(main_thread_state)),
         }
     }
 }
@@ -177,15 +182,13 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
             };
 
             if let Some(run_loop) = frame.cast::<IRunLoop>() {
-                let timer_handler = self.handler.as_com_ref::<ITimerHandler>().unwrap();
-                run_loop.registerTimer(timer_handler.as_ptr(), 16);
+                let stupid_view = ComWrapper::new(PlugView::new(&self.main_thread_state));
+                run_loop.registerTimer(stupid_view.as_com_ref::<ITimerHandler>().unwrap().as_ptr(), 16);
 
                 if let Some(fd) =
                     (*self.main_thread_state.get()).view.as_ref().unwrap().file_descriptor()
                 {
-                    if let Some(event_handler) = self.as_com_ref::<IEventHandler>() {
-                        run_loop.registerEventHandler(event_handler, fd);
-                    }
+                    run_loop.registerEventHandler(stupid_view.as_com_ref::<IEventHandler>().unwrap().as_ptr(), 16);
                 }
             }
         }
