@@ -70,8 +70,6 @@ mod linux {
 
     impl<P: Plugin> IEventHandlerTrait for PlugView<P> {
         unsafe fn onFDIsSet(&self, _fd: FileDescriptor) {
-            // todo: VERY NOT SURE if this is actually safe -
-            // guard at least against re-entrant calls with Cell?
             let state = unsafe { &mut *self.main_thread_state.get() };
             state.view.as_mut().unwrap().poll();
         }
@@ -133,7 +131,6 @@ impl<P: Plugin> PlugView<P> {
     }
 }
 
-// todo: where would we like to put this?
 /// Safely transitions from one COM interface type to another (like IPlugView to ITimerHandler)
 /// using queryInterface.
 macro_rules! query_interface {
@@ -145,7 +142,7 @@ macro_rules! query_interface {
         let result = unsafe {
             ((*(*unknown_ptr).vtbl).queryInterface)(
                 unknown_ptr,
-                iid.as_ptr() as *const _,
+                iid.as_ptr() as *const TUID,
                 &mut result_obj,
             )
         };
