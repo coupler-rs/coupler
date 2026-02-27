@@ -1,4 +1,4 @@
-use std::cell::{RefCell, UnsafeCell};
+use std::cell::{Cell, RefCell, UnsafeCell};
 use std::ffi::{c_void, CStr};
 use std::sync::Arc;
 
@@ -8,7 +8,7 @@ use crate::plugin::Plugin;
 use crate::view::{ParentWindow, RawParent, View, ViewHost, ViewHostInner};
 use vst3::Steinberg::Linux::{FileDescriptor, IEventHandlerTrait};
 use vst3::Steinberg::Vst::{IComponentHandler, IComponentHandlerTrait};
-use vst3::{Class, ComPtr, ComRef, ComWrapper, Steinberg::*};
+use vst3::{Class, Interface, ComPtr, ComRef, ComWrapper, Steinberg::*};
 
 pub struct Vst3ViewHost {
     pub handler: RefCell<Option<ComPtr<IComponentHandler>>>,
@@ -56,9 +56,13 @@ impl ViewHostInner for Vst3ViewHost {
 
 pub struct PlugView<P: Plugin> {
     main_thread_state: Arc<UnsafeCell<MainThreadState<P>>>,
+    /// Raw pointer allows accessing this PlugView as a COM object when needed.
+    /// We use this rather than a ComPtr to avoid a circular reference / memory leak.
+    /// It needs to be a cell so we can have interior mutability and actually populate this
+    /// field after construction. This will allow us to later turn the IPlugView into
+    /// IEventHandler / ITimerHandler.
+    self_ptr: Cell<Option<*mut IPlugView>>,
 }
-
-
 
 // todo: not sure where to organize this
 #[cfg(target_os = "linux")]
@@ -128,8 +132,39 @@ impl<P: Plugin> PlugView<P> {
     pub fn new(main_thread_state: &Arc<UnsafeCell<MainThreadState<P>>>) -> PlugView<P> {
         PlugView {
             main_thread_state: main_thread_state.clone(),
+            self_ptr: Cell::new(None),
         }
     }
+
+    // must be called after construction
+    pub fn set_self_ptr(&self, ptr: *mut IPlugView) {
+        self.self_ptr.set(Some(ptr));
+    }
+}
+
+// todo: where would we like to put this?
+/// Safely transitions from one COM interface type to another (like IPlugView to ITimerHandler)
+/// using queryInterface.
+macro_rules! query_interface {
+    ($source_ptr:expr, $interface_type:ty) => {{
+        let mut result_obj: *mut c_void = std::ptr::null_mut();
+        let unknown_ptr = $source_ptr as *mut FUnknown;
+        let iid = <$interface_type>::IID;
+
+        let result = unsafe {
+            ((*(*unknown_ptr).vtbl).queryInterface)(
+                unknown_ptr,
+                iid.as_ptr() as *const _,
+                &mut result_obj,
+            )
+        };
+
+        if result == kResultOk && !result_obj.is_null() {
+            Some(result_obj as *mut $interface_type)
+        } else {
+            None
+        }
+    }};
 }
 
 impl<P: Plugin> IPlugViewTrait for PlugView<P> {
@@ -182,13 +217,17 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
             };
 
             if let Some(run_loop) = frame.cast::<IRunLoop>() {
-                let stupid_view = ComWrapper::new(PlugView::new(&self.main_thread_state));
-                run_loop.registerTimer(stupid_view.as_com_ref::<ITimerHandler>().unwrap().as_ptr(), 16);
+                if let Some(ptr) = self.self_ptr.get() {
+                    if let Some(timer_handler_ptr) = query_interface!(ptr, ITimerHandler) {
+                        run_loop.registerTimer(timer_handler_ptr, 16);
 
-                if let Some(fd) =
-                    (*self.main_thread_state.get()).view.as_ref().unwrap().file_descriptor()
-                {
-                    run_loop.registerEventHandler(stupid_view.as_com_ref::<IEventHandler>().unwrap().as_ptr(), 16);
+                        if let Some(fd) =
+                            (*self.main_thread_state.get()).view.as_ref().unwrap().file_descriptor() {
+                            if let Some(event_handler_ptr) = query_interface!(ptr, IEventHandler) {
+                                run_loop.registerEventHandler(event_handler_ptr, 16);
+                            }
+                        }
+                    }
                 }
             }
         }
