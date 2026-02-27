@@ -85,37 +85,6 @@ mod linux {
     impl<P: Plugin> Class for PlugView<P> {
         type Interfaces = (IEventHandler, ITimerHandler, IPlugView);
     }
-
-    pub(super) struct EventHandler<P: Plugin> {
-        // TODO: This should be refactored to use a RefCell
-        state: Arc<UnsafeCell<MainThreadState<P>>>,
-    }
-
-    impl<P: Plugin> EventHandler<P> {
-        pub fn new(state: &Arc<UnsafeCell<MainThreadState<P>>>) -> EventHandler<P> {
-            EventHandler {
-                state: state.clone(),
-            }
-        }
-    }
-
-    impl<P: Plugin> Class for EventHandler<P> {
-        type Interfaces = (IEventHandler, ITimerHandler);
-    }
-
-    impl<P: Plugin> IEventHandlerTrait for EventHandler<P> {
-        unsafe fn onFDIsSet(&self, _fd: FileDescriptor) {
-            let state = unsafe { &mut *self.state.get() };
-            state.view.as_mut().unwrap().poll();
-        }
-    }
-
-    impl<P: Plugin> ITimerHandlerTrait for EventHandler<P> {
-        unsafe fn onTimer(&self) {
-            let state = unsafe { &mut *self.state.get() };
-            state.view.as_mut().unwrap().poll();
-        }
-    }
 }
 
 impl<P: Plugin> PlugView<P> {
