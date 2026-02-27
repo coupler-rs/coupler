@@ -716,7 +716,6 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
             return ptr::null_mut();
         }
 
-        // create the view but populate the self_ptr so the view is able to access itself
         let view = PlugView::new(&self.main_thread_state);
         view.into_raw()
     }
