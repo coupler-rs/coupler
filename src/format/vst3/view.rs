@@ -91,12 +91,7 @@ mod linux {
     }
 
     pub(super) struct EventHandler<P: Plugin> {
-        // TODO: old code had this as JUST an Arc,
-        //  but in order to be able to call poll via this state, we
-        //  need it to be an unsafecell. Is there a better way?
-        //  I tend to think this is safe because, if it's all getting called
-        //  from the "main thread", it shouldn't be getting concurrently accessed,
-        //  but I don't trust that logic...
+        // TODO: This should be refactored to use a RefCell
         state: Arc<UnsafeCell<MainThreadState<P>>>,
     }
 
