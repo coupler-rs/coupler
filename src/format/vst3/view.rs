@@ -229,6 +229,27 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
     unsafe fn removed(&self) -> tresult {
         let main_thread_state = &mut *self.main_thread_state.get();
 
+        #[cfg(target_os = "linux")]
+        {
+            use vst3::Steinberg::Linux::*;
+
+            let Some(frame) = main_thread_state.view_host.plug_frame.borrow().clone() else {
+                return kNotInitialized;
+            };
+
+            if let Some(run_loop) = frame.cast::<IRunLoop>() {
+                if let Some(ptr) = self.self_ptr.get() {
+                    if let Some(timer_handler_ptr) = query_interface!(ptr, ITimerHandler) {
+                        run_loop.unregisterTimer(timer_handler_ptr);
+
+                        if let Some(event_handler_ptr) = query_interface!(ptr, IEventHandler) {
+                            run_loop.unregisterEventHandler(event_handler_ptr);
+                        }
+                    }
+                }
+            }
+        }
+
         main_thread_state.view = None;
 
         kResultOk
