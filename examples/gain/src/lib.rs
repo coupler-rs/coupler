@@ -356,7 +356,6 @@ impl View for GainView {
     }
 
     fn poll(&mut self) {
-        // todo: is unwrapping really the right choice?
         self.event_loop.poll().unwrap();
     }
 }

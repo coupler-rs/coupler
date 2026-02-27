@@ -717,10 +717,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         }
 
         // create the view but populate the self_ptr so the view is able to access itself
-        let view = ComWrapper::new(PlugView::new(&self.main_thread_state));
-        let com_ptr = view.to_com_ptr::<IPlugView>().unwrap();
-        let raw_ptr = com_ptr.as_ptr();
-        view.set_self_ptr(raw_ptr);
-        com_ptr.into_raw()
+        let view = PlugView::new(&self.main_thread_state);
+        view.into_raw()
     }
 }

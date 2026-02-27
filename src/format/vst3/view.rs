@@ -12,7 +12,6 @@ use vst3::{Class, Interface, ComPtr, ComRef, ComWrapper, Steinberg::*};
 
 pub struct Vst3ViewHost {
     pub handler: RefCell<Option<ComPtr<IComponentHandler>>>,
-    // todo: not sure on best place, but this seems to match closest to the old code
     pub plug_frame: RefCell<Option<ComPtr<IPlugFrame>>>,
 }
 
@@ -64,7 +63,6 @@ pub struct PlugView<P: Plugin> {
     self_ptr: Cell<Option<*mut IPlugView>>,
 }
 
-// todo: not sure where to organize this
 #[cfg(target_os = "linux")]
 mod linux {
     use super::*;
@@ -109,7 +107,6 @@ mod linux {
 
     impl<P: Plugin> IEventHandlerTrait for EventHandler<P> {
         unsafe fn onFDIsSet(&self, _fd: FileDescriptor) {
-            // todo: VERY NOT SURE if this is actually safe
             let state = unsafe { &mut *self.state.get() };
             state.view.as_mut().unwrap().poll();
         }
@@ -124,16 +121,15 @@ mod linux {
 }
 
 impl<P: Plugin> PlugView<P> {
-    pub fn new(main_thread_state: &Arc<UnsafeCell<MainThreadState<P>>>) -> PlugView<P> {
-        PlugView {
+    pub fn new(main_thread_state: &Arc<UnsafeCell<MainThreadState<P>>>) -> ComPtr<IPlugView> {
+        let view = ComWrapper::new(PlugView {
             main_thread_state: main_thread_state.clone(),
             self_ptr: Cell::new(None),
-        }
-    }
-
-    // must be called after construction
-    pub fn set_self_ptr(&self, ptr: *mut IPlugView) {
-        self.self_ptr.set(Some(ptr));
+        });
+        let com_ptr = view.to_com_ptr::<IPlugView>().unwrap();
+        let raw_ptr = com_ptr.as_ptr();
+        view.self_ptr.set(Some(raw_ptr));
+        com_ptr
     }
 }
 
