@@ -100,30 +100,6 @@ impl<P: Plugin> PlugView<P> {
     }
 }
 
-/// Safely transitions from one COM interface type to another (like IPlugView to ITimerHandler)
-/// using queryInterface.
-macro_rules! query_interface {
-    ($source_ptr:expr, $interface_type:ty) => {{
-        let mut result_obj: *mut c_void = std::ptr::null_mut();
-        let unknown_ptr = $source_ptr as *mut FUnknown;
-        let iid = <$interface_type>::IID;
-
-        let result = unsafe {
-            ((*(*unknown_ptr).vtbl).queryInterface)(
-                unknown_ptr,
-                iid.as_ptr() as *const TUID,
-                &mut result_obj,
-            )
-        };
-
-        if result == kResultOk && !result_obj.is_null() {
-            Some(result_obj as *mut $interface_type)
-        } else {
-            None
-        }
-    }};
-}
-
 impl<P: Plugin> IPlugViewTrait for PlugView<P> {
     unsafe fn isPlatformTypeSupported(&self, type_: FIDString) -> tresult {
         #[cfg(target_os = "windows")]
@@ -175,16 +151,20 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
 
             if let Some(run_loop) = frame.cast::<IRunLoop>() {
                 if let Some(ptr) = self.self_ptr.get() {
-                    if let Some(timer_handler_ptr) = query_interface!(ptr, ITimerHandler) {
-                        run_loop.registerTimer(timer_handler_ptr, 16);
-
-                        if let Some(fd) =
-                            (*self.main_thread_state.get()).view.as_ref().unwrap().file_descriptor() {
-                            if let Some(event_handler_ptr) = query_interface!(ptr, IEventHandler) {
-                                run_loop.registerEventHandler(event_handler_ptr, 16);
+                    if let Some(com_ref) = unsafe {ComRef::from_raw(ptr)} {
+                        if let Some(timer_handler_ptr) = com_ref.cast::<ITimerHandler>() {
+                            unsafe {
+                                run_loop.registerTimer(timer_handler_ptr.as_ptr(), 16);
+                            }
+                            if let Some(fd) =
+                                (*self.main_thread_state.get()).view.as_ref().unwrap().file_descriptor() {
+                                if let Some(event_handler_ptr) = com_ref.cast::<IEventHandler>() {
+                                    run_loop.registerEventHandler(event_handler_ptr.as_ptr(), 16);
+                                }
                             }
                         }
                     }
+
                 }
             }
         }
@@ -205,11 +185,16 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
 
             if let Some(run_loop) = frame.cast::<IRunLoop>() {
                 if let Some(ptr) = self.self_ptr.get() {
-                    if let Some(timer_handler_ptr) = query_interface!(ptr, ITimerHandler) {
-                        run_loop.unregisterTimer(timer_handler_ptr);
-
-                        if let Some(event_handler_ptr) = query_interface!(ptr, IEventHandler) {
-                            run_loop.unregisterEventHandler(event_handler_ptr);
+                    if let Some(com_ref) = unsafe {ComRef::from_raw(ptr)} {
+                        if let Some(timer_handler_ptr) = com_ref.cast::<ITimerHandler>() {
+                            unsafe {
+                                run_loop.unregisterTimer(timer_handler_ptr.as_ptr());
+                            }
+                        }
+                        if let Some(event_handler_ptr) = com_ref.cast::<IEventHandler>() {
+                            unsafe {
+                                run_loop.unregisterEventHandler(event_handler_ptr.as_ptr());
+                            }
                         }
                     }
                 }
