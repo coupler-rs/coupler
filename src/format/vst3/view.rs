@@ -156,10 +156,11 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
                             unsafe {
                                 run_loop.registerTimer(timer_handler_ptr.as_ptr(), 16);
                             }
+                            // todo: fd is unused - rethink this check
                             if let Some(fd) =
                                 (*self.main_thread_state.get()).view.as_ref().unwrap().file_descriptor() {
                                 if let Some(event_handler_ptr) = com_ref.cast::<IEventHandler>() {
-                                    run_loop.registerEventHandler(event_handler_ptr.as_ptr(), 16);
+                                    run_loop.registerEventHandler(event_handler_ptr.as_ptr(), fd);
                                 }
                             }
                         }
@@ -191,9 +192,14 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
                                 run_loop.unregisterTimer(timer_handler_ptr.as_ptr());
                             }
                         }
-                        if let Some(event_handler_ptr) = com_ref.cast::<IEventHandler>() {
-                            unsafe {
-                                run_loop.unregisterEventHandler(event_handler_ptr.as_ptr());
+                        // confirm an event handler actually was registered
+                        // before trying to unregister (we only register if we can get a
+                        // file descriptor)
+                        if (*self.main_thread_state.get()).view.as_ref().unwrap().file_descriptor().is_some() {
+                            if let Some(event_handler_ptr) = com_ref.cast::<IEventHandler>() {
+                                unsafe {
+                                    run_loop.unregisterEventHandler(event_handler_ptr.as_ptr());
+                                }
                             }
                         }
                     }
