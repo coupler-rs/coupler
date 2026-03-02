@@ -1,6 +1,7 @@
 use std::fmt::{self, Formatter};
 use std::io::{self, Read, Write};
-
+use std::os::fd::AsRawFd;
+use std::os::raw::c_int;
 use serde::{Deserialize, Serialize};
 
 use coupler::format::clap::*;
@@ -348,5 +349,13 @@ impl View for GainView {
         self.task.with(|state, _| {
             state.params.set_param(id, value);
         });
+    }
+
+    fn file_descriptor(&self) -> Option<c_int> {
+        Some(self.event_loop.as_raw_fd())
+    }
+
+    fn poll(&mut self) {
+        self.event_loop.poll().unwrap();
     }
 }

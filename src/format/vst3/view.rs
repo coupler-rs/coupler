@@ -1,23 +1,25 @@
-use std::cell::{RefCell, UnsafeCell};
+use std::cell::{Cell, RefCell, UnsafeCell};
 use std::ffi::{c_void, CStr};
 use std::sync::Arc;
-
-use vst3::Steinberg::Vst::{IComponentHandler, IComponentHandlerTrait};
-use vst3::{Class, ComPtr, Steinberg::*};
 
 use super::component::MainThreadState;
 use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
 use crate::view::{ParentWindow, RawParent, View, ViewHost, ViewHostInner};
+use vst3::Steinberg::Linux::{FileDescriptor, IEventHandlerTrait};
+use vst3::Steinberg::Vst::{IComponentHandler, IComponentHandlerTrait};
+use vst3::{Class, Interface, ComPtr, ComRef, ComWrapper, Steinberg::*};
 
 pub struct Vst3ViewHost {
     pub handler: RefCell<Option<ComPtr<IComponentHandler>>>,
+    pub plug_frame: RefCell<Option<ComPtr<IPlugFrame>>>,
 }
 
 impl Vst3ViewHost {
     pub fn new() -> Vst3ViewHost {
         Vst3ViewHost {
             handler: RefCell::new(None),
+            plug_frame: RefCell::new(None),
         }
     }
 }
@@ -53,18 +55,49 @@ impl ViewHostInner for Vst3ViewHost {
 
 pub struct PlugView<P: Plugin> {
     main_thread_state: Arc<UnsafeCell<MainThreadState<P>>>,
+    /// Raw pointer allows accessing this PlugView as a COM object when needed.
+    /// We use this rather than a ComPtr to avoid a circular reference / memory leak.
+    /// It needs to be a cell so we can have interior mutability and actually populate this
+    /// field after construction. This will allow us to later turn the IPlugView into
+    /// IEventHandler / ITimerHandler.
+    self_ptr: Cell<Option<*mut IPlugView>>,
 }
 
-impl<P: Plugin> PlugView<P> {
-    pub fn new(main_thread_state: &Arc<UnsafeCell<MainThreadState<P>>>) -> PlugView<P> {
-        PlugView {
-            main_thread_state: main_thread_state.clone(),
+#[cfg(target_os = "linux")]
+mod linux {
+    use super::*;
+    use vst3::Steinberg::Linux::*;
+
+    impl<P: Plugin> IEventHandlerTrait for PlugView<P> {
+        unsafe fn onFDIsSet(&self, _fd: FileDescriptor) {
+            let state = unsafe { &mut *self.main_thread_state.get() };
+            state.view.as_mut().unwrap().poll();
         }
+    }
+
+    impl<P: Plugin> ITimerHandlerTrait for PlugView<P> {
+        unsafe fn onTimer(&self) {
+            let state = unsafe { &mut *self.main_thread_state.get() };
+            state.view.as_mut().unwrap().poll();
+        }
+    }
+
+    impl<P: Plugin> Class for PlugView<P> {
+        type Interfaces = (IEventHandler, ITimerHandler, IPlugView);
     }
 }
 
-impl<P: Plugin> Class for PlugView<P> {
-    type Interfaces = (IPlugView,);
+impl<P: Plugin> PlugView<P> {
+    pub fn new(main_thread_state: &Arc<UnsafeCell<MainThreadState<P>>>) -> ComPtr<IPlugView> {
+        let view = ComWrapper::new(PlugView {
+            main_thread_state: main_thread_state.clone(),
+            self_ptr: Cell::new(None),
+        });
+        let com_ptr = view.to_com_ptr::<IPlugView>().unwrap();
+        let raw_ptr = com_ptr.as_ptr();
+        view.self_ptr.set(Some(raw_ptr));
+        com_ptr
+    }
 }
 
 impl<P: Plugin> IPlugViewTrait for PlugView<P> {
@@ -108,11 +141,70 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
         let view = main_thread_state.plugin.view(host, &parent);
         main_thread_state.view = Some(view);
 
+        #[cfg(target_os = "linux")]
+        {
+            use vst3::Steinberg::Linux::*;
+
+            let Some(frame) = main_thread_state.view_host.plug_frame.borrow().clone() else {
+                return kNotInitialized;
+            };
+
+            if let Some(run_loop) = frame.cast::<IRunLoop>() {
+                if let Some(ptr) = self.self_ptr.get() {
+                    if let Some(com_ref) = unsafe {ComRef::from_raw(ptr)} {
+                        if let Some(timer_handler_ptr) = com_ref.cast::<ITimerHandler>() {
+                            unsafe {
+                                run_loop.registerTimer(timer_handler_ptr.as_ptr(), 16);
+                            }
+                            if let Some(fd) =
+                                (*self.main_thread_state.get()).view.as_ref().unwrap().file_descriptor() {
+                                if let Some(event_handler_ptr) = com_ref.cast::<IEventHandler>() {
+                                    run_loop.registerEventHandler(event_handler_ptr.as_ptr(), fd);
+                                }
+                            }
+                        }
+                    }
+
+                }
+            }
+        }
+
         kResultOk
     }
 
     unsafe fn removed(&self) -> tresult {
         let main_thread_state = &mut *self.main_thread_state.get();
+
+        #[cfg(target_os = "linux")]
+        {
+            use vst3::Steinberg::Linux::*;
+
+            let Some(frame) = main_thread_state.view_host.plug_frame.borrow().clone() else {
+                return kNotInitialized;
+            };
+
+            if let Some(run_loop) = frame.cast::<IRunLoop>() {
+                if let Some(ptr) = self.self_ptr.get() {
+                    if let Some(com_ref) = unsafe {ComRef::from_raw(ptr)} {
+                        if let Some(timer_handler_ptr) = com_ref.cast::<ITimerHandler>() {
+                            unsafe {
+                                run_loop.unregisterTimer(timer_handler_ptr.as_ptr());
+                            }
+                        }
+                        // confirm an event handler actually was registered
+                        // before trying to unregister (we only register if we can get a
+                        // file descriptor)
+                        if (*self.main_thread_state.get()).view.as_ref().unwrap().file_descriptor().is_some() {
+                            if let Some(event_handler_ptr) = com_ref.cast::<IEventHandler>() {
+                                unsafe {
+                                    run_loop.unregisterEventHandler(event_handler_ptr.as_ptr());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         main_thread_state.view = None;
 
@@ -162,7 +254,13 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
     }
 
     unsafe fn setFrame(&self, _frame: *mut IPlugFrame) -> tresult {
-        kNotImplemented
+        let main_thread_state = &mut *self.main_thread_state.get();
+
+        if let Some(frame) = ComRef::from_raw(_frame) {
+            main_thread_state.view_host.plug_frame.replace(Some(frame.to_com_ptr()));
+        }
+
+        kResultOk
     }
 
     unsafe fn canResize(&self) -> tresult {

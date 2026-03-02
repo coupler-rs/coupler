@@ -716,7 +716,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
             return ptr::null_mut();
         }
 
-        let view = ComWrapper::new(PlugView::new(&self.main_thread_state));
-        view.to_com_ptr::<IPlugView>().unwrap().into_raw()
+        let view = PlugView::new(&self.main_thread_state);
+        view.into_raw()
     }
 }
