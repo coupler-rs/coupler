@@ -156,7 +156,6 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
                             unsafe {
                                 run_loop.registerTimer(timer_handler_ptr.as_ptr(), 16);
                             }
-                            // todo: fd is unused - rethink this check
                             if let Some(fd) =
                                 (*self.main_thread_state.get()).view.as_ref().unwrap().file_descriptor() {
                                 if let Some(event_handler_ptr) = com_ref.cast::<IEventHandler>() {
