@@ -1,0 +1,17 @@
+[package]
+name = "gain-gui-vst3"
+version = "0.1.0"
+authors = ["Micah Johnston <micah@photophore.systems>"]
+edition = "2021"
+publish = false
+
+[package.metadata.coupler]
+name = "Gain (GUI)"
+formats = ["vst3"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+coupler = { workspace = true }
+gain-gui = { path = "../.." }

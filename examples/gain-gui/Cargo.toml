@@ -1,5 +1,5 @@
 [package]
-name = "gain"
+name = "gain-gui"
 version = "0.1.0"
 authors = ["Micah Johnston <micah@photophore.systems>"]
 edition = "2021"
@@ -7,5 +7,7 @@ publish = false
 
 [dependencies]
 coupler = { workspace = true, features = ["derive"] }
+portlight = "0.0.2"
+flicker = { git = "https://github.com/coupler-rs/flicker", rev = "80aca05cb6c7406f8c2a4ba66d85849dc344afaa" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
