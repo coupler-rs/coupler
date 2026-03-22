@@ -3,7 +3,7 @@ use std::ffi::{c_void, CStr};
 use std::sync::Arc;
 
 use vst3::Steinberg::Vst::{IComponentHandler, IComponentHandlerTrait};
-use vst3::{Class, ComPtr, Steinberg::*};
+use vst3::{Class, ComPtr, ComRef, Steinberg::*};
 
 use super::component::MainThreadState;
 use crate::params::{ParamId, ParamValue};
@@ -161,8 +161,13 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
         kResultFalse
     }
 
-    unsafe fn setFrame(&self, _frame: *mut IPlugFrame) -> tresult {
-        kNotImplemented
+    unsafe fn setFrame(&self, frame: *mut IPlugFrame) -> tresult {
+        let frame = ComRef::from_raw(frame).map(|frame| frame.to_com_ptr());
+
+        let main_thread_state = &*self.main_thread_state.get();
+        main_thread_state.frame.set(frame);
+
+        kResultOk
     }
 
     unsafe fn canResize(&self) -> tresult {
