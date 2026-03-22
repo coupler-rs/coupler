@@ -6,7 +6,7 @@ edition = "2021"
 publish = false
 
 [package.metadata.coupler]
-name = "gain"
+name = "Gain"
 formats = ["clap"]
 
 [lib]
