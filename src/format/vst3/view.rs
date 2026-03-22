@@ -162,10 +162,8 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
     }
 
     unsafe fn setFrame(&self, frame: *mut IPlugFrame) -> tresult {
-        let frame = ComRef::from_raw(frame).map(|frame| frame.to_com_ptr());
-
-        let main_thread_state = &*self.main_thread_state.get();
-        main_thread_state.frame.set(frame);
+        let main_thread_state = &mut *self.main_thread_state.get();
+        main_thread_state.frame = ComRef::from_raw(frame).map(|frame| frame.to_com_ptr());
 
         kResultOk
     }

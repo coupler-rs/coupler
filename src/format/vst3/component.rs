@@ -1,4 +1,4 @@
-use std::cell::{Cell, UnsafeCell};
+use std::cell::UnsafeCell;
 use std::collections::{HashMap, HashSet};
 use std::ffi::{c_void, CStr};
 use std::ptr;
@@ -41,7 +41,7 @@ pub struct MainThreadState<P: Plugin> {
     pub plugin: P,
     pub view_host: Rc<Vst3ViewHost>,
     pub view: Option<P::View>,
-    pub frame: Cell<Option<ComPtr<IPlugFrame>>>,
+    pub frame: Option<ComPtr<IPlugFrame>>,
 }
 
 struct ProcessState<P: Plugin> {
@@ -127,7 +127,7 @@ impl<P: Plugin> Component<P> {
                 plugin,
                 view_host: Rc::new(Vst3ViewHost::new()),
                 view: None,
-                frame: Cell::new(None),
+                frame: None,
             })),
             process_state: UnsafeCell::new(ProcessState {
                 config,
