@@ -70,13 +70,13 @@ macro_rules! vst3 {
 
         #[cfg(target_os = "macos")]
         #[no_mangle]
-        extern "system" fn BundleEntry(_bundle_ref: *mut ::std::ffi::c_void) -> bool {
+        extern "system" fn bundleEntry(_bundle_ref: *mut ::std::ffi::c_void) -> bool {
             true
         }
 
         #[cfg(target_os = "macos")]
         #[no_mangle]
-        extern "system" fn BundleExit() -> bool {
+        extern "system" fn bundleExit() -> bool {
             true
         }
 
