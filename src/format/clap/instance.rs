@@ -46,7 +46,7 @@ fn map_param_out(param: &ParamInfo, value: ParamValue) -> f64 {
 }
 
 pub struct MainThreadState<P: Plugin> {
-    pub host_params: Option<*const clap_host_params>,
+    pub host_params: Option<NonNull<clap_host_params>>,
     pub layout_index: usize,
     pub plugin: P,
     pub view: Option<P::View>,
@@ -320,9 +320,7 @@ impl<P: Plugin> Instance<P> {
 
         let host_params =
             (*instance.host).get_extension.unwrap()(instance.host, CLAP_EXT_PARAMS.as_ptr());
-        if !host_params.is_null() {
-            main_thread_state.host_params = Some(host_params as *const clap_host_params);
-        }
+        main_thread_state.host_params = NonNull::new(host_params as *mut clap_host_params);
 
         true
     }

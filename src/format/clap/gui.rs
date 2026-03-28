@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::ffi::{c_char, CStr};
+use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -14,7 +15,7 @@ use crate::view::{ParentWindow, RawParent, View, ViewHost, ViewHostInner};
 
 struct ClapViewHost {
     host: *const clap_host,
-    host_params: Option<*const clap_host_params>,
+    host_params: Option<NonNull<clap_host_params>>,
     param_map: Arc<HashMap<ParamId, usize>>,
     param_gestures: Arc<ParamGestures>,
 }
@@ -24,7 +25,7 @@ impl ViewHostInner for ClapViewHost {
         self.param_gestures.begin_gesture(self.param_map[&id]);
 
         if let Some(host_params) = self.host_params {
-            unsafe { (*host_params).request_flush.unwrap()(self.host) };
+            unsafe { host_params.as_ref().request_flush.unwrap()(self.host) };
         }
     }
 
@@ -32,7 +33,7 @@ impl ViewHostInner for ClapViewHost {
         self.param_gestures.end_gesture(self.param_map[&id]);
 
         if let Some(host_params) = self.host_params {
-            unsafe { (*host_params).request_flush.unwrap()(self.host) };
+            unsafe { host_params.as_ref().request_flush.unwrap()(self.host) };
         }
     }
 
@@ -40,7 +41,7 @@ impl ViewHostInner for ClapViewHost {
         self.param_gestures.set_value(self.param_map[&id], value);
 
         if let Some(host_params) = self.host_params {
-            unsafe { (*host_params).request_flush.unwrap()(self.host) };
+            unsafe { host_params.as_ref().request_flush.unwrap()(self.host) };
         }
     }
 }
