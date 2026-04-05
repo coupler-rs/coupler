@@ -107,7 +107,7 @@ impl Plugin for Gain {
     }
 
     fn has_view(&self) -> bool {
-        true
+        false
     }
 
     fn view(&mut self, _host: ViewHost, _parent: &ParentWindow) -> Self::View {
