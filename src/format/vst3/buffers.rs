@@ -1,6 +1,6 @@
 use std::iter::zip;
 use std::ptr::NonNull;
-use std::slice;
+use std::{ptr, slice};
 
 use vst3::Steinberg::Vst::ProcessData;
 
@@ -8,6 +8,12 @@ use crate::buffers::{BufferData, BufferType, Buffers};
 use crate::bus::{BusDir, BusInfo};
 use crate::engine::Config;
 use crate::util::slice_from_raw_parts_checked;
+
+// Alternative to `slice::from_raw_parts` that can be used safely even when passed an unaligned
+// pointer. Creates an iterator that fetches each item in an array using `ptr::read_unaligned`.
+unsafe fn iter_slice_unaligned<T>(ptr: *const T, len: usize) -> impl Iterator<Item = T> {
+    (0..len).map(move |i| ptr::read_unaligned(ptr.add(i)))
+}
 
 pub struct ScratchBuffers {
     inputs_active: Vec<bool>,
@@ -145,13 +151,16 @@ impl ScratchBuffers {
             let data = &self.data[bus_index];
             if self.outputs_active[output_index] {
                 let output = &outputs[output_index];
-                let channels = slice_from_raw_parts_checked(
+                let channels = iter_slice_unaligned(
                     output.__field0.channelBuffers32,
                     output.numChannels as usize,
                 );
 
-                self.ptrs[data.start..data.end].copy_from_slice(channels);
-                self.output_ptrs.extend_from_slice(channels);
+                let ptrs = &mut self.ptrs[data.start..data.end];
+                for (channel, ptr) in zip(channels, ptrs) {
+                    *ptr = channel;
+                    self.output_ptrs.push(channel);
+                }
             } else {
                 // For inactive output buses, allocate a scratch buffer for each channel.
                 for ptr in &mut self.ptrs[data.start..data.end] {
@@ -174,13 +183,13 @@ impl ScratchBuffers {
             if bus_info.dir == BusDir::In {
                 if self.inputs_active[input_index] {
                     let input = &inputs[input_index];
-                    let channels = slice_from_raw_parts_checked(
+                    let channels = iter_slice_unaligned(
                         input.__field0.channelBuffers32,
                         input.numChannels as usize,
                     );
 
                     let ptrs = &mut self.ptrs[data.start..data.end];
-                    for (&channel, ptr) in zip(channels, ptrs) {
+                    for (channel, ptr) in zip(channels, ptrs) {
                         // If an input buffer is aliased by some output buffer, copy its contents to
                         // a scratch buffer.
                         if self.output_ptrs.binary_search(&channel).is_ok() {
@@ -211,13 +220,13 @@ impl ScratchBuffers {
             if bus_info.dir == BusDir::InOut {
                 if self.inputs_active[input_index] {
                     let input = &inputs[input_index];
-                    let channels = slice_from_raw_parts_checked(
+                    let channels = iter_slice_unaligned(
                         input.__field0.channelBuffers32,
                         input.numChannels as usize,
                     );
 
                     let ptrs = &self.ptrs[data.start..data.end];
-                    for (&src, &dst) in zip(channels, ptrs) {
+                    for (src, &dst) in zip(channels, ptrs) {
                         // Only perform a copy if input and output pointers are not equal.
                         if src != dst {
                             // If an input buffer is aliased by an output buffer, we might overwrite
