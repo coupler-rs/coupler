@@ -22,5 +22,5 @@ pub unsafe fn utf16_from_ptr<'a>(ptr: *const char16) -> &'a [u16] {
         len += 1;
     }
 
-    slice::from_raw_parts(ptr as *const u16, len)
+    slice::from_raw_parts(ptr, len)
 }
