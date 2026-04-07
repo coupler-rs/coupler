@@ -896,10 +896,7 @@ impl<P: Plugin> Instance<P> {
                 };
 
                 if result == -1 {
-                    Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        "failed to write to stream",
-                    ))
+                    Err(io::Error::other("failed to write to stream"))
                 } else {
                     io::Result::Ok(result as usize)
                 }
@@ -935,10 +932,7 @@ impl<P: Plugin> Instance<P> {
                 };
 
                 if result == -1 {
-                    Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        "failed to read from stream",
-                    ))
+                    Err(io::Error::other("failed to read from stream"))
                 } else {
                     io::Result::Ok(result as usize)
                 }

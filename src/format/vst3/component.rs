@@ -297,7 +297,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
     }
 
     unsafe fn setState(&self, state: *mut IBStream) -> tresult {
-        use std::io::{Error, ErrorKind, Read, Result};
+        use std::io::{Error, Read, Result};
 
         struct StreamReader<'a>(ComRef<'a, IBStream>);
 
@@ -311,7 +311,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
                 if result == kResultOk {
                     Ok(bytes as usize)
                 } else {
-                    Err(Error::new(ErrorKind::Other, "failed to read from stream"))
+                    Err(Error::other("failed to read from stream"))
                 }
             }
         }
@@ -339,7 +339,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
     }
 
     unsafe fn getState(&self, state: *mut IBStream) -> tresult {
-        use std::io::{Error, ErrorKind, Result, Write};
+        use std::io::{Error, Result, Write};
 
         struct StreamWriter<'a>(ComRef<'a, IBStream>);
 
@@ -353,7 +353,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
                 if result == kResultOk {
                     Ok(bytes as usize)
                 } else {
-                    Err(Error::new(ErrorKind::Other, "failed to write to stream"))
+                    Err(Error::other("failed to write to stream"))
                 }
             }
 
