@@ -27,7 +27,7 @@ pub fn copy_cstring(src: &str, dst: &mut [c_char]) {
 // is nonzero before calling `from_raw_parts`.
 pub unsafe fn slice_from_raw_parts_checked<'a, T>(ptr: *const T, len: usize) -> &'a [T] {
     if len > 0 {
-        slice::from_raw_parts(ptr, len)
+        unsafe { slice::from_raw_parts(ptr, len) }
     } else {
         &[]
     }

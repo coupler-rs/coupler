@@ -28,8 +28,12 @@ impl<'a, 'b> AnyBuffer<'a, 'b> {
         len: usize,
     ) -> AnyBuffer<'a, 'b> {
         match buffer_type {
-            BufferType::Const => AnyBuffer::Const(Buffer::from_raw_parts(ptrs, offset, len)),
-            BufferType::Mut => AnyBuffer::Mut(BufferMut::from_raw_parts(ptrs, offset, len)),
+            BufferType::Const => {
+                AnyBuffer::Const(unsafe { Buffer::from_raw_parts(ptrs, offset, len) })
+            }
+            BufferType::Mut => {
+                AnyBuffer::Mut(unsafe { BufferMut::from_raw_parts(ptrs, offset, len) })
+            }
         }
     }
 }
@@ -193,8 +197,8 @@ impl<'a, 'b> AnySample<'a, 'b> {
         offset: isize,
     ) -> AnySample<'a, 'b> {
         match buffer_type {
-            BufferType::Const => AnySample::Const(Sample::from_raw_parts(ptrs, offset)),
-            BufferType::Mut => AnySample::Mut(SampleMut::from_raw_parts(ptrs, offset)),
+            BufferType::Const => AnySample::Const(unsafe { Sample::from_raw_parts(ptrs, offset) }),
+            BufferType::Mut => AnySample::Mut(unsafe { SampleMut::from_raw_parts(ptrs, offset) }),
         }
     }
 }

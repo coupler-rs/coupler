@@ -1,3 +1,4 @@
+#![warn(unsafe_op_in_unsafe_fn)]
 #![allow(clippy::missing_safety_doc)]
 
 pub mod buffers;
