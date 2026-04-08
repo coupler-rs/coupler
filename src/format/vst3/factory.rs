@@ -35,7 +35,7 @@ impl<P: Plugin> Class for Factory<P> {
 
 impl<P: Plugin> IPluginFactoryTrait for Factory<P> {
     unsafe fn getFactoryInfo(&self, info: *mut PFactoryInfo) -> tresult {
-        let info = &mut *info;
+        let info = unsafe { &mut *info };
 
         copy_cstring(&self.info.vendor, &mut info.vendor);
         copy_cstring(&self.info.url, &mut info.url);
@@ -51,7 +51,7 @@ impl<P: Plugin> IPluginFactoryTrait for Factory<P> {
 
     unsafe fn getClassInfo(&self, index: int32, info: *mut PClassInfo) -> tresult {
         if index == 0 {
-            let info = &mut *info;
+            let info = unsafe { &mut *info };
 
             info.cid = uuid_to_tuid(&self.vst3_info.class_id);
             info.cardinality = PClassInfo_::ClassCardinality_::kManyInstances as int32;
@@ -70,13 +70,13 @@ impl<P: Plugin> IPluginFactoryTrait for Factory<P> {
         iid: FIDString,
         obj: *mut *mut c_void,
     ) -> tresult {
-        let cid = &*(cid as *const TUID);
+        let cid = unsafe { &*(cid as *const TUID) };
         let class_id = uuid_to_tuid(&self.vst3_info.class_id);
         if cid == &class_id {
             let component = ComWrapper::new(Component::<P>::new());
             let unknown = component.as_com_ref::<FUnknown>().unwrap();
             let ptr = unknown.as_ptr();
-            return ((*(*ptr).vtbl).queryInterface)(ptr, iid as *const TUID, obj);
+            return unsafe { ((*(*ptr).vtbl).queryInterface)(ptr, iid as *const TUID, obj) };
         }
 
         kInvalidArgument
@@ -86,7 +86,7 @@ impl<P: Plugin> IPluginFactoryTrait for Factory<P> {
 impl<P: Plugin> IPluginFactory2Trait for Factory<P> {
     unsafe fn getClassInfo2(&self, index: int32, info: *mut PClassInfo2) -> tresult {
         if index == 0 {
-            let info = &mut *info;
+            let info = unsafe { &mut *info };
 
             info.cid = uuid_to_tuid(&self.vst3_info.class_id);
             info.cardinality = PClassInfo_::ClassCardinality_::kManyInstances as int32;
@@ -96,7 +96,7 @@ impl<P: Plugin> IPluginFactory2Trait for Factory<P> {
             copy_cstring("Fx", &mut info.subCategories);
             copy_cstring(&self.info.vendor, &mut info.vendor);
             copy_cstring(&self.info.version, &mut info.version);
-            let version_str = CStr::from_ptr(SDKVersionString).to_str().unwrap();
+            let version_str = unsafe { CStr::from_ptr(SDKVersionString) }.to_str().unwrap();
             copy_cstring(version_str, &mut info.sdkVersion);
 
             return kResultOk;
@@ -109,7 +109,7 @@ impl<P: Plugin> IPluginFactory2Trait for Factory<P> {
 impl<P: Plugin> IPluginFactory3Trait for Factory<P> {
     unsafe fn getClassInfoUnicode(&self, index: int32, info: *mut PClassInfoW) -> tresult {
         if index == 0 {
-            let info = &mut *info;
+            let info = unsafe { &mut *info };
 
             info.cid = uuid_to_tuid(&self.vst3_info.class_id);
             info.cardinality = PClassInfo_::ClassCardinality_::kManyInstances as int32;
@@ -119,7 +119,7 @@ impl<P: Plugin> IPluginFactory3Trait for Factory<P> {
             copy_cstring("Fx", &mut info.subCategories);
             copy_wstring(&self.info.vendor, &mut info.vendor);
             copy_wstring(&self.info.version, &mut info.version);
-            let version_str = CStr::from_ptr(SDKVersionString).to_str().unwrap();
+            let version_str = unsafe { CStr::from_ptr(SDKVersionString) }.to_str().unwrap();
             copy_wstring(version_str, &mut info.sdkVersion);
 
             return kResultOk;

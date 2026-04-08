@@ -12,7 +12,7 @@ use crate::util::slice_from_raw_parts_checked;
 // Alternative to `slice::from_raw_parts` that can be used safely even when passed an unaligned
 // pointer. Creates an iterator that fetches each item in an array using `ptr::read_unaligned`.
 unsafe fn iter_slice_unaligned<T>(ptr: *const T, len: usize) -> impl Iterator<Item = T> {
-    (0..len).map(move |i| ptr::read_unaligned(ptr.add(i)))
+    (0..len).map(move |i| unsafe { ptr::read_unaligned(ptr.add(i)) })
 }
 
 pub struct ScratchBuffers {
@@ -130,8 +130,8 @@ impl ScratchBuffers {
             return Err(());
         }
 
-        let inputs = slice_from_raw_parts_checked(data.inputs, input_count);
-        let outputs = slice_from_raw_parts_checked(data.outputs, output_count);
+        let inputs = unsafe { slice_from_raw_parts_checked(data.inputs, input_count) };
+        let outputs = unsafe { slice_from_raw_parts_checked(data.outputs, output_count) };
 
         // Validate that the host has provided us with the correct number of channels for each bus.
         for (&bus_index, input) in zip(input_bus_map, inputs) {
@@ -151,10 +151,12 @@ impl ScratchBuffers {
             let data = &self.data[bus_index];
             if self.outputs_active[output_index] {
                 let output = &outputs[output_index];
-                let channels = iter_slice_unaligned(
-                    output.__field0.channelBuffers32,
-                    output.numChannels as usize,
-                );
+                let channels = unsafe {
+                    iter_slice_unaligned(
+                        output.__field0.channelBuffers32,
+                        output.numChannels as usize,
+                    )
+                };
 
                 let ptrs = &mut self.ptrs[data.start..data.end];
                 for (channel, ptr) in zip(channels, ptrs) {
@@ -183,10 +185,12 @@ impl ScratchBuffers {
             if bus_info.dir == BusDir::In {
                 if self.inputs_active[input_index] {
                     let input = &inputs[input_index];
-                    let channels = iter_slice_unaligned(
-                        input.__field0.channelBuffers32,
-                        input.numChannels as usize,
-                    );
+                    let channels = unsafe {
+                        iter_slice_unaligned(
+                            input.__field0.channelBuffers32,
+                            input.numChannels as usize,
+                        )
+                    };
 
                     let ptrs = &mut self.ptrs[data.start..data.end];
                     for (channel, ptr) in zip(channels, ptrs) {
@@ -196,7 +200,7 @@ impl ScratchBuffers {
                             let (first, rest) = scratch.split_at_mut(len);
                             scratch = rest;
 
-                            let input_slice = slice::from_raw_parts(channel, len);
+                            let input_slice = unsafe { slice::from_raw_parts(channel, len) };
                             first.copy_from_slice(input_slice);
                             *ptr = first.as_mut_ptr();
                         } else {
@@ -220,10 +224,12 @@ impl ScratchBuffers {
             if bus_info.dir == BusDir::InOut {
                 if self.inputs_active[input_index] {
                     let input = &inputs[input_index];
-                    let channels = iter_slice_unaligned(
-                        input.__field0.channelBuffers32,
-                        input.numChannels as usize,
-                    );
+                    let channels = unsafe {
+                        iter_slice_unaligned(
+                            input.__field0.channelBuffers32,
+                            input.numChannels as usize,
+                        )
+                    };
 
                     let ptrs = &self.ptrs[data.start..data.end];
                     for (src, &dst) in zip(channels, ptrs) {
@@ -236,7 +242,7 @@ impl ScratchBuffers {
                                 let (first, rest) = scratch.split_at_mut(len);
                                 scratch = rest;
 
-                                let input_slice = slice::from_raw_parts(src, len);
+                                let input_slice = unsafe { slice::from_raw_parts(src, len) };
                                 first.copy_from_slice(input_slice);
                                 self.moves.push((first.as_ptr(), dst));
                             } else {
@@ -256,15 +262,15 @@ impl ScratchBuffers {
         // Now that any aliased input buffers have been copied to scratch space, actually perform
         // the copies.
         for (src, dst) in self.moves.drain(..) {
-            let src = slice::from_raw_parts(src, len);
-            let dst = slice::from_raw_parts_mut(dst, len);
+            let src = unsafe { slice::from_raw_parts(src, len) };
+            let dst = unsafe { slice::from_raw_parts_mut(dst, len) };
             dst.copy_from_slice(src);
         }
 
         self.output_ptrs.clear();
 
-        Ok(Some(Buffers::from_raw_parts(
-            &self.data, &self.ptrs, 0, len,
-        )))
+        Ok(Some(unsafe {
+            Buffers::from_raw_parts(&self.data, &self.ptrs, 0, len)
+        }))
     }
 }

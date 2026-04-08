@@ -70,17 +70,19 @@ impl<P: Plugin> Class for PlugView<P> {
 impl<P: Plugin> IPlugViewTrait for PlugView<P> {
     unsafe fn isPlatformTypeSupported(&self, type_: FIDString) -> tresult {
         #[cfg(target_os = "windows")]
-        if CStr::from_ptr(type_) == CStr::from_ptr(kPlatformTypeHWND) {
+        if unsafe { CStr::from_ptr(type_) } == unsafe { CStr::from_ptr(kPlatformTypeHWND) } {
             return kResultTrue;
         }
 
         #[cfg(target_os = "macos")]
-        if CStr::from_ptr(type_) == CStr::from_ptr(kPlatformTypeNSView) {
+        if unsafe { CStr::from_ptr(type_) } == unsafe { CStr::from_ptr(kPlatformTypeNSView) } {
             return kResultTrue;
         }
 
         #[cfg(target_os = "linux")]
-        if CStr::from_ptr(type_) == CStr::from_ptr(kPlatformTypeX11EmbedWindowID) {
+        if unsafe { CStr::from_ptr(type_) }
+            == unsafe { CStr::from_ptr(kPlatformTypeX11EmbedWindowID) }
+        {
             return kResultTrue;
         }
 
@@ -88,7 +90,7 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
     }
 
     unsafe fn attached(&self, parent: *mut c_void, type_: FIDString) -> tresult {
-        if self.isPlatformTypeSupported(type_) != kResultTrue {
+        if unsafe { self.isPlatformTypeSupported(type_) } != kResultTrue {
             return kResultFalse;
         }
 
@@ -101,10 +103,10 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
         #[cfg(target_os = "linux")]
         let raw_parent = RawParent::X11(parent as std::ffi::c_ulong);
 
-        let main_thread_state = &mut *self.main_thread_state.get();
+        let main_thread_state = unsafe { &mut *self.main_thread_state.get() };
 
         let host = ViewHost::from_inner(main_thread_state.view_host.clone());
-        let parent = ParentWindow::from_raw(raw_parent);
+        let parent = unsafe { ParentWindow::from_raw(raw_parent) };
         let view = main_thread_state.plugin.view(host, &parent);
         main_thread_state.view = Some(view);
 
@@ -112,7 +114,7 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
     }
 
     unsafe fn removed(&self) -> tresult {
-        let main_thread_state = &mut *self.main_thread_state.get();
+        let main_thread_state = unsafe { &mut *self.main_thread_state.get() };
 
         main_thread_state.view = None;
 
@@ -136,12 +138,12 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
             return kResultFalse;
         }
 
-        let main_thread_state = &*self.main_thread_state.get();
+        let main_thread_state = unsafe { &*self.main_thread_state.get() };
 
         if let Some(view) = &main_thread_state.view {
             let view_size = view.size();
 
-            let rect = &mut *size;
+            let rect = unsafe { &mut *size };
             rect.left = 0;
             rect.top = 0;
             rect.right = view_size.width.round() as int32;
@@ -162,8 +164,9 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
     }
 
     unsafe fn setFrame(&self, frame: *mut IPlugFrame) -> tresult {
-        let main_thread_state = &mut *self.main_thread_state.get();
-        main_thread_state.frame = ComRef::from_raw(frame).map(|frame| frame.to_com_ptr());
+        let main_thread_state = unsafe { &mut *self.main_thread_state.get() };
+        main_thread_state.frame =
+            unsafe { ComRef::from_raw(frame) }.map(|frame| frame.to_com_ptr());
 
         kResultOk
     }

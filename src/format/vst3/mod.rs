@@ -1,3 +1,4 @@
+#![warn(unsafe_op_in_unsafe_fn)]
 #![allow(non_snake_case)]
 
 use std::ffi::c_void;
