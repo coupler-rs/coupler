@@ -1,3 +1,5 @@
+#![warn(unsafe_op_in_unsafe_fn)]
+
 use std::ffi::{c_char, c_void};
 
 use clap_sys::{entry::*, version::*};

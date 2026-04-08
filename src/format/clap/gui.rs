@@ -83,7 +83,8 @@ impl<P: Plugin> Instance<P> {
             return false;
         }
 
-        CStr::from_ptr(api) == Self::API
+        let api = unsafe { CStr::from_ptr(api) };
+        api == Self::API
     }
 
     unsafe extern "C" fn gui_get_preferred_api(
@@ -91,8 +92,10 @@ impl<P: Plugin> Instance<P> {
         api: *mut *const c_char,
         is_floating: *mut bool,
     ) -> bool {
+        let is_floating = unsafe { &mut *is_floating };
         *is_floating = false;
 
+        let api = unsafe { &mut *api };
         *api = Self::API.as_ptr();
 
         true
@@ -103,7 +106,7 @@ impl<P: Plugin> Instance<P> {
         api: *const c_char,
         is_floating: bool,
     ) -> bool {
-        if !Self::gui_is_api_supported(plugin, api, is_floating) {
+        if !unsafe { Self::gui_is_api_supported(plugin, api, is_floating) } {
             return false;
         }
 
@@ -111,8 +114,8 @@ impl<P: Plugin> Instance<P> {
     }
 
     unsafe extern "C" fn gui_destroy(plugin: *const clap_plugin) {
-        let instance = &*(plugin as *const Self);
-        let main_thread_state = &mut *instance.main_thread_state.get();
+        let instance = unsafe { &*(plugin as *const Self) };
+        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
 
         main_thread_state.view = None;
     }
@@ -126,13 +129,16 @@ impl<P: Plugin> Instance<P> {
         width: *mut u32,
         height: *mut u32,
     ) -> bool {
-        let instance = &*(plugin as *const Self);
-        let main_thread_state = &mut *instance.main_thread_state.get();
+        let instance = unsafe { &*(plugin as *const Self) };
+        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
 
         if let Some(view) = &main_thread_state.view {
             let size = view.size();
 
+            let width = unsafe { &mut *width };
             *width = size.width.round() as u32;
+
+            let height = unsafe { &mut *height };
             *height = size.height.round() as u32;
 
             return true;
@@ -172,23 +178,23 @@ impl<P: Plugin> Instance<P> {
         plugin: *const clap_plugin,
         window: *const clap_window,
     ) -> bool {
-        let window = &*window;
+        let window = unsafe { &*window };
 
-        if CStr::from_ptr(window.api) != Self::API {
+        if unsafe { CStr::from_ptr(window.api) } != Self::API {
             return false;
         }
 
         #[cfg(target_os = "windows")]
-        let raw_parent = { RawParent::Win32(window.specific.win32) };
+        let raw_parent = { RawParent::Win32(unsafe { window.specific.win32 }) };
 
         #[cfg(target_os = "macos")]
-        let raw_parent = { RawParent::Cocoa(window.specific.cocoa) };
+        let raw_parent = { RawParent::Cocoa(unsafe { window.specific.cocoa }) };
 
         #[cfg(target_os = "linux")]
-        let raw_parent = { RawParent::X11(window.specific.x11) };
+        let raw_parent = { RawParent::X11(unsafe { window.specific.x11 }) };
 
-        let instance = &*(plugin as *const Self);
-        let main_thread_state = &mut *instance.main_thread_state.get();
+        let instance = unsafe { &*(plugin as *const Self) };
+        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
 
         let host = ViewHost::from_inner(Rc::new(ClapViewHost {
             host: instance.host,
@@ -196,7 +202,7 @@ impl<P: Plugin> Instance<P> {
             param_map: Arc::clone(&instance.param_map),
             param_gestures: Arc::clone(&instance.param_gestures),
         }));
-        let parent = ParentWindow::from_raw(raw_parent);
+        let parent = unsafe { ParentWindow::from_raw(raw_parent) };
         let view = main_thread_state.plugin.view(host, &parent);
         main_thread_state.view = Some(view);
 

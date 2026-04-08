@@ -185,14 +185,14 @@ impl<P: Plugin> Instance<P> {
     ) {
         let mut params_changed = false;
 
-        let size = (*in_events).size.unwrap()(in_events);
+        let size = unsafe { (*in_events).size.unwrap()(in_events) };
         for i in 0..size {
-            let event = (*in_events).get.unwrap()(in_events, i);
+            let event = unsafe { (*in_events).get.unwrap()(in_events, i) };
 
-            if (*event).space_id == CLAP_CORE_EVENT_SPACE_ID
-                && (*event).type_ == CLAP_EVENT_PARAM_VALUE
+            if unsafe { (*event).space_id } == CLAP_CORE_EVENT_SPACE_ID
+                && unsafe { (*event).type_ } == CLAP_EVENT_PARAM_VALUE
             {
-                let event = &*(event as *const clap_event_param_value);
+                let event = unsafe { &*(event as *const clap_event_param_value) };
 
                 if let Some(&index) = self.param_map.get(&event.param_id) {
                     let value = map_param_in(&self.params[index], event.value);
@@ -213,7 +213,7 @@ impl<P: Plugin> Instance<P> {
         }
 
         if params_changed {
-            (*self.host).request_callback.unwrap()(self.host);
+            unsafe { (*self.host).request_callback.unwrap()(self.host) };
         }
     }
 
@@ -239,7 +239,7 @@ impl<P: Plugin> Instance<P> {
                 self.plugin_params.set(update.index, value);
             }
 
-            self.send_gesture_events(&update, out_events, time);
+            unsafe { self.send_gesture_events(&update, out_events, time) };
         }
     }
 
@@ -263,10 +263,12 @@ impl<P: Plugin> Instance<P> {
                 param_id: param.id,
             };
 
-            (*out_events).try_push.unwrap()(
-                out_events,
-                &event as *const clap_event_param_gesture as *const clap_event_header,
-            );
+            unsafe {
+                (*out_events).try_push.unwrap()(
+                    out_events,
+                    &event as *const clap_event_param_gesture as *const clap_event_header,
+                )
+            };
         }
 
         if let Some(value) = update.set_value {
@@ -287,10 +289,12 @@ impl<P: Plugin> Instance<P> {
                 value: map_param_out(param, value),
             };
 
-            (*out_events).try_push.unwrap()(
-                out_events,
-                &event as *const clap_event_param_value as *const clap_event_header,
-            );
+            unsafe {
+                (*out_events).try_push.unwrap()(
+                    out_events,
+                    &event as *const clap_event_param_value as *const clap_event_header,
+                )
+            };
         }
 
         if update.end_gesture {
@@ -305,28 +309,31 @@ impl<P: Plugin> Instance<P> {
                 param_id: param.id,
             };
 
-            (*out_events).try_push.unwrap()(
-                out_events,
-                &event as *const clap_event_param_gesture as *const clap_event_header,
-            );
+            unsafe {
+                (*out_events).try_push.unwrap()(
+                    out_events,
+                    &event as *const clap_event_param_gesture as *const clap_event_header,
+                )
+            };
         }
     }
 }
 
 impl<P: Plugin> Instance<P> {
     unsafe extern "C" fn init(plugin: *const clap_plugin) -> bool {
-        let instance = &*(plugin as *const Self);
-        let main_thread_state = &mut *instance.main_thread_state.get();
+        let instance = unsafe { &*(plugin as *const Self) };
+        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
 
-        let host_params =
-            (*instance.host).get_extension.unwrap()(instance.host, CLAP_EXT_PARAMS.as_ptr());
+        let host_params = unsafe {
+            (*instance.host).get_extension.unwrap()(instance.host, CLAP_EXT_PARAMS.as_ptr())
+        };
         main_thread_state.host_params = NonNull::new(host_params as *mut clap_host_params);
 
         true
     }
 
     unsafe extern "C" fn destroy(plugin: *const clap_plugin) {
-        drop(Box::from_raw(plugin as *mut Self));
+        drop(unsafe { Box::from_raw(plugin as *mut Self) });
     }
 
     unsafe extern "C" fn activate(
@@ -335,9 +342,9 @@ impl<P: Plugin> Instance<P> {
         _min_frames_count: u32,
         max_frames_count: u32,
     ) -> bool {
-        let instance = &*(plugin as *const Self);
-        let main_thread_state = &mut *instance.main_thread_state.get();
-        let process_state = &mut *instance.process_state.get();
+        let instance = unsafe { &*(plugin as *const Self) };
+        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
+        let process_state = unsafe { &mut *instance.process_state.get() };
 
         let layout = &instance.layouts[main_thread_state.layout_index];
 
@@ -377,9 +384,9 @@ impl<P: Plugin> Instance<P> {
     }
 
     unsafe extern "C" fn deactivate(plugin: *const clap_plugin) {
-        let instance = &*(plugin as *const Self);
-        let main_thread_state = &mut *instance.main_thread_state.get();
-        let process_state = &mut *instance.process_state.get();
+        let instance = unsafe { &*(plugin as *const Self) };
+        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
+        let process_state = unsafe { &mut *instance.process_state.get() };
 
         // Apply any remaining engine -> plugin parameter changes. There won't be any more until
         // the next call to `activate`.
@@ -395,8 +402,8 @@ impl<P: Plugin> Instance<P> {
     unsafe extern "C" fn stop_processing(_plugin: *const clap_plugin) {}
 
     unsafe extern "C" fn reset(plugin: *const clap_plugin) {
-        let instance = &*(plugin as *const Self);
-        let process_state = &mut *instance.process_state.get();
+        let instance = unsafe { &*(plugin as *const Self) };
+        let process_state = unsafe { &mut *instance.process_state.get() };
 
         if let Some(engine) = &mut process_state.engine {
             // Flush plugin -> engine parameter changes
@@ -415,14 +422,14 @@ impl<P: Plugin> Instance<P> {
         plugin: *const clap_plugin,
         process: *const clap_process,
     ) -> clap_process_status {
-        let instance = &*(plugin as *const Self);
-        let process_state = &mut *instance.process_state.get();
+        let instance = unsafe { &*(plugin as *const Self) };
+        let process_state = unsafe { &mut *instance.process_state.get() };
 
         let Some(engine) = &mut process_state.engine else {
             return CLAP_PROCESS_ERROR;
         };
 
-        let process = &*process;
+        let process = unsafe { &*process };
 
         let len = process.frames_count as usize;
 
@@ -434,8 +441,8 @@ impl<P: Plugin> Instance<P> {
             return CLAP_PROCESS_ERROR;
         }
 
-        let inputs = slice_from_raw_parts_checked(process.audio_inputs, input_count);
-        let outputs = slice_from_raw_parts_checked(process.audio_outputs, output_count);
+        let inputs = unsafe { slice_from_raw_parts_checked(process.audio_inputs, input_count) };
+        let outputs = unsafe { slice_from_raw_parts_checked(process.audio_outputs, output_count) };
 
         for (&bus_index, output) in zip(&instance.output_bus_map, outputs) {
             let data = &process_state.buffer_data[bus_index];
@@ -445,8 +452,9 @@ impl<P: Plugin> Instance<P> {
                 return CLAP_PROCESS_ERROR;
             }
 
-            let channels =
-                slice_from_raw_parts_checked(output.data32 as *const *mut f32, channel_count);
+            let channels = unsafe {
+                slice_from_raw_parts_checked(output.data32 as *const *mut f32, channel_count)
+            };
             process_state.buffer_ptrs[data.start..data.end].copy_from_slice(channels);
         }
 
@@ -459,8 +467,9 @@ impl<P: Plugin> Instance<P> {
                 return CLAP_PROCESS_ERROR;
             }
 
-            let channels =
-                slice_from_raw_parts_checked(input.data32 as *const *mut f32, channel_count);
+            let channels = unsafe {
+                slice_from_raw_parts_checked(input.data32 as *const *mut f32, channel_count)
+            };
             let ptrs = &mut process_state.buffer_ptrs[data.start..data.end];
 
             match bus_info.dir {
@@ -470,8 +479,8 @@ impl<P: Plugin> Instance<P> {
                 BusDir::InOut => {
                     for (&src, &mut dst) in zip(channels, ptrs) {
                         if src != dst {
-                            let src = slice::from_raw_parts(src, len);
-                            let dst = slice::from_raw_parts_mut(dst, len);
+                            let src = unsafe { slice::from_raw_parts(src, len) };
+                            let dst = unsafe { slice::from_raw_parts_mut(dst, len) };
                             dst.copy_from_slice(src);
                         }
                     }
@@ -482,25 +491,27 @@ impl<P: Plugin> Instance<P> {
 
         process_state.events.clear();
         instance.sync_engine(&mut process_state.events);
-        instance.process_param_events(process.in_events, &mut process_state.events);
+        unsafe { instance.process_param_events(process.in_events, &mut process_state.events) };
 
         let last_sample = process.frames_count.saturating_sub(1);
-        instance.process_gestures(
-            &mut process_state.gesture_states,
-            &mut process_state.events,
-            process.out_events,
-            last_sample,
-        );
+        unsafe {
+            instance.process_gestures(
+                &mut process_state.gesture_states,
+                &mut process_state.events,
+                process.out_events,
+                last_sample,
+            )
+        };
 
-        engine.process(
+        let buffers = unsafe {
             Buffers::from_raw_parts(
                 &process_state.buffer_data,
                 &process_state.buffer_ptrs,
                 0,
                 len,
-            ),
-            Events::new(&process_state.events),
-        );
+            )
+        };
+        engine.process(buffers, Events::new(&process_state.events));
 
         CLAP_PROCESS_CONTINUE
     }
@@ -509,7 +520,7 @@ impl<P: Plugin> Instance<P> {
         plugin: *const clap_plugin,
         id: *const c_char,
     ) -> *const c_void {
-        let id = CStr::from_ptr(id);
+        let id = unsafe { CStr::from_ptr(id) };
 
         if id == CLAP_EXT_AUDIO_PORTS {
             return &Self::AUDIO_PORTS as *const _ as *const c_void;
@@ -528,7 +539,7 @@ impl<P: Plugin> Instance<P> {
         }
 
         if id == CLAP_EXT_GUI {
-            let instance = &*(plugin as *const Self);
+            let instance = unsafe { &*(plugin as *const Self) };
             if instance.has_view {
                 return &Self::GUI as *const _ as *const c_void;
             }
@@ -538,8 +549,8 @@ impl<P: Plugin> Instance<P> {
     }
 
     unsafe extern "C" fn on_main_thread(plugin: *const clap_plugin) {
-        let instance = &*(plugin as *const Self);
-        let main_thread_state = &mut *instance.main_thread_state.get();
+        let instance = unsafe { &*(plugin as *const Self) };
+        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
 
         instance.sync_plugin(main_thread_state);
     }
@@ -552,7 +563,7 @@ impl<P: Plugin> Instance<P> {
     };
 
     unsafe extern "C" fn audio_ports_count(plugin: *const clap_plugin, is_input: bool) -> u32 {
-        let instance = &*(plugin as *const Self);
+        let instance = unsafe { &*(plugin as *const Self) };
 
         if is_input {
             instance.input_bus_map.len() as u32
@@ -567,8 +578,8 @@ impl<P: Plugin> Instance<P> {
         is_input: bool,
         info: *mut clap_audio_port_info,
     ) -> bool {
-        let instance = &*(plugin as *const Self);
-        let main_thread_state = &mut *instance.main_thread_state.get();
+        let instance = unsafe { &*(plugin as *const Self) };
+        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
 
         let bus_index = if is_input {
             instance.input_bus_map.get(index as usize)
@@ -583,7 +594,7 @@ impl<P: Plugin> Instance<P> {
             let format = layout.formats.get(bus_index);
 
             if let (Some(bus_info), Some(format)) = (bus_info, format) {
-                let port_info = &mut *info;
+                let port_info = unsafe { &mut *info };
 
                 port_info.id = index;
                 copy_cstring(&bus_info.name, &mut port_info.name);
@@ -623,7 +634,7 @@ impl<P: Plugin> Instance<P> {
     };
 
     unsafe extern "C" fn audio_ports_config_count(plugin: *const clap_plugin) -> u32 {
-        let instance = &*(plugin as *const Self);
+        let instance = unsafe { &*(plugin as *const Self) };
 
         instance.layouts.len() as u32
     }
@@ -633,10 +644,10 @@ impl<P: Plugin> Instance<P> {
         index: u32,
         config: *mut clap_audio_ports_config,
     ) -> bool {
-        let instance = &*(plugin as *const Self);
+        let instance = unsafe { &*(plugin as *const Self) };
 
         if let Some(layout) = instance.layouts.get(index as usize) {
-            let config = &mut *config;
+            let config = unsafe { &mut *config };
 
             config.id = index;
             copy_cstring("", &mut config.name);
@@ -677,8 +688,8 @@ impl<P: Plugin> Instance<P> {
         plugin: *const clap_plugin,
         config_id: clap_id,
     ) -> bool {
-        let instance = &*(plugin as *const Self);
-        let main_thread_state = &mut *instance.main_thread_state.get();
+        let instance = unsafe { &*(plugin as *const Self) };
+        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
 
         if instance.layouts.get(config_id as usize).is_some() {
             main_thread_state.layout_index = config_id as usize;
@@ -700,7 +711,7 @@ impl<P: Plugin> Instance<P> {
     };
 
     unsafe extern "C" fn params_count(plugin: *const clap_plugin) -> u32 {
-        let instance = &*(plugin as *const Self);
+        let instance = unsafe { &*(plugin as *const Self) };
 
         instance.params.len() as u32
     }
@@ -710,10 +721,10 @@ impl<P: Plugin> Instance<P> {
         param_index: u32,
         param_info: *mut clap_param_info,
     ) -> bool {
-        let instance = &*(plugin as *const Self);
+        let instance = unsafe { &*(plugin as *const Self) };
 
         if let Some(param) = instance.params.get(param_index as usize) {
-            let param_info = &mut *param_info;
+            let param_info = unsafe { &mut *param_info };
 
             param_info.id = param.id;
             param_info.flags = CLAP_PARAM_IS_AUTOMATABLE;
@@ -741,13 +752,14 @@ impl<P: Plugin> Instance<P> {
         param_id: clap_id,
         value: *mut f64,
     ) -> bool {
-        let instance = &*(plugin as *const Self);
-        let main_thread_state = &mut *instance.main_thread_state.get();
+        let instance = unsafe { &*(plugin as *const Self) };
+        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
 
         if let Some(&index) = instance.param_map.get(&param_id) {
             instance.sync_plugin(main_thread_state);
 
             let param = &instance.params[index];
+            let value = unsafe { &mut *value };
             *value = map_param_out(param, main_thread_state.plugin.get_param(param_id));
             return true;
         }
@@ -762,8 +774,8 @@ impl<P: Plugin> Instance<P> {
         display: *mut c_char,
         size: u32,
     ) -> bool {
-        let instance = &*(plugin as *const Self);
-        let main_thread_state = &mut *instance.main_thread_state.get();
+        let instance = unsafe { &*(plugin as *const Self) };
+        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
 
         if let Some(&index) = instance.param_map.get(&param_id) {
             let param = &instance.params[index];
@@ -777,7 +789,7 @@ impl<P: Plugin> Instance<P> {
                 )
             );
 
-            let dst = slice::from_raw_parts_mut(display, size as usize);
+            let dst = unsafe { slice::from_raw_parts_mut(display, size as usize) };
             copy_cstring(&text, dst);
 
             return true;
@@ -792,13 +804,14 @@ impl<P: Plugin> Instance<P> {
         display: *const c_char,
         value: *mut f64,
     ) -> bool {
-        let instance = &*(plugin as *const Self);
-        let main_thread_state = &mut *instance.main_thread_state.get();
+        let instance = unsafe { &*(plugin as *const Self) };
+        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
 
         if let Some(&index) = instance.param_map.get(&param_id) {
-            if let Ok(text) = CStr::from_ptr(display).to_str() {
+            if let Ok(text) = unsafe { CStr::from_ptr(display) }.to_str() {
                 let param = &instance.params[index];
                 if let Some(out) = main_thread_state.plugin.parse_param(param_id, text) {
+                    let value = unsafe { &mut *value };
                     *value = map_param_out(param, out);
                     return true;
                 }
@@ -815,35 +828,37 @@ impl<P: Plugin> Instance<P> {
         in_: *const clap_input_events,
         out: *const clap_output_events,
     ) {
-        let instance = &*(plugin as *const Self);
-        let process_state = &mut *instance.process_state.get();
+        let instance = unsafe { &*(plugin as *const Self) };
+        let process_state = unsafe { &mut *instance.process_state.get() };
 
         // If we are in the active state, flush will be called on the audio thread.
         if let Some(engine) = &mut process_state.engine {
             process_state.events.clear();
             instance.sync_engine(&mut process_state.events);
-            instance.process_param_events(in_, &mut process_state.events);
-            instance.process_gestures(
-                &mut process_state.gesture_states,
-                &mut process_state.events,
-                out,
-                0,
-            );
+            unsafe { instance.process_param_events(in_, &mut process_state.events) };
+            unsafe {
+                instance.process_gestures(
+                    &mut process_state.gesture_states,
+                    &mut process_state.events,
+                    out,
+                    0,
+                )
+            };
 
             engine.flush(Events::new(&process_state.events));
         }
         // Otherwise, flush will be called on the main thread.
         else {
-            let main_thread_state = &mut *instance.main_thread_state.get();
+            let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
 
-            let size = (*in_).size.unwrap()(in_);
+            let size = unsafe { (*in_).size.unwrap()(in_) };
             for i in 0..size {
-                let event = (*in_).get.unwrap()(in_, i);
+                let event = unsafe { (*in_).get.unwrap()(in_, i) };
 
-                if (*event).space_id == CLAP_CORE_EVENT_SPACE_ID
-                    && (*event).type_ == CLAP_EVENT_PARAM_VALUE
+                if unsafe { (*event).space_id } == CLAP_CORE_EVENT_SPACE_ID
+                    && unsafe { (*event).type_ } == CLAP_EVENT_PARAM_VALUE
                 {
-                    let event = &*(event as *const clap_event_param_value);
+                    let event = unsafe { &*(event as *const clap_event_param_value) };
 
                     if let Some(&index) = instance.param_map.get(&event.param_id) {
                         let value = map_param_in(&instance.params[index], event.value);
@@ -867,7 +882,7 @@ impl<P: Plugin> Instance<P> {
                     }
                 }
 
-                instance.send_gesture_events(&update, out, 0);
+                unsafe { instance.send_gesture_events(&update, out, 0) };
             }
         }
     }
@@ -907,8 +922,8 @@ impl<P: Plugin> Instance<P> {
             }
         }
 
-        let instance = &*(plugin as *const Self);
-        let main_thread_state = &mut *instance.main_thread_state.get();
+        let instance = unsafe { &*(plugin as *const Self) };
+        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
 
         instance.sync_plugin(main_thread_state);
         let result = main_thread_state.plugin.save(&mut StreamWriter(stream));
@@ -939,8 +954,8 @@ impl<P: Plugin> Instance<P> {
             }
         }
 
-        let instance = &*(plugin as *const Self);
-        let main_thread_state = &mut *instance.main_thread_state.get();
+        let instance = unsafe { &*(plugin as *const Self) };
+        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
 
         instance.sync_plugin(main_thread_state);
         if main_thread_state.plugin.load(&mut StreamReader(stream)).is_ok() {

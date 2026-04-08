@@ -52,7 +52,9 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
         const EMPTY: &CStr = c"";
         const FEATURES: &[*const c_char] = &[ptr::null()];
 
-        *self.state.get() = Some(FactoryState {
+        let state = unsafe { &mut *self.state.get() };
+
+        *state = Some(FactoryState {
             descriptor: clap_plugin_descriptor {
                 clap_version: CLAP_VERSION,
                 id,
@@ -71,17 +73,19 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
     }
 
     pub unsafe fn deinit(&self) {
-        if let Some(state) = (*self.state.get()).take() {
-            drop(CString::from_raw(state.descriptor.id as *mut c_char));
-            drop(CString::from_raw(state.descriptor.name as *mut c_char));
-            drop(CString::from_raw(state.descriptor.vendor as *mut c_char));
-            drop(CString::from_raw(state.descriptor.url as *mut c_char));
-            drop(CString::from_raw(state.descriptor.version as *mut c_char));
+        let state = unsafe { &mut *self.state.get() };
+
+        if let Some(state) = state.take() {
+            drop(unsafe { CString::from_raw(state.descriptor.id as *mut c_char) });
+            drop(unsafe { CString::from_raw(state.descriptor.name as *mut c_char) });
+            drop(unsafe { CString::from_raw(state.descriptor.vendor as *mut c_char) });
+            drop(unsafe { CString::from_raw(state.descriptor.url as *mut c_char) });
+            drop(unsafe { CString::from_raw(state.descriptor.version as *mut c_char) });
         }
     }
 
     pub unsafe fn get(&self, factory_id: *const c_char) -> *const c_void {
-        if CStr::from_ptr(factory_id) == CLAP_PLUGIN_FACTORY_ID {
+        if unsafe { CStr::from_ptr(factory_id) } == CLAP_PLUGIN_FACTORY_ID {
             return self as *const Self as *const c_void;
         }
 
@@ -96,10 +100,12 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
         factory: *const clap_plugin_factory,
         index: u32,
     ) -> *const clap_plugin_descriptor {
-        let factory = &*(factory as *const Self);
+        let factory = unsafe { &*(factory as *const Self) };
 
         if index == 0 {
-            if let Some(state) = &*factory.state.get() {
+            let state = unsafe { &*factory.state.get() };
+
+            if let Some(state) = state {
                 return &state.descriptor;
             }
         }
@@ -112,10 +118,13 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
         host: *const clap_host,
         plugin_id: *const c_char,
     ) -> *const clap_plugin {
-        let factory = &*(factory as *const Self);
+        let factory = unsafe { &*(factory as *const Self) };
+        let state = unsafe { &*factory.state.get() };
 
-        if let Some(state) = &*factory.state.get() {
-            if CStr::from_ptr(plugin_id) == CStr::from_ptr(state.descriptor.id) {
+        if let Some(state) = state {
+            if unsafe { CStr::from_ptr(plugin_id) }
+                == unsafe { CStr::from_ptr(state.descriptor.id) }
+            {
                 let instance = Box::new(Instance::<P>::new(&state.descriptor, host));
                 return Box::into_raw(instance) as *const clap_plugin;
             }
