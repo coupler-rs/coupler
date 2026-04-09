@@ -57,42 +57,42 @@ pub fn get_plugin_factory<P: Plugin + Vst3Plugin>() -> *mut c_void {
 macro_rules! vst3 {
     ($plugin:ty) => {
         #[cfg(target_os = "windows")]
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         extern "system" fn InitDll() -> bool {
             true
         }
 
         #[cfg(target_os = "windows")]
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         extern "system" fn ExitDll() -> bool {
             true
         }
 
         #[cfg(target_os = "macos")]
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         extern "system" fn bundleEntry(_bundle_ref: *mut ::std::ffi::c_void) -> bool {
             true
         }
 
         #[cfg(target_os = "macos")]
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         extern "system" fn bundleExit() -> bool {
             true
         }
 
         #[cfg(target_os = "linux")]
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         extern "system" fn ModuleEntry(_library_handle: *mut ::std::ffi::c_void) -> bool {
             true
         }
 
         #[cfg(target_os = "linux")]
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         extern "system" fn ModuleExit() -> bool {
             true
         }
 
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         extern "system" fn GetPluginFactory() -> *mut ::std::ffi::c_void {
             ::coupler::format::vst3::get_plugin_factory::<$plugin>()
         }

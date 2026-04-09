@@ -49,7 +49,7 @@ impl EntryPoint {
 macro_rules! clap {
     ($plugin:ty) => {
         #[allow(non_upper_case_globals)]
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         static clap_entry: ::coupler::format::clap::EntryPoint = {
             static FACTORY: ::coupler::format::clap::Factory<$plugin> =
                 ::coupler::format::clap::Factory::new();
