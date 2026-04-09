@@ -2,7 +2,7 @@
 name = "gain-gui-clap"
 version = "0.1.0"
 authors = ["Micah Johnston <micah@photophore.systems>"]
-edition = "2021"
+edition = "2024"
 publish = false
 
 [package.metadata.coupler]
