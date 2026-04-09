@@ -1,6 +1,6 @@
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
-use std::ffi::{c_char, c_void, CStr};
+use std::ffi::{CStr, c_char, c_void};
 use std::iter::zip;
 use std::ptr::NonNull;
 use std::sync::Arc;
@@ -19,7 +19,7 @@ use crate::params::{ParamId, ParamInfo, ParamValue};
 use crate::plugin::Plugin;
 use crate::sync::param_gestures::{GestureStates, GestureUpdate, ParamGestures};
 use crate::sync::params::ParamValues;
-use crate::util::{copy_cstring, slice_from_raw_parts_checked, DisplayParam};
+use crate::util::{DisplayParam, copy_cstring, slice_from_raw_parts_checked};
 use crate::view::View;
 
 fn port_type_from_format(format: &Format) -> &'static CStr {

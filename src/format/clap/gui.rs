@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::ffi::{c_char, CStr};
+use std::ffi::{CStr, c_char};
 use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::Arc;

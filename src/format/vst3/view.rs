@@ -1,5 +1,5 @@
 use std::cell::{RefCell, UnsafeCell};
-use std::ffi::{c_void, CStr};
+use std::ffi::{CStr, c_void};
 use std::sync::Arc;
 
 use vst3::Steinberg::Vst::{IComponentHandler, IComponentHandlerTrait};

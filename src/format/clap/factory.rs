@@ -1,12 +1,12 @@
 use std::cell::UnsafeCell;
-use std::ffi::{c_char, c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_char, c_void};
 use std::marker::PhantomData;
 use std::ptr;
 
 use clap_sys::{host::*, plugin::*, plugin_factory::*, version::*};
 
-use super::instance::Instance;
 use super::ClapPlugin;
+use super::instance::Instance;
 use crate::plugin::Plugin;
 
 struct FactoryState {

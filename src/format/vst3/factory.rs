@@ -1,7 +1,7 @@
-use std::ffi::{c_void, CStr};
+use std::ffi::{CStr, c_void};
 use std::marker::PhantomData;
 
-use vst3::{uid, Class, ComWrapper, Steinberg::Vst::*, Steinberg::*};
+use vst3::{Class, ComWrapper, Steinberg::Vst::*, Steinberg::*, uid};
 
 use super::component::Component;
 use super::util::copy_wstring;

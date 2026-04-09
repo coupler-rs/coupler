@@ -1,6 +1,6 @@
 use std::cell::UnsafeCell;
 use std::collections::{HashMap, HashSet};
-use std::ffi::{c_void, CStr};
+use std::ffi::{CStr, c_void};
 use std::ptr;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -18,7 +18,7 @@ use crate::host::Host;
 use crate::params::{ParamId, ParamInfo};
 use crate::plugin::Plugin;
 use crate::sync::params::ParamValues;
-use crate::util::{slice_from_raw_parts_checked, DisplayParam};
+use crate::util::{DisplayParam, slice_from_raw_parts_checked};
 use crate::view::View;
 
 fn format_to_speaker_arrangement(format: &Format) -> SpeakerArrangement {

@@ -14,15 +14,15 @@ use crate::plugin::{Plugin, PluginInfo};
 use crate::view::{ParentWindow, Size, View, ViewHost};
 
 use vst3::Steinberg::Vst::{IComponent, SDKVersionString};
-use vst3::Steinberg::{char16, char8, int32};
 use vst3::Steinberg::{
-    kInvalidArgument, kResultOk, FIDString, IPluginFactory, IPluginFactory2, IPluginFactory2Trait,
-    IPluginFactory3, IPluginFactory3Trait, IPluginFactoryTrait, PClassInfo, PClassInfo2,
-    PClassInfoW, PClassInfo_, PFactoryInfo, PFactoryInfo_,
+    FIDString, IPluginFactory, IPluginFactory2, IPluginFactory2Trait, IPluginFactory3,
+    IPluginFactory3Trait, IPluginFactoryTrait, PClassInfo, PClassInfo_, PClassInfo2, PClassInfoW,
+    PFactoryInfo, PFactoryInfo_, kInvalidArgument, kResultOk,
 };
-use vst3::{uid, ComPtr, Interface};
+use vst3::Steinberg::{char8, char16, int32};
+use vst3::{ComPtr, Interface, uid};
 
-use super::{get_plugin_factory, Uuid, Vst3Info, Vst3Plugin};
+use super::{Uuid, Vst3Info, Vst3Plugin, get_plugin_factory};
 
 const NAME: &str = "test plugin";
 const VERSION: &str = "1.2.3";

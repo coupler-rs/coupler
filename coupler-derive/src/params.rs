@@ -1,5 +1,5 @@
 use proc_macro2::TokenStream;
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 use syn::{Data, DeriveInput, Error, Expr, Field, Fields, LitInt, LitStr};
 
 pub struct ParamAttr {
