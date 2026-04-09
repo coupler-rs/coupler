@@ -119,6 +119,13 @@ impl Plugin for GainGui {
         true
     }
 
+    fn view_size(&self) -> Size {
+        Size {
+            width: 256.0,
+            height: 256.0,
+        }
+    }
+
     fn view(&mut self, host: ViewHost, parent: &ParentWindow) -> Self::View {
         GainGuiView::open(host, parent, &self.params).unwrap()
     }

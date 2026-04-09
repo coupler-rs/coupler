@@ -110,6 +110,13 @@ impl Plugin for Gain {
         false
     }
 
+    fn view_size(&self) -> Size {
+        Size {
+            width: 0.0,
+            height: 0.0,
+        }
+    }
+
     fn view(&mut self, _host: ViewHost, _parent: &ParentWindow) -> Self::View {
         NoView
     }

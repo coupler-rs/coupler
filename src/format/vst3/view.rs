@@ -140,19 +140,19 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
 
         let main_thread_state = unsafe { &*self.main_thread_state.get() };
 
-        if let Some(view) = &main_thread_state.view {
-            let view_size = view.size();
+        let view_size = if let Some(view) = &main_thread_state.view {
+            view.size()
+        } else {
+            main_thread_state.plugin.view_size()
+        };
 
-            let rect = unsafe { &mut *size };
-            rect.left = 0;
-            rect.top = 0;
-            rect.right = view_size.width.round() as int32;
-            rect.bottom = view_size.height.round() as int32;
+        let rect = unsafe { &mut *size };
+        rect.left = 0;
+        rect.top = 0;
+        rect.right = view_size.width.round() as int32;
+        rect.bottom = view_size.height.round() as int32;
 
-            return kResultOk;
-        }
-
-        kResultFalse
+        kResultOk
     }
 
     unsafe fn onSize(&self, _newSize: *mut ViewRect) -> tresult {

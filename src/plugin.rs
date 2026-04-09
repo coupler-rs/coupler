@@ -5,7 +5,7 @@ use crate::bus::{BusInfo, Layout};
 use crate::engine::{Config, Engine};
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
-use crate::view::{ParentWindow, View, ViewHost};
+use crate::view::{ParentWindow, Size, View, ViewHost};
 
 pub struct PluginInfo {
     pub name: String,
@@ -55,6 +55,7 @@ pub trait Plugin: Send + Sized + 'static {
     fn engine(&mut self, config: &Config) -> Self::Engine;
 
     fn has_view(&self) -> bool;
+    fn view_size(&self) -> Size;
     fn view(&mut self, host: ViewHost, parent: &ParentWindow) -> Self::View;
 
     #[allow(unused_variables)]

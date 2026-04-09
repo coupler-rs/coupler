@@ -85,6 +85,12 @@ impl Plugin for TestPlugin {
     fn has_view(&self) -> bool {
         false
     }
+    fn view_size(&self) -> Size {
+        Size {
+            width: 0.0,
+            height: 0.0,
+        }
+    }
     fn view(&mut self, _host: ViewHost, _parent: &ParentWindow) -> Self::View {
         TestView
     }
