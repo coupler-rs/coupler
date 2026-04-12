@@ -26,6 +26,8 @@ pub struct ScratchBuffers {
     moves: Vec<(*const f32, *mut f32)>,
 }
 
+unsafe impl Send for ScratchBuffers {}
+
 impl ScratchBuffers {
     pub fn new(input_count: usize, output_count: usize) -> ScratchBuffers {
         ScratchBuffers {

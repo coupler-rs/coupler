@@ -1,4 +1,4 @@
-use std::cell::UnsafeCell;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, c_void};
 use std::ptr;
@@ -18,6 +18,7 @@ use crate::host::Host;
 use crate::params::{ParamId, ParamInfo};
 use crate::plugin::Plugin;
 use crate::sync::params::ParamValues;
+use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
 use crate::util::{DisplayParam, slice_from_raw_parts_checked};
 use crate::view::View;
 
@@ -62,11 +63,17 @@ pub struct Component<P: Plugin> {
     engine_params: ParamValues,
     _host: Arc<Vst3Host>,
     has_view: bool,
-    main_thread_state: Arc<UnsafeCell<MainThreadState<P>>>,
+    main_thread_state: Arc<ThreadCell<RefCell<MainThreadState<P>>>>,
     // When the audio processor is *not* active, references to ProcessState may only be formed from
     // the main thread. When the audio processor *is* active, references to ProcessState may only
     // be formed from the audio thread.
-    process_state: UnsafeCell<ProcessState<P>>,
+    process_state: SyncCell<ProcessState<P>>,
+}
+
+fn require_sync<T: Send + Sync>() {}
+#[allow(unused)]
+fn assert_sync<P: Plugin>() {
+    require_sync::<Component<P>>()
 }
 
 impl<P: Plugin> Component<P> {
@@ -122,14 +129,14 @@ impl<P: Plugin> Component<P> {
             engine_params: ParamValues::with_count(param_count),
             _host: host,
             has_view,
-            main_thread_state: Arc::new(UnsafeCell::new(MainThreadState {
+            main_thread_state: Arc::new(ThreadCell::new(RefCell::new(MainThreadState {
                 config: config.clone(),
                 plugin,
                 view_host: Rc::new(Vst3ViewHost::new()),
                 view: None,
                 frame: None,
-            })),
-            process_state: UnsafeCell::new(ProcessState {
+            }))),
+            process_state: SyncCell::new(ProcessState {
                 config,
                 scratch_buffers,
                 events: Vec::with_capacity(4096),
@@ -193,7 +200,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
         index: int32,
         bus: *mut vst3::Steinberg::Vst::BusInfo,
     ) -> tresult {
-        let main_thread_state = unsafe { &*self.main_thread_state.get() };
+        let main_thread_state = self.main_thread_state.borrow_mut();
 
         match type_ as MediaTypes {
             MediaTypes_::kAudio => {
@@ -247,7 +254,8 @@ impl<P: Plugin> IComponentTrait for Component<P> {
         index: int32,
         state: TBool,
     ) -> tresult {
-        let process_state = unsafe { &mut *self.process_state.get() };
+        let mut process_state_guard = self.process_state.borrow_mut();
+        let process_state = &mut *process_state_guard;
 
         match type_ as MediaTypes {
             MediaTypes_::kAudio => match dir as BusDirections {
@@ -273,8 +281,9 @@ impl<P: Plugin> IComponentTrait for Component<P> {
     }
 
     unsafe fn setActive(&self, state: TBool) -> tresult {
-        let main_thread_state = unsafe { &mut *self.main_thread_state.get() };
-        let process_state = unsafe { &mut *self.process_state.get() };
+        let mut main_thread_state = self.main_thread_state.borrow_mut();
+        let mut process_state_guard = self.process_state.borrow_mut();
+        let process_state = &mut *process_state_guard;
 
         if state == 0 {
             // Apply any remaining engine -> plugin parameter changes. There won't be any more
@@ -317,7 +326,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
         }
 
         if let Some(state) = unsafe { ComRef::from_raw(state) } {
-            let main_thread_state = unsafe { &mut *self.main_thread_state.get() };
+            let mut main_thread_state = self.main_thread_state.borrow_mut();
 
             self.sync_plugin(&mut main_thread_state.plugin);
 
@@ -363,7 +372,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
         }
 
         if let Some(state) = unsafe { ComRef::from_raw(state) } {
-            let main_thread_state = unsafe { &mut *self.main_thread_state.get() };
+            let mut main_thread_state = self.main_thread_state.borrow_mut();
 
             self.sync_plugin(&mut main_thread_state.plugin);
 
@@ -418,7 +427,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         }
 
         if self.layout_set.contains(&candidate) {
-            let main_thread_state = unsafe { &mut *self.main_thread_state.get() };
+            let mut main_thread_state = self.main_thread_state.borrow_mut();
             main_thread_state.config.layout = candidate;
             return kResultTrue;
         }
@@ -432,7 +441,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         index: int32,
         arr: *mut SpeakerArrangement,
     ) -> tresult {
-        let main_thread_state = unsafe { &*self.main_thread_state.get() };
+        let main_thread_state = self.main_thread_state.borrow_mut();
 
         let bus_index = match dir as BusDirections {
             BusDirections_::kInput => self.input_bus_map.get(index as usize),
@@ -461,14 +470,14 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
     }
 
     unsafe fn getLatencySamples(&self) -> uint32 {
-        let main_thread_state = unsafe { &mut *self.main_thread_state.get() };
+        let mut main_thread_state = self.main_thread_state.borrow_mut();
 
         self.sync_plugin(&mut main_thread_state.plugin);
         main_thread_state.plugin.latency(&main_thread_state.config) as uint32
     }
 
     unsafe fn setupProcessing(&self, setup: *mut ProcessSetup) -> tresult {
-        let main_thread_state = unsafe { &mut *self.main_thread_state.get() };
+        let mut main_thread_state = self.main_thread_state.borrow_mut();
 
         let setup = unsafe { &*setup };
         main_thread_state.config.sample_rate = setup.sampleRate;
@@ -478,7 +487,8 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
     }
 
     unsafe fn setProcessing(&self, state: TBool) -> tresult {
-        let process_state = unsafe { &mut *self.process_state.get() };
+        let mut process_state_guard = self.process_state.borrow_mut();
+        let process_state = &mut *process_state_guard;
 
         let Some(engine) = &mut process_state.engine else {
             return kNotInitialized;
@@ -508,7 +518,8 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
     }
 
     unsafe fn process(&self, data: *mut ProcessData) -> tresult {
-        let process_state = unsafe { &mut *self.process_state.get() };
+        let mut process_state_guard = self.process_state.borrow_mut();
+        let process_state = &mut *process_state_guard;
 
         let Some(engine) = &mut process_state.engine else {
             return kNotInitialized;
@@ -640,7 +651,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         valueNormalized: ParamValue,
         string: *mut String128,
     ) -> tresult {
-        let main_thread_state = unsafe { &*self.main_thread_state.get() };
+        let main_thread_state = self.main_thread_state.borrow_mut();
 
         if self.param_map.contains_key(&id) {
             let display = format!(
@@ -661,7 +672,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         string: *mut TChar,
         valueNormalized: *mut ParamValue,
     ) -> tresult {
-        let main_thread_state = unsafe { &*self.main_thread_state.get() };
+        let main_thread_state = self.main_thread_state.borrow_mut();
 
         if self.param_map.contains_key(&id) {
             if let Ok(display) = String::from_utf16(unsafe { utf16_from_ptr(string) }) {
@@ -688,7 +699,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     }
 
     unsafe fn getParamNormalized(&self, id: ParamID) -> ParamValue {
-        let main_thread_state = unsafe { &*self.main_thread_state.get() };
+        let main_thread_state = self.main_thread_state.borrow_mut();
 
         if self.param_map.contains_key(&id) {
             return main_thread_state.plugin.get_param(id);
@@ -698,7 +709,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     }
 
     unsafe fn setParamNormalized(&self, id: ParamID, value: ParamValue) -> tresult {
-        let main_thread_state = unsafe { &mut *self.main_thread_state.get() };
+        let mut main_thread_state = self.main_thread_state.borrow_mut();
 
         if self.param_map.contains_key(&id) {
             main_thread_state.plugin.set_param(id, value);
@@ -714,7 +725,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     }
 
     unsafe fn setComponentHandler(&self, handler: *mut IComponentHandler) -> tresult {
-        let main_thread_state = unsafe { &mut *self.main_thread_state.get() };
+        let main_thread_state = self.main_thread_state.borrow_mut();
 
         let mut current_handler = main_thread_state.view_host.handler.borrow_mut();
         if let Some(handler) = unsafe { ComRef::from_raw(handler) } {
