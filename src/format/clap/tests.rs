@@ -10,10 +10,10 @@ use clap_sys::plugin_factory::{CLAP_PLUGIN_FACTORY_ID, clap_plugin_factory};
 use clap_sys::version::CLAP_VERSION;
 
 use crate::bus::{BusInfo, Layout};
-use crate::engine::{Config, Engine};
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
 use crate::plugin::{Plugin, PluginInfo};
+use crate::process::{Config, Processor};
 
 use super::{ClapInfo, ClapPlugin, Factory};
 
@@ -27,7 +27,7 @@ const ID: &str = "com.example.plugin";
 struct TestPlugin;
 
 impl Plugin for TestPlugin {
-    type Engine = TestEngine;
+    type Processor = TestProcessor;
     type View = TestView;
 
     fn info() -> PluginInfo {
@@ -72,8 +72,8 @@ impl Plugin for TestPlugin {
     fn load(&mut self, _input: impl Read) -> io::Result<()> {
         Ok(())
     }
-    fn engine(&mut self, _config: &Config) -> Self::Engine {
-        TestEngine
+    fn processor(&mut self, _config: &Config) -> Self::Processor {
+        TestProcessor
     }
     fn has_view(&self) -> bool {
         false
@@ -94,9 +94,9 @@ impl ClapPlugin for TestPlugin {
     }
 }
 
-struct TestEngine;
+struct TestProcessor;
 
-impl Engine for TestEngine {
+impl Processor for TestProcessor {
     fn reset(&mut self) {}
     fn flush(&mut self, _events: Events) {}
     fn process(&mut self, _buffers: Buffers, _events: Events) {}

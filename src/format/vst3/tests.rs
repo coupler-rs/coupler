@@ -6,11 +6,11 @@ use std::{ptr, slice};
 
 use crate::buffers::Buffers;
 use crate::bus::{BusInfo, Layout};
-use crate::engine::{Config, Engine};
 use crate::events::Events;
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
 use crate::plugin::{Plugin, PluginInfo};
+use crate::process::{Config, Processor};
 use crate::view::{ParentWindow, Size, View, ViewHost};
 
 use vst3::Steinberg::Vst::{IComponent, SDKVersionString};
@@ -34,7 +34,7 @@ const CLASS_ID: [u32; 4] = [0x11111111, 0x22222222, 0x33333333, 0x44444444];
 struct TestPlugin;
 
 impl Plugin for TestPlugin {
-    type Engine = TestEngine;
+    type Processor = TestProcessor;
     type View = TestView;
 
     fn info() -> PluginInfo {
@@ -79,8 +79,8 @@ impl Plugin for TestPlugin {
     fn load(&mut self, _input: impl Read) -> io::Result<()> {
         Ok(())
     }
-    fn engine(&mut self, _config: &Config) -> Self::Engine {
-        TestEngine
+    fn processor(&mut self, _config: &Config) -> Self::Processor {
+        TestProcessor
     }
     fn has_view(&self) -> bool {
         false
@@ -103,9 +103,9 @@ impl Vst3Plugin for TestPlugin {
     }
 }
 
-struct TestEngine;
+struct TestProcessor;
 
-impl Engine for TestEngine {
+impl Processor for TestProcessor {
     fn reset(&mut self) {}
     fn flush(&mut self, _events: Events) {}
     fn process(&mut self, _buffers: Buffers, _events: Events) {}

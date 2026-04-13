@@ -9,7 +9,7 @@ use coupler::format::clap::*;
 use coupler::format::vst3::*;
 use coupler::params::{ParamId, ParamInfo, ParamValue};
 use coupler::view::{ParentWindow, RawParent, Size, View};
-use coupler::{buffers::*, bus::*, engine::*, events::*, host::*, params::*, plugin::*, view::*};
+use coupler::{buffers::*, bus::*, events::*, host::*, params::*, plugin::*, process::*, view::*};
 
 use flicker::Renderer;
 
@@ -35,7 +35,7 @@ pub struct GainGui {
 }
 
 impl Plugin for GainGui {
-    type Engine = GainGuiEngine;
+    type Processor = GainGuiProcessor;
     type View = GainGuiView;
 
     fn info() -> PluginInfo {
@@ -109,8 +109,8 @@ impl Plugin for GainGui {
         Ok(())
     }
 
-    fn engine(&mut self, _config: &Config) -> Self::Engine {
-        GainGuiEngine {
+    fn processor(&mut self, _config: &Config) -> Self::Processor {
+        GainGuiProcessor {
             params: self.params.clone(),
         }
     }
@@ -140,11 +140,11 @@ impl ClapPlugin for GainGui {
     }
 }
 
-pub struct GainGuiEngine {
+pub struct GainGuiProcessor {
     params: GainGuiParams,
 }
 
-impl GainGuiEngine {
+impl GainGuiProcessor {
     fn handle_event(&mut self, event: &Event) {
         if let Data::ParamChange { id, value } = event.data {
             self.params.set_param(id, value);
@@ -152,7 +152,7 @@ impl GainGuiEngine {
     }
 }
 
-impl Engine for GainGuiEngine {
+impl Processor for GainGuiProcessor {
     fn reset(&mut self) {}
 
     fn flush(&mut self, events: Events) {

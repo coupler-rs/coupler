@@ -6,7 +6,7 @@ use vst3::Steinberg::Vst::ProcessData;
 
 use crate::buffers::{BufferData, BufferType, Buffers};
 use crate::bus::{BusDir, BusInfo};
-use crate::engine::Config;
+use crate::process::Config;
 use crate::util::slice_from_raw_parts_checked;
 
 // Alternative to `slice::from_raw_parts` that can be used safely even when passed an unaligned
@@ -93,7 +93,7 @@ impl ScratchBuffers {
         self.moves.reserve(in_out_channels);
     }
 
-    /// Set up buffer pointers for the engine given a VST3 `ProcessData` struct.
+    /// Set up buffer pointers for the processor given a VST3 `ProcessData` struct.
     ///
     /// This method is responsible for detecting if any of the buffers for an input bus are aliased
     /// by a output buffer and, if so, copying those inputs to scratch buffers. It is also
@@ -104,7 +104,7 @@ impl ScratchBuffers {
     /// the buffer's length exceeds the maximum buffer size. It will return `Ok(None)` if the
     /// buffer's length is 0, as hosts are not guaranteed to provide the correct number of inputs
     /// and outputs in that case, and we don't need to construct a `Buffers` object as we will be
-    /// calling `Engine::flush` instead of `Engine::process`.
+    /// calling `Processor::flush` instead of `Processor::process`.
     pub unsafe fn get_buffers<'a, 'b>(
         &'a mut self,
         buses: &[BusInfo],

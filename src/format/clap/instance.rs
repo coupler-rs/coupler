@@ -12,11 +12,11 @@ use clap_sys::{events::*, host::*, id::*, plugin::*, process::*, stream::*};
 use super::host::ClapHost;
 use crate::buffers::{BufferData, BufferType, Buffers};
 use crate::bus::{BusDir, BusInfo, Format, Layout};
-use crate::engine::{Config, Engine};
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
 use crate::plugin::Plugin;
+use crate::process::{Config, Processor};
 use crate::sync::param_gestures::{GestureStates, GestureUpdate, ParamGestures};
 use crate::sync::params::ParamValues;
 use crate::util::{DisplayParam, copy_cstring, slice_from_raw_parts_checked};
@@ -57,7 +57,7 @@ pub struct ProcessState<P: Plugin> {
     buffer_data: Vec<BufferData>,
     buffer_ptrs: Vec<*mut f32>,
     events: Vec<Event>,
-    engine: Option<P::Engine>,
+    processor: Option<P::Processor>,
 }
 
 #[repr(C)]
@@ -71,10 +71,10 @@ pub struct Instance<P: Plugin> {
     pub output_bus_map: Vec<usize>,
     pub params: Vec<ParamInfo>,
     pub param_map: Arc<HashMap<ParamId, usize>>,
-    // Engine -> plugin parameter changes
+    // Processor -> plugin parameter changes
     pub plugin_params: ParamValues,
-    // Plugin -> engine parameter changes
-    pub engine_params: ParamValues,
+    // Plugin -> processor parameter changes
+    pub processor_params: ParamValues,
     pub param_gestures: Arc<ParamGestures>,
     pub has_view: bool,
     pub main_thread_state: UnsafeCell<MainThreadState<P>>,
@@ -136,7 +136,7 @@ impl<P: Plugin> Instance<P> {
             params,
             param_map: Arc::new(param_map),
             plugin_params: ParamValues::with_count(param_count),
-            engine_params: ParamValues::with_count(param_count),
+            processor_params: ParamValues::with_count(param_count),
             param_gestures: Arc::new(ParamGestures::with_count(param_count)),
             has_view,
             main_thread_state: UnsafeCell::new(MainThreadState {
@@ -150,7 +150,7 @@ impl<P: Plugin> Instance<P> {
                 buffer_data: Vec::new(),
                 buffer_ptrs: Vec::new(),
                 events: Vec::with_capacity(4096),
-                engine: None,
+                processor: None,
             }),
         }
     }
@@ -166,8 +166,8 @@ impl<P: Plugin> Instance<P> {
         }
     }
 
-    fn sync_engine(&self, events: &mut Vec<Event>) {
-        for (index, value) in self.engine_params.poll() {
+    fn sync_processor(&self, events: &mut Vec<Event>) {
+        for (index, value) in self.processor_params.poll() {
             events.push(Event {
                 time: 0,
                 data: Data::ParamChange {
@@ -374,11 +374,11 @@ impl<P: Plugin> Instance<P> {
             max_buffer_size: max_frames_count as usize,
         };
 
-        // Discard any pending plugin -> engine parameter changes, since they will already be
-        // reflected in the initial state of the engine.
-        for _ in instance.engine_params.poll() {}
+        // Discard any pending plugin -> processor parameter changes, since they will already be
+        // reflected in the initial state of the processor.
+        for _ in instance.processor_params.poll() {}
 
-        process_state.engine = Some(main_thread_state.plugin.engine(&config));
+        process_state.processor = Some(main_thread_state.plugin.processor(&config));
 
         true
     }
@@ -388,11 +388,11 @@ impl<P: Plugin> Instance<P> {
         let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
         let process_state = unsafe { &mut *instance.process_state.get() };
 
-        // Apply any remaining engine -> plugin parameter changes. There won't be any more until
+        // Apply any remaining processor -> plugin parameter changes. There won't be any more until
         // the next call to `activate`.
         instance.sync_plugin(main_thread_state);
 
-        process_state.engine = None;
+        process_state.processor = None;
     }
 
     unsafe extern "C" fn start_processing(_plugin: *const clap_plugin) -> bool {
@@ -405,16 +405,16 @@ impl<P: Plugin> Instance<P> {
         let instance = unsafe { &*(plugin as *const Self) };
         let process_state = unsafe { &mut *instance.process_state.get() };
 
-        if let Some(engine) = &mut process_state.engine {
-            // Flush plugin -> engine parameter changes
+        if let Some(processor) = &mut process_state.processor {
+            // Flush plugin -> processor parameter changes
             process_state.events.clear();
-            instance.sync_engine(&mut process_state.events);
+            instance.sync_processor(&mut process_state.events);
 
             if !process_state.events.is_empty() {
-                engine.flush(Events::new(&process_state.events));
+                processor.flush(Events::new(&process_state.events));
             }
 
-            engine.reset();
+            processor.reset();
         }
     }
 
@@ -425,7 +425,7 @@ impl<P: Plugin> Instance<P> {
         let instance = unsafe { &*(plugin as *const Self) };
         let process_state = unsafe { &mut *instance.process_state.get() };
 
-        let Some(engine) = &mut process_state.engine else {
+        let Some(processor) = &mut process_state.processor else {
             return CLAP_PROCESS_ERROR;
         };
 
@@ -490,7 +490,7 @@ impl<P: Plugin> Instance<P> {
         }
 
         process_state.events.clear();
-        instance.sync_engine(&mut process_state.events);
+        instance.sync_processor(&mut process_state.events);
         unsafe { instance.process_param_events(process.in_events, &mut process_state.events) };
 
         let last_sample = process.frames_count.saturating_sub(1);
@@ -511,7 +511,7 @@ impl<P: Plugin> Instance<P> {
                 len,
             )
         };
-        engine.process(buffers, Events::new(&process_state.events));
+        processor.process(buffers, Events::new(&process_state.events));
 
         CLAP_PROCESS_CONTINUE
     }
@@ -832,9 +832,9 @@ impl<P: Plugin> Instance<P> {
         let process_state = unsafe { &mut *instance.process_state.get() };
 
         // If we are in the active state, flush will be called on the audio thread.
-        if let Some(engine) = &mut process_state.engine {
+        if let Some(processor) = &mut process_state.processor {
             process_state.events.clear();
-            instance.sync_engine(&mut process_state.events);
+            instance.sync_processor(&mut process_state.events);
             unsafe { instance.process_param_events(in_, &mut process_state.events) };
             unsafe {
                 instance.process_gestures(
@@ -845,7 +845,7 @@ impl<P: Plugin> Instance<P> {
                 )
             };
 
-            engine.flush(Events::new(&process_state.events));
+            processor.flush(Events::new(&process_state.events));
         }
         // Otherwise, flush will be called on the main thread.
         else {
@@ -961,7 +961,7 @@ impl<P: Plugin> Instance<P> {
         if main_thread_state.plugin.load(&mut StreamReader(stream)).is_ok() {
             for (index, param) in instance.params.iter().enumerate() {
                 let value = main_thread_state.plugin.get_param(param.id);
-                instance.engine_params.set(index, value);
+                instance.processor_params.set(index, value);
 
                 if let Some(view) = &mut main_thread_state.view {
                     view.param_changed(param.id, value);

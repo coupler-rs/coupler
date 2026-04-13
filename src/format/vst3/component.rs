@@ -12,11 +12,11 @@ use super::host::Vst3Host;
 use super::util::{copy_wstring, utf16_from_ptr};
 use super::view::{PlugView, Vst3ViewHost};
 use crate::bus::{BusDir, BusInfo, Format, Layout};
-use crate::engine::{Config, Engine};
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo};
 use crate::plugin::Plugin;
+use crate::process::{Config, Processor};
 use crate::sync::params::ParamValues;
 use crate::util::{DisplayParam, slice_from_raw_parts_checked};
 use crate::view::View;
@@ -48,7 +48,7 @@ struct ProcessState<P: Plugin> {
     config: Config,
     scratch_buffers: ScratchBuffers,
     events: Vec<Event>,
-    engine: Option<P::Engine>,
+    processor: Option<P::Processor>,
 }
 
 pub struct Component<P: Plugin> {
@@ -59,7 +59,7 @@ pub struct Component<P: Plugin> {
     params: Vec<ParamInfo>,
     param_map: HashMap<ParamId, usize>,
     plugin_params: ParamValues,
-    engine_params: ParamValues,
+    processor_params: ParamValues,
     _host: Arc<Vst3Host>,
     has_view: bool,
     main_thread_state: Arc<UnsafeCell<MainThreadState<P>>>,
@@ -119,7 +119,7 @@ impl<P: Plugin> Component<P> {
             params,
             param_map,
             plugin_params: ParamValues::with_count(param_count),
-            engine_params: ParamValues::with_count(param_count),
+            processor_params: ParamValues::with_count(param_count),
             _host: host,
             has_view,
             main_thread_state: Arc::new(UnsafeCell::new(MainThreadState {
@@ -133,7 +133,7 @@ impl<P: Plugin> Component<P> {
                 config,
                 scratch_buffers,
                 events: Vec::with_capacity(4096),
-                engine: None,
+                processor: None,
             }),
         }
     }
@@ -277,20 +277,21 @@ impl<P: Plugin> IComponentTrait for Component<P> {
         let process_state = unsafe { &mut *self.process_state.get() };
 
         if state == 0 {
-            // Apply any remaining engine -> plugin parameter changes. There won't be any more
+            // Apply any remaining processor -> plugin parameter changes. There won't be any more
             // until the plugin becomes active again.
             self.sync_plugin(&mut main_thread_state.plugin);
 
-            process_state.engine = None;
+            process_state.processor = None;
         } else {
             process_state.config = main_thread_state.config.clone();
             process_state.scratch_buffers.resize(&self.buses, &process_state.config);
 
-            // Discard any pending plugin -> engine parameter changes, since they will already be
-            // reflected in the initial state of the engine.
-            for _ in self.engine_params.poll() {}
+            // Discard any pending plugin -> processor parameter changes, since they will already be
+            // reflected in the initial state of the processor.
+            for _ in self.processor_params.poll() {}
 
-            process_state.engine = Some(main_thread_state.plugin.engine(&process_state.config));
+            process_state.processor =
+                Some(main_thread_state.plugin.processor(&process_state.config));
         }
 
         kResultOk
@@ -324,7 +325,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
             if main_thread_state.plugin.load(&mut StreamReader(state)).is_ok() {
                 for (index, param) in self.params.iter().enumerate() {
                     let value = main_thread_state.plugin.get_param(param.id);
-                    self.engine_params.set(index, value);
+                    self.processor_params.set(index, value);
 
                     if let Some(view) = &mut main_thread_state.view {
                         view.param_changed(param.id, value);
@@ -480,14 +481,14 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
     unsafe fn setProcessing(&self, state: TBool) -> tresult {
         let process_state = unsafe { &mut *self.process_state.get() };
 
-        let Some(engine) = &mut process_state.engine else {
+        let Some(processor) = &mut process_state.processor else {
             return kNotInitialized;
         };
 
         if state == 0 {
-            // Flush plugin -> engine parameter changes
+            // Flush plugin -> processor parameter changes
             process_state.events.clear();
-            for (index, value) in self.engine_params.poll() {
+            for (index, value) in self.processor_params.poll() {
                 process_state.events.push(Event {
                     time: 0,
                     data: Data::ParamChange {
@@ -498,10 +499,10 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
             }
 
             if !process_state.events.is_empty() {
-                engine.flush(Events::new(&process_state.events));
+                processor.flush(Events::new(&process_state.events));
             }
 
-            engine.reset();
+            processor.reset();
         }
 
         kResultOk
@@ -510,7 +511,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
     unsafe fn process(&self, data: *mut ProcessData) -> tresult {
         let process_state = unsafe { &mut *self.process_state.get() };
 
-        let Some(engine) = &mut process_state.engine else {
+        let Some(processor) = &mut process_state.processor else {
             return kNotInitialized;
         };
 
@@ -530,7 +531,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
 
         process_state.events.clear();
 
-        for (index, value) in self.engine_params.poll() {
+        for (index, value) in self.processor_params.poll() {
             process_state.events.push(Event {
                 time: 0,
                 data: Data::ParamChange {
@@ -575,9 +576,9 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
 
         let events = Events::new(&process_state.events);
         if let Some(buffers) = buffers {
-            engine.process(buffers, events);
+            processor.process(buffers, events);
         } else {
-            engine.flush(events);
+            processor.flush(events);
         }
 
         kResultOk

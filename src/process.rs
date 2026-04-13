@@ -9,7 +9,7 @@ pub struct Config {
     pub max_buffer_size: usize,
 }
 
-pub trait Engine: Send + Sized + 'static {
+pub trait Processor: Send + Sized + 'static {
     fn reset(&mut self);
     fn flush(&mut self, events: Events);
     fn process(&mut self, buffers: Buffers, events: Events);

@@ -7,7 +7,7 @@ use coupler::format::clap::*;
 use coupler::format::vst3::*;
 use coupler::params::{ParamId, ParamInfo, ParamValue};
 use coupler::view::NoView;
-use coupler::{buffers::*, bus::*, engine::*, events::*, host::*, params::*, plugin::*, view::*};
+use coupler::{buffers::*, bus::*, events::*, host::*, params::*, plugin::*, process::*, view::*};
 
 #[derive(Params, Serialize, Deserialize, Clone)]
 struct GainParams {
@@ -26,7 +26,7 @@ pub struct Gain {
 }
 
 impl Plugin for Gain {
-    type Engine = GainEngine;
+    type Processor = GainProcessor;
     type View = NoView;
 
     fn info() -> PluginInfo {
@@ -100,8 +100,8 @@ impl Plugin for Gain {
         Ok(())
     }
 
-    fn engine(&mut self, _config: &Config) -> Self::Engine {
-        GainEngine {
+    fn processor(&mut self, _config: &Config) -> Self::Processor {
+        GainProcessor {
             params: self.params.clone(),
         }
     }
@@ -131,11 +131,11 @@ impl ClapPlugin for Gain {
     }
 }
 
-pub struct GainEngine {
+pub struct GainProcessor {
     params: GainParams,
 }
 
-impl GainEngine {
+impl GainProcessor {
     fn handle_event(&mut self, event: &Event) {
         if let Data::ParamChange { id, value } = event.data {
             self.params.set_param(id, value);
@@ -143,7 +143,7 @@ impl GainEngine {
     }
 }
 
-impl Engine for GainEngine {
+impl Processor for GainProcessor {
     fn reset(&mut self) {}
 
     fn flush(&mut self, events: Events) {

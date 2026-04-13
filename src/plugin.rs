@@ -2,9 +2,9 @@ use std::fmt::{self, Formatter};
 use std::io::{self, Read, Write};
 
 use crate::bus::{BusInfo, Layout};
-use crate::engine::{Config, Engine};
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
+use crate::process::{Config, Processor};
 use crate::view::{ParentWindow, View, ViewHost};
 
 pub struct PluginInfo {
@@ -29,7 +29,7 @@ impl Default for PluginInfo {
 }
 
 pub trait Plugin: Send + Sized + 'static {
-    type Engine: Engine;
+    type Processor: Processor;
     type View: View;
 
     fn info() -> PluginInfo;
@@ -52,7 +52,7 @@ pub trait Plugin: Send + Sized + 'static {
     fn save(&self, output: impl Write) -> io::Result<()>;
     fn load(&mut self, input: impl Read) -> io::Result<()>;
 
-    fn engine(&mut self, config: &Config) -> Self::Engine;
+    fn processor(&mut self, config: &Config) -> Self::Processor;
 
     fn has_view(&self) -> bool;
     fn view(&mut self, host: ViewHost, parent: &ParentWindow) -> Self::View;
