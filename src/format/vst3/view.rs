@@ -1,4 +1,4 @@
-use std::cell::{RefCell, UnsafeCell};
+use std::cell::RefCell;
 use std::ffi::{CStr, c_void};
 use std::sync::Arc;
 
@@ -9,6 +9,7 @@ use super::component::MainThreadState;
 use crate::editor::{Editor, EditorHost, EditorHostInner, ParentWindow, RawParent};
 use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
+use crate::sync::sync_cell::SyncCell;
 
 pub struct Vst3EditorHost {
     pub handler: RefCell<Option<ComPtr<IComponentHandler>>>,
@@ -52,11 +53,11 @@ impl EditorHostInner for Vst3EditorHost {
 }
 
 pub struct PlugView<P: Plugin> {
-    main_thread_state: Arc<UnsafeCell<MainThreadState<P>>>,
+    main_thread_state: Arc<SyncCell<MainThreadState<P>>>,
 }
 
 impl<P: Plugin> PlugView<P> {
-    pub fn new(main_thread_state: &Arc<UnsafeCell<MainThreadState<P>>>) -> PlugView<P> {
+    pub fn new(main_thread_state: &Arc<SyncCell<MainThreadState<P>>>) -> PlugView<P> {
         PlugView {
             main_thread_state: main_thread_state.clone(),
         }
@@ -103,7 +104,7 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
         #[cfg(target_os = "linux")]
         let raw_parent = RawParent::X11(parent as std::ffi::c_ulong);
 
-        let main_thread_state = unsafe { &mut *self.main_thread_state.get() };
+        let mut main_thread_state = self.main_thread_state.borrow();
 
         let host = EditorHost::from_inner(main_thread_state.editor_host.clone());
         let parent = unsafe { ParentWindow::from_raw(raw_parent) };
@@ -114,7 +115,7 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
     }
 
     unsafe fn removed(&self) -> tresult {
-        let main_thread_state = unsafe { &mut *self.main_thread_state.get() };
+        let mut main_thread_state = self.main_thread_state.borrow();
 
         main_thread_state.editor = None;
 
@@ -138,7 +139,7 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
             return kResultFalse;
         }
 
-        let main_thread_state = unsafe { &*self.main_thread_state.get() };
+        let main_thread_state = self.main_thread_state.borrow();
 
         if let Some(editor) = &main_thread_state.editor {
             let editor_size = editor.size();
@@ -164,7 +165,7 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
     }
 
     unsafe fn setFrame(&self, frame: *mut IPlugFrame) -> tresult {
-        let main_thread_state = unsafe { &mut *self.main_thread_state.get() };
+        let mut main_thread_state = self.main_thread_state.borrow();
         main_thread_state.frame =
             unsafe { ComRef::from_raw(frame) }.map(|frame| frame.to_com_ptr());
 
