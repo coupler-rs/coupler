@@ -1,4 +1,3 @@
-use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::ffi::{CStr, c_char, c_void};
 use std::iter::zip;
@@ -20,6 +19,7 @@ use crate::plugin::Plugin;
 use crate::process::{Config, Processor};
 use crate::sync::param_gestures::{GestureStates, GestureUpdate, ParamGestures};
 use crate::sync::params::ParamValues;
+use crate::sync::sync_cell::SyncCell;
 use crate::util::{DisplayParam, copy_cstring, slice_from_raw_parts_checked};
 
 fn port_type_from_format(format: &Format) -> &'static CStr {
@@ -77,8 +77,8 @@ pub struct Instance<P: Plugin> {
     pub processor_params: ParamValues,
     pub param_gestures: Arc<ParamGestures>,
     pub has_editor: bool,
-    pub main_thread_state: UnsafeCell<MainThreadState<P>>,
-    pub process_state: UnsafeCell<ProcessState<P>>,
+    pub main_thread_state: SyncCell<MainThreadState<P>>,
+    pub process_state: SyncCell<ProcessState<P>>,
 }
 
 unsafe impl<P: Plugin> Sync for Instance<P> {}
@@ -139,13 +139,13 @@ impl<P: Plugin> Instance<P> {
             processor_params: ParamValues::with_count(param_count),
             param_gestures: Arc::new(ParamGestures::with_count(param_count)),
             has_editor,
-            main_thread_state: UnsafeCell::new(MainThreadState {
+            main_thread_state: SyncCell::new(MainThreadState {
                 host_params: None,
                 layout_index: 0,
                 plugin,
                 editor: None,
             }),
-            process_state: UnsafeCell::new(ProcessState {
+            process_state: SyncCell::new(ProcessState {
                 gesture_states: GestureStates::with_count(param_count),
                 buffer_data: Vec::new(),
                 buffer_ptrs: Vec::new(),
@@ -322,7 +322,7 @@ impl<P: Plugin> Instance<P> {
 impl<P: Plugin> Instance<P> {
     unsafe extern "C" fn init(plugin: *const clap_plugin) -> bool {
         let instance = unsafe { &*(plugin as *const Self) };
-        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
+        let mut main_thread_state = instance.main_thread_state.borrow();
 
         let host_params = unsafe {
             (*instance.host).get_extension.unwrap()(instance.host, CLAP_EXT_PARAMS.as_ptr())
@@ -343,8 +343,8 @@ impl<P: Plugin> Instance<P> {
         max_frames_count: u32,
     ) -> bool {
         let instance = unsafe { &*(plugin as *const Self) };
-        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
-        let process_state = unsafe { &mut *instance.process_state.get() };
+        let mut main_thread_state = instance.main_thread_state.borrow();
+        let mut process_state = instance.process_state.borrow();
 
         let layout = &instance.layouts[main_thread_state.layout_index];
 
@@ -385,12 +385,12 @@ impl<P: Plugin> Instance<P> {
 
     unsafe extern "C" fn deactivate(plugin: *const clap_plugin) {
         let instance = unsafe { &*(plugin as *const Self) };
-        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
-        let process_state = unsafe { &mut *instance.process_state.get() };
+        let mut main_thread_state = instance.main_thread_state.borrow();
+        let mut process_state = instance.process_state.borrow();
 
         // Apply any remaining processor -> plugin parameter changes. There won't be any more until
         // the next call to `activate`.
-        instance.sync_plugin(main_thread_state);
+        instance.sync_plugin(&mut *main_thread_state);
 
         process_state.processor = None;
     }
@@ -403,7 +403,8 @@ impl<P: Plugin> Instance<P> {
 
     unsafe extern "C" fn reset(plugin: *const clap_plugin) {
         let instance = unsafe { &*(plugin as *const Self) };
-        let process_state = unsafe { &mut *instance.process_state.get() };
+        let mut process_state_guard = instance.process_state.borrow();
+        let process_state = &mut *process_state_guard;
 
         if let Some(processor) = &mut process_state.processor {
             // Flush plugin -> processor parameter changes
@@ -423,7 +424,8 @@ impl<P: Plugin> Instance<P> {
         process: *const clap_process,
     ) -> clap_process_status {
         let instance = unsafe { &*(plugin as *const Self) };
-        let process_state = unsafe { &mut *instance.process_state.get() };
+        let mut process_state_guard = instance.process_state.borrow();
+        let process_state = &mut *process_state_guard;
 
         let Some(processor) = &mut process_state.processor else {
             return CLAP_PROCESS_ERROR;
@@ -550,9 +552,9 @@ impl<P: Plugin> Instance<P> {
 
     unsafe extern "C" fn on_main_thread(plugin: *const clap_plugin) {
         let instance = unsafe { &*(plugin as *const Self) };
-        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
+        let mut main_thread_state = instance.main_thread_state.borrow();
 
-        instance.sync_plugin(main_thread_state);
+        instance.sync_plugin(&mut *main_thread_state);
     }
 }
 
@@ -579,7 +581,7 @@ impl<P: Plugin> Instance<P> {
         info: *mut clap_audio_port_info,
     ) -> bool {
         let instance = unsafe { &*(plugin as *const Self) };
-        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
+        let main_thread_state = instance.main_thread_state.borrow();
 
         let bus_index = if is_input {
             instance.input_bus_map.get(index as usize)
@@ -689,7 +691,7 @@ impl<P: Plugin> Instance<P> {
         config_id: clap_id,
     ) -> bool {
         let instance = unsafe { &*(plugin as *const Self) };
-        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
+        let mut main_thread_state = instance.main_thread_state.borrow();
 
         if instance.layouts.get(config_id as usize).is_some() {
             main_thread_state.layout_index = config_id as usize;
@@ -753,10 +755,10 @@ impl<P: Plugin> Instance<P> {
         value: *mut f64,
     ) -> bool {
         let instance = unsafe { &*(plugin as *const Self) };
-        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
+        let mut main_thread_state = instance.main_thread_state.borrow();
 
         if let Some(&index) = instance.param_map.get(&param_id) {
-            instance.sync_plugin(main_thread_state);
+            instance.sync_plugin(&mut *main_thread_state);
 
             let param = &instance.params[index];
             let value = unsafe { &mut *value };
@@ -775,7 +777,7 @@ impl<P: Plugin> Instance<P> {
         size: u32,
     ) -> bool {
         let instance = unsafe { &*(plugin as *const Self) };
-        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
+        let main_thread_state = instance.main_thread_state.borrow();
 
         if let Some(&index) = instance.param_map.get(&param_id) {
             let param = &instance.params[index];
@@ -805,7 +807,7 @@ impl<P: Plugin> Instance<P> {
         value: *mut f64,
     ) -> bool {
         let instance = unsafe { &*(plugin as *const Self) };
-        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
+        let main_thread_state = instance.main_thread_state.borrow();
 
         if let Some(&index) = instance.param_map.get(&param_id) {
             if let Ok(text) = unsafe { CStr::from_ptr(display) }.to_str() {
@@ -829,7 +831,8 @@ impl<P: Plugin> Instance<P> {
         out: *const clap_output_events,
     ) {
         let instance = unsafe { &*(plugin as *const Self) };
-        let process_state = unsafe { &mut *instance.process_state.get() };
+        let mut process_state_guard = instance.process_state.borrow();
+        let process_state = &mut *process_state_guard;
 
         // If we are in the active state, flush will be called on the audio thread.
         if let Some(processor) = &mut process_state.processor {
@@ -849,7 +852,7 @@ impl<P: Plugin> Instance<P> {
         }
         // Otherwise, flush will be called on the main thread.
         else {
-            let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
+            let mut main_thread_state = instance.main_thread_state.borrow();
 
             let size = unsafe { (*in_).size.unwrap()(in_) };
             for i in 0..size {
@@ -923,9 +926,9 @@ impl<P: Plugin> Instance<P> {
         }
 
         let instance = unsafe { &*(plugin as *const Self) };
-        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
+        let mut main_thread_state = instance.main_thread_state.borrow();
 
-        instance.sync_plugin(main_thread_state);
+        instance.sync_plugin(&mut *main_thread_state);
         let result = main_thread_state.plugin.save(&mut StreamWriter(stream));
         result.is_ok()
     }
@@ -955,9 +958,9 @@ impl<P: Plugin> Instance<P> {
         }
 
         let instance = unsafe { &*(plugin as *const Self) };
-        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
+        let mut main_thread_state = instance.main_thread_state.borrow();
 
-        instance.sync_plugin(main_thread_state);
+        instance.sync_plugin(&mut *main_thread_state);
         if main_thread_state.plugin.load(&mut StreamReader(stream)).is_ok() {
             for (index, param) in instance.params.iter().enumerate() {
                 let value = main_thread_state.plugin.get_param(param.id);

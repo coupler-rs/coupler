@@ -115,7 +115,7 @@ impl<P: Plugin> Instance<P> {
 
     unsafe extern "C" fn gui_destroy(plugin: *const clap_plugin) {
         let instance = unsafe { &*(plugin as *const Self) };
-        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
+        let mut main_thread_state = instance.main_thread_state.borrow();
 
         main_thread_state.editor = None;
     }
@@ -130,7 +130,7 @@ impl<P: Plugin> Instance<P> {
         height: *mut u32,
     ) -> bool {
         let instance = unsafe { &*(plugin as *const Self) };
-        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
+        let main_thread_state = instance.main_thread_state.borrow();
 
         if let Some(editor) = &main_thread_state.editor {
             let size = editor.size();
@@ -194,7 +194,7 @@ impl<P: Plugin> Instance<P> {
         let raw_parent = { RawParent::X11(unsafe { window.specific.x11 }) };
 
         let instance = unsafe { &*(plugin as *const Self) };
-        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
+        let mut main_thread_state = instance.main_thread_state.borrow();
 
         let host = EditorHost::from_inner(Rc::new(ClapEditorHost {
             host: instance.host,
