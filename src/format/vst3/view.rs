@@ -6,23 +6,23 @@ use vst3::Steinberg::Vst::{IComponentHandler, IComponentHandlerTrait};
 use vst3::{Class, ComPtr, ComRef, Steinberg::*};
 
 use super::component::MainThreadState;
+use crate::editor::{Editor, EditorHost, EditorHostInner, ParentWindow, RawParent};
 use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
-use crate::view::{ParentWindow, RawParent, View, ViewHost, ViewHostInner};
 
-pub struct Vst3ViewHost {
+pub struct Vst3EditorHost {
     pub handler: RefCell<Option<ComPtr<IComponentHandler>>>,
 }
 
-impl Vst3ViewHost {
-    pub fn new() -> Vst3ViewHost {
-        Vst3ViewHost {
+impl Vst3EditorHost {
+    pub fn new() -> Vst3EditorHost {
+        Vst3EditorHost {
             handler: RefCell::new(None),
         }
     }
 }
 
-impl ViewHostInner for Vst3ViewHost {
+impl EditorHostInner for Vst3EditorHost {
     fn begin_gesture(&self, id: ParamId) {
         let handler = self.handler.borrow();
         if let Some(handler) = &*handler {
@@ -105,10 +105,10 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
 
         let main_thread_state = unsafe { &mut *self.main_thread_state.get() };
 
-        let host = ViewHost::from_inner(main_thread_state.view_host.clone());
+        let host = EditorHost::from_inner(main_thread_state.editor_host.clone());
         let parent = unsafe { ParentWindow::from_raw(raw_parent) };
-        let view = main_thread_state.plugin.view(host, &parent);
-        main_thread_state.view = Some(view);
+        let editor = main_thread_state.plugin.editor(host, &parent);
+        main_thread_state.editor = Some(editor);
 
         kResultOk
     }
@@ -116,7 +116,7 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
     unsafe fn removed(&self) -> tresult {
         let main_thread_state = unsafe { &mut *self.main_thread_state.get() };
 
-        main_thread_state.view = None;
+        main_thread_state.editor = None;
 
         kResultOk
     }
@@ -140,14 +140,14 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
 
         let main_thread_state = unsafe { &*self.main_thread_state.get() };
 
-        if let Some(view) = &main_thread_state.view {
-            let view_size = view.size();
+        if let Some(editor) = &main_thread_state.editor {
+            let editor_size = editor.size();
 
             let rect = unsafe { &mut *size };
             rect.left = 0;
             rect.top = 0;
-            rect.right = view_size.width.round() as int32;
-            rect.bottom = view_size.height.round() as int32;
+            rect.right = editor_size.width.round() as int32;
+            rect.bottom = editor_size.height.round() as int32;
 
             return kResultOk;
         }

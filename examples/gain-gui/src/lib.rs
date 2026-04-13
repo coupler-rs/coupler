@@ -5,11 +5,13 @@ use std::rc::Rc;
 
 use serde::{Deserialize, Serialize};
 
+use coupler::editor::{Editor, ParentWindow, RawParent, Size};
 use coupler::format::clap::*;
 use coupler::format::vst3::*;
 use coupler::params::{ParamId, ParamInfo, ParamValue};
-use coupler::view::{ParentWindow, RawParent, Size, View};
-use coupler::{buffers::*, bus::*, events::*, host::*, params::*, plugin::*, process::*, view::*};
+use coupler::{
+    buffers::*, bus::*, editor::*, events::*, host::*, params::*, plugin::*, process::*,
+};
 
 use flicker::Renderer;
 
@@ -36,7 +38,7 @@ pub struct GainGui {
 
 impl Plugin for GainGui {
     type Processor = GainGuiProcessor;
-    type View = GainGuiView;
+    type Editor = GainGuiEditor;
 
     fn info() -> PluginInfo {
         PluginInfo {
@@ -115,12 +117,12 @@ impl Plugin for GainGui {
         }
     }
 
-    fn has_view(&self) -> bool {
+    fn has_editor(&self) -> bool {
         true
     }
 
-    fn view(&mut self, host: ViewHost, parent: &ParentWindow) -> Self::View {
-        GainGuiView::open(host, parent, &self.params).unwrap()
+    fn editor(&mut self, host: EditorHost, parent: &ParentWindow) -> Self::Editor {
+        GainGuiEditor::open(host, parent, &self.params).unwrap()
     }
 }
 
@@ -182,8 +184,8 @@ struct Gesture {
     start_value: f32,
 }
 
-struct ViewState {
-    host: ViewHost,
+struct EditorState {
+    host: EditorHost,
     params: GainGuiParams,
     window: Option<Window>,
     renderer: Renderer,
@@ -192,9 +194,9 @@ struct ViewState {
     gesture: Option<Gesture>,
 }
 
-impl ViewState {
-    fn new(host: ViewHost, params: GainGuiParams) -> ViewState {
-        ViewState {
+impl EditorState {
+    fn new(host: EditorHost, params: GainGuiParams) -> EditorState {
+        EditorState {
             host,
             params,
             window: None,
@@ -311,18 +313,18 @@ impl ViewState {
     }
 }
 
-pub struct GainGuiView {
+pub struct GainGuiEditor {
     #[allow(unused)]
     event_loop: EventLoop,
-    state: Rc<RefCell<ViewState>>,
+    state: Rc<RefCell<EditorState>>,
 }
 
-impl GainGuiView {
+impl GainGuiEditor {
     fn open(
-        host: ViewHost,
+        host: EditorHost,
         parent: &ParentWindow,
         params: &GainGuiParams,
-    ) -> portlight::Result<GainGuiView> {
+    ) -> portlight::Result<GainGuiEditor> {
         let event_loop = EventLoopOptions::new().mode(EventLoopMode::Guest).build()?;
 
         let mut options = WindowOptions::new();
@@ -335,7 +337,7 @@ impl GainGuiView {
         };
         unsafe { options.raw_parent(raw_parent) };
 
-        let state = Rc::new(RefCell::new(ViewState::new(host, params.clone())));
+        let state = Rc::new(RefCell::new(EditorState::new(host, params.clone())));
         let window = options.open(&event_loop, {
             let state = Rc::downgrade(&state);
             move |event| state.upgrade().unwrap().borrow_mut().handle_event(event)
@@ -345,11 +347,11 @@ impl GainGuiView {
 
         state.borrow_mut().window = Some(window);
 
-        Ok(GainGuiView { event_loop, state })
+        Ok(GainGuiEditor { event_loop, state })
     }
 }
 
-impl View for GainGuiView {
+impl Editor for GainGuiEditor {
     fn size(&self) -> Size {
         let size = self.state.borrow_mut().window.as_ref().unwrap().size();
 

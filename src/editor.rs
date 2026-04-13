@@ -4,22 +4,22 @@ use std::rc::Rc;
 
 use crate::params::{ParamId, ParamValue};
 
-pub trait ViewHostInner {
+pub trait EditorHostInner {
     fn begin_gesture(&self, id: ParamId);
     fn end_gesture(&self, id: ParamId);
     fn set_param(&self, id: ParamId, value: ParamValue);
 }
 
 #[derive(Clone)]
-pub struct ViewHost {
-    inner: Rc<dyn ViewHostInner>,
+pub struct EditorHost {
+    inner: Rc<dyn EditorHostInner>,
     // Ensure !Send and !Sync
     _marker: PhantomData<*mut ()>,
 }
 
-impl ViewHost {
-    pub fn from_inner(inner: Rc<dyn ViewHostInner>) -> ViewHost {
-        ViewHost {
+impl EditorHost {
+    pub fn from_inner(inner: Rc<dyn EditorHostInner>) -> EditorHost {
+        EditorHost {
             inner,
             _marker: PhantomData,
         }
@@ -64,14 +64,14 @@ pub struct Size {
     pub height: f64,
 }
 
-pub trait View: Sized + 'static {
+pub trait Editor: Sized + 'static {
     fn size(&self) -> Size;
     fn param_changed(&mut self, id: ParamId, value: ParamValue);
 }
 
-pub struct NoView;
+pub struct NoEditor;
 
-impl View for NoView {
+impl Editor for NoEditor {
     fn size(&self) -> Size {
         Size {
             width: 0.0,

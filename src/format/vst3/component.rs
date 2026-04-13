@@ -10,8 +10,9 @@ use vst3::{Class, ComPtr, ComRef, ComWrapper, Steinberg::Vst::*, Steinberg::*};
 use super::buffers::ScratchBuffers;
 use super::host::Vst3Host;
 use super::util::{copy_wstring, utf16_from_ptr};
-use super::view::{PlugView, Vst3ViewHost};
+use super::view::{PlugView, Vst3EditorHost};
 use crate::bus::{BusDir, BusInfo, Format, Layout};
+use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo};
@@ -19,7 +20,6 @@ use crate::plugin::Plugin;
 use crate::process::{Config, Processor};
 use crate::sync::params::ParamValues;
 use crate::util::{DisplayParam, slice_from_raw_parts_checked};
-use crate::view::View;
 
 fn format_to_speaker_arrangement(format: &Format) -> SpeakerArrangement {
     match format {
@@ -39,8 +39,8 @@ fn speaker_arrangement_to_format(speaker_arrangement: SpeakerArrangement) -> Opt
 pub struct MainThreadState<P: Plugin> {
     pub config: Config,
     pub plugin: P,
-    pub view_host: Rc<Vst3ViewHost>,
-    pub view: Option<P::View>,
+    pub editor_host: Rc<Vst3EditorHost>,
+    pub editor: Option<P::Editor>,
     pub frame: Option<ComPtr<IPlugFrame>>,
 }
 
@@ -61,7 +61,7 @@ pub struct Component<P: Plugin> {
     plugin_params: ParamValues,
     processor_params: ParamValues,
     _host: Arc<Vst3Host>,
-    has_view: bool,
+    has_editor: bool,
     main_thread_state: Arc<UnsafeCell<MainThreadState<P>>>,
     // When the audio processor is *not* active, references to ProcessState may only be formed from
     // the main thread. When the audio processor *is* active, references to ProcessState may only
@@ -109,7 +109,7 @@ impl<P: Plugin> Component<P> {
             param_map.insert(param.id, index);
         }
 
-        let has_view = plugin.has_view();
+        let has_editor = plugin.has_editor();
 
         Component {
             buses,
@@ -121,12 +121,12 @@ impl<P: Plugin> Component<P> {
             plugin_params: ParamValues::with_count(param_count),
             processor_params: ParamValues::with_count(param_count),
             _host: host,
-            has_view,
+            has_editor,
             main_thread_state: Arc::new(UnsafeCell::new(MainThreadState {
                 config: config.clone(),
                 plugin,
-                view_host: Rc::new(Vst3ViewHost::new()),
-                view: None,
+                editor_host: Rc::new(Vst3EditorHost::new()),
+                editor: None,
                 frame: None,
             })),
             process_state: UnsafeCell::new(ProcessState {
@@ -327,8 +327,8 @@ impl<P: Plugin> IComponentTrait for Component<P> {
                     let value = main_thread_state.plugin.get_param(param.id);
                     self.processor_params.set(index, value);
 
-                    if let Some(view) = &mut main_thread_state.view {
-                        view.param_changed(param.id, value);
+                    if let Some(editor) = &mut main_thread_state.editor {
+                        editor.param_changed(param.id, value);
                     }
                 }
 
@@ -704,8 +704,8 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         if self.param_map.contains_key(&id) {
             main_thread_state.plugin.set_param(id, value);
 
-            if let Some(view) = &mut main_thread_state.view {
-                view.param_changed(id, value);
+            if let Some(editor) = &mut main_thread_state.editor {
+                editor.param_changed(id, value);
             }
 
             return kResultOk;
@@ -717,7 +717,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     unsafe fn setComponentHandler(&self, handler: *mut IComponentHandler) -> tresult {
         let main_thread_state = unsafe { &mut *self.main_thread_state.get() };
 
-        let mut current_handler = main_thread_state.view_host.handler.borrow_mut();
+        let mut current_handler = main_thread_state.editor_host.handler.borrow_mut();
         if let Some(handler) = unsafe { ComRef::from_raw(handler) } {
             *current_handler = Some(handler.to_com_ptr());
         } else {
@@ -728,7 +728,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     }
 
     unsafe fn createView(&self, name: FIDString) -> *mut IPlugView {
-        if !self.has_view {
+        if !self.has_editor {
             return ptr::null_mut();
         }
 

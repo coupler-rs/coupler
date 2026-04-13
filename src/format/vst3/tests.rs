@@ -6,12 +6,12 @@ use std::{ptr, slice};
 
 use crate::buffers::Buffers;
 use crate::bus::{BusInfo, Layout};
+use crate::editor::{Editor, EditorHost, ParentWindow, Size};
 use crate::events::Events;
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
 use crate::plugin::{Plugin, PluginInfo};
 use crate::process::{Config, Processor};
-use crate::view::{ParentWindow, Size, View, ViewHost};
 
 use vst3::Steinberg::Vst::{IComponent, SDKVersionString};
 use vst3::Steinberg::{
@@ -35,7 +35,7 @@ struct TestPlugin;
 
 impl Plugin for TestPlugin {
     type Processor = TestProcessor;
-    type View = TestView;
+    type Editor = TestEditor;
 
     fn info() -> PluginInfo {
         PluginInfo {
@@ -82,11 +82,11 @@ impl Plugin for TestPlugin {
     fn processor(&mut self, _config: &Config) -> Self::Processor {
         TestProcessor
     }
-    fn has_view(&self) -> bool {
+    fn has_editor(&self) -> bool {
         false
     }
-    fn view(&mut self, _host: ViewHost, _parent: &ParentWindow) -> Self::View {
-        TestView
+    fn editor(&mut self, _host: EditorHost, _parent: &ParentWindow) -> Self::Editor {
+        TestEditor
     }
 
     #[allow(unused_variables)]
@@ -111,9 +111,9 @@ impl Processor for TestProcessor {
     fn process(&mut self, _buffers: Buffers, _events: Events) {}
 }
 
-struct TestView;
+struct TestEditor;
 
-impl View for TestView {
+impl Editor for TestEditor {
     fn size(&self) -> Size {
         Size {
             width: 0.0,

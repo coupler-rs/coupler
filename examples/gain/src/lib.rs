@@ -3,11 +3,13 @@ use std::io::{self, Read, Write};
 
 use serde::{Deserialize, Serialize};
 
+use coupler::editor::NoEditor;
 use coupler::format::clap::*;
 use coupler::format::vst3::*;
 use coupler::params::{ParamId, ParamInfo, ParamValue};
-use coupler::view::NoView;
-use coupler::{buffers::*, bus::*, events::*, host::*, params::*, plugin::*, process::*, view::*};
+use coupler::{
+    buffers::*, bus::*, editor::*, events::*, host::*, params::*, plugin::*, process::*,
+};
 
 #[derive(Params, Serialize, Deserialize, Clone)]
 struct GainParams {
@@ -27,7 +29,7 @@ pub struct Gain {
 
 impl Plugin for Gain {
     type Processor = GainProcessor;
-    type View = NoView;
+    type Editor = NoEditor;
 
     fn info() -> PluginInfo {
         PluginInfo {
@@ -106,12 +108,12 @@ impl Plugin for Gain {
         }
     }
 
-    fn has_view(&self) -> bool {
+    fn has_editor(&self) -> bool {
         false
     }
 
-    fn view(&mut self, _host: ViewHost, _parent: &ParentWindow) -> Self::View {
-        NoView
+    fn editor(&mut self, _host: EditorHost, _parent: &ParentWindow) -> Self::Editor {
+        NoEditor
     }
 }
 

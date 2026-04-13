@@ -2,10 +2,10 @@ use std::fmt::{self, Formatter};
 use std::io::{self, Read, Write};
 
 use crate::bus::{BusInfo, Layout};
+use crate::editor::{Editor, EditorHost, ParentWindow};
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
 use crate::process::{Config, Processor};
-use crate::view::{ParentWindow, View, ViewHost};
 
 pub struct PluginInfo {
     pub name: String,
@@ -30,7 +30,7 @@ impl Default for PluginInfo {
 
 pub trait Plugin: Send + Sized + 'static {
     type Processor: Processor;
-    type View: View;
+    type Editor: Editor;
 
     fn info() -> PluginInfo;
     fn new(host: Host) -> Self;
@@ -54,8 +54,8 @@ pub trait Plugin: Send + Sized + 'static {
 
     fn processor(&mut self, config: &Config) -> Self::Processor;
 
-    fn has_view(&self) -> bool;
-    fn view(&mut self, host: ViewHost, parent: &ParentWindow) -> Self::View;
+    fn has_editor(&self) -> bool;
+    fn editor(&mut self, host: EditorHost, parent: &ParentWindow) -> Self::Editor;
 
     #[allow(unused_variables)]
     fn latency(&self, config: &Config) -> u64 {
