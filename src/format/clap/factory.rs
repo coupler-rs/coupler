@@ -2,6 +2,7 @@ use std::cell::UnsafeCell;
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::marker::PhantomData;
 use std::ptr;
+use std::sync::Mutex;
 
 use clap_sys::{host::*, plugin::*, plugin_factory::*, version::*};
 
@@ -18,6 +19,7 @@ struct FactoryState {
 pub struct Factory<P> {
     #[allow(unused)]
     factory: clap_plugin_factory,
+    init_count: Mutex<usize>,
     state: UnsafeCell<Option<FactoryState>>,
     _marker: PhantomData<P>,
 }
@@ -34,57 +36,75 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
                 get_plugin_descriptor: Some(Self::get_plugin_descriptor),
                 create_plugin: Some(Self::create_plugin),
             },
+            init_count: Mutex::new(0),
             state: UnsafeCell::new(None),
             _marker: PhantomData,
         }
     }
 
     pub unsafe fn init(&self) -> bool {
-        let info = P::info();
-        let clap_info = P::clap_info();
+        let mut init_count = self.init_count.lock().unwrap();
 
-        let id = CString::new(&*clap_info.id).unwrap().into_raw();
-        let name = CString::new(&*info.name).unwrap().into_raw();
-        let vendor = CString::new(&*info.vendor).unwrap().into_raw();
-        let url = CString::new(&*info.url).unwrap().into_raw();
-        let version = CString::new(&*info.version).unwrap().into_raw();
+        let count = *init_count;
+        *init_count = count.checked_add(1).unwrap();
 
-        const EMPTY: &CStr = c"";
-        const FEATURES: &[*const c_char] = &[ptr::null()];
+        if count == 0 {
+            let info = P::info();
+            let clap_info = P::clap_info();
 
-        let state = unsafe { &mut *self.state.get() };
+            let id = CString::new(&*clap_info.id).unwrap().into_raw();
+            let name = CString::new(&*info.name).unwrap().into_raw();
+            let vendor = CString::new(&*info.vendor).unwrap().into_raw();
+            let url = CString::new(&*info.url).unwrap().into_raw();
+            let version = CString::new(&*info.version).unwrap().into_raw();
 
-        *state = Some(FactoryState {
-            descriptor: clap_plugin_descriptor {
-                clap_version: CLAP_VERSION,
-                id,
-                name,
-                vendor,
-                url,
-                manual_url: EMPTY.as_ptr(),
-                support_url: EMPTY.as_ptr(),
-                version,
-                description: EMPTY.as_ptr(),
-                features: FEATURES.as_ptr(),
-            },
-        });
+            const EMPTY: &CStr = c"";
+            const FEATURES: &[*const c_char] = &[ptr::null()];
+
+            let state = unsafe { &mut *self.state.get() };
+
+            *state = Some(FactoryState {
+                descriptor: clap_plugin_descriptor {
+                    clap_version: CLAP_VERSION,
+                    id,
+                    name,
+                    vendor,
+                    url,
+                    manual_url: EMPTY.as_ptr(),
+                    support_url: EMPTY.as_ptr(),
+                    version,
+                    description: EMPTY.as_ptr(),
+                    features: FEATURES.as_ptr(),
+                },
+            });
+        }
 
         true
     }
 
     pub unsafe fn deinit(&self) {
-        let state = unsafe { &mut *self.state.get() };
+        let mut init_count = self.init_count.lock().unwrap();
 
-        if let Some(state) = state.take() {
-            drop(unsafe { CString::from_raw(state.descriptor.id as *mut c_char) });
-            drop(unsafe { CString::from_raw(state.descriptor.name as *mut c_char) });
-            drop(unsafe { CString::from_raw(state.descriptor.vendor as *mut c_char) });
-            drop(unsafe { CString::from_raw(state.descriptor.url as *mut c_char) });
-            drop(unsafe { CString::from_raw(state.descriptor.version as *mut c_char) });
+        let count = *init_count;
+        *init_count = count.checked_sub(1).unwrap();
+
+        if count == 1 {
+            let state = unsafe { &mut *self.state.get() };
+
+            if let Some(state) = state.take() {
+                drop(unsafe { CString::from_raw(state.descriptor.id as *mut c_char) });
+                drop(unsafe { CString::from_raw(state.descriptor.name as *mut c_char) });
+                drop(unsafe { CString::from_raw(state.descriptor.vendor as *mut c_char) });
+                drop(unsafe { CString::from_raw(state.descriptor.url as *mut c_char) });
+                drop(unsafe { CString::from_raw(state.descriptor.version as *mut c_char) });
+            }
         }
     }
 
     pub unsafe fn get(&self, factory_id: *const c_char) -> *const c_void {
+        let count = *self.init_count.lock().unwrap();
+        assert!(count != 0);
+
         if unsafe { CStr::from_ptr(factory_id) } == CLAP_PLUGIN_FACTORY_ID {
             return self as *const Self as *const c_void;
         }
