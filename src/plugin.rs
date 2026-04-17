@@ -2,7 +2,7 @@ use std::fmt::{self, Formatter};
 use std::io::{self, Read, Write};
 
 use crate::bus::{BusInfo, Layout};
-use crate::editor::{Editor, EditorHost, ParentWindow};
+use crate::editor::{Editor, EditorHost, ParentWindow, Size};
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
 use crate::process::{Config, Processor};
@@ -55,6 +55,7 @@ pub trait Plugin: Send + Sized + 'static {
     fn processor(&mut self, config: &Config) -> Self::Processor;
 
     fn has_editor(&self) -> bool;
+    fn editor_size(&self) -> Size;
     fn editor(&mut self, host: EditorHost, parent: &ParentWindow) -> Self::Editor;
 
     #[allow(unused_variables)]

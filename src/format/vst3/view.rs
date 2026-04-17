@@ -132,19 +132,19 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
 
         let main_thread_state = self.main_thread_state.borrow();
 
-        if let Some(editor) = &main_thread_state.editor {
-            let editor_size = editor.size();
+        let editor_size = if let Some(editor) = &main_thread_state.editor {
+            editor.size()
+        } else {
+            main_thread_state.plugin.editor_size()
+        };
 
-            let rect = unsafe { &mut *size };
-            rect.left = 0;
-            rect.top = 0;
-            rect.right = editor_size.width.round() as int32;
-            rect.bottom = editor_size.height.round() as int32;
+        let rect = unsafe { &mut *size };
+        rect.left = 0;
+        rect.top = 0;
+        rect.right = editor_size.width.round() as int32;
+        rect.bottom = editor_size.height.round() as int32;
 
-            return kResultOk;
-        }
-
-        kResultFalse
+        kResultOk
     }
 
     unsafe fn onSize(&self, _newSize: *mut ViewRect) -> tresult {

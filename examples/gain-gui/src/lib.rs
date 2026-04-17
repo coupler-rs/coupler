@@ -121,6 +121,13 @@ impl Plugin for GainGui {
         true
     }
 
+    fn editor_size(&self) -> Size {
+        Size {
+            width: 256.0,
+            height: 256.0,
+        }
+    }
+
     fn editor(&mut self, host: EditorHost, parent: &ParentWindow) -> Self::Editor {
         GainGuiEditor::open(host, parent, &self.params).unwrap()
     }

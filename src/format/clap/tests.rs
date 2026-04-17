@@ -78,6 +78,12 @@ impl Plugin for TestPlugin {
     fn has_editor(&self) -> bool {
         false
     }
+    fn editor_size(&self) -> Size {
+        Size {
+            width: 0.0,
+            height: 0.0,
+        }
+    }
     fn editor(&mut self, _host: EditorHost, _parent: &ParentWindow) -> Self::Editor {
         TestEditor
     }

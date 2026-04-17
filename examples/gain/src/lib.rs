@@ -112,6 +112,13 @@ impl Plugin for Gain {
         false
     }
 
+    fn editor_size(&self) -> Size {
+        Size {
+            width: 0.0,
+            height: 0.0,
+        }
+    }
+
     fn editor(&mut self, _host: EditorHost, _parent: &ParentWindow) -> Self::Editor {
         NoEditor
     }

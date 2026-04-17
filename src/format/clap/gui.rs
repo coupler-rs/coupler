@@ -133,19 +133,19 @@ impl<P: Plugin> Instance<P> {
         let instance = unsafe { &*(plugin as *const Self) };
         let main_thread_state = instance.main_thread_state.borrow();
 
-        if let Some(editor) = &main_thread_state.editor {
-            let size = editor.size();
+        let size = if let Some(editor) = &main_thread_state.editor {
+            editor.size()
+        } else {
+            main_thread_state.plugin.editor_size()
+        };
 
-            let width = unsafe { &mut *width };
-            *width = size.width.round() as u32;
+        let width = unsafe { &mut *width };
+        *width = size.width.round() as u32;
 
-            let height = unsafe { &mut *height };
-            *height = size.height.round() as u32;
+        let height = unsafe { &mut *height };
+        *height = size.height.round() as u32;
 
-            return true;
-        }
-
-        false
+        true
     }
 
     unsafe extern "C" fn gui_can_resize(_plugin: *const clap_plugin) -> bool {
