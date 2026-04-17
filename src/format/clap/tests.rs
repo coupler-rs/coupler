@@ -115,7 +115,7 @@ impl Editor for TestEditor {
 }
 
 unsafe fn str_from_ptr<'a>(ptr: *const c_char) -> Result<&'a str, std::str::Utf8Error> {
-    CStr::from_ptr(ptr).to_str()
+    unsafe { CStr::from_ptr(ptr) }.to_str()
 }
 
 #[test]
