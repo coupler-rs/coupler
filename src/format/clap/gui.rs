@@ -11,6 +11,7 @@ use super::instance::Instance;
 use crate::editor::{Editor, EditorHost, EditorHostInner, ParentWindow, RawParent};
 use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
+use crate::sync::thread_cell::ThreadCell;
 use crate::sync::param_gestures::ParamGestures;
 
 struct ClapEditorHost {
@@ -204,7 +205,7 @@ impl<P: Plugin> Instance<P> {
         }));
         let parent = unsafe { ParentWindow::from_raw(raw_parent) };
         let editor = main_thread_state.plugin.editor(host, &parent);
-        main_thread_state.editor = Some(editor);
+        main_thread_state.editor = Some(ThreadCell::new(editor));
 
         true
     }

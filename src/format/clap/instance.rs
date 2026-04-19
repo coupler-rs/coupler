@@ -19,7 +19,7 @@ use crate::plugin::Plugin;
 use crate::process::{Config, Processor};
 use crate::sync::param_gestures::{GestureStates, GestureUpdate, ParamGestures};
 use crate::sync::params::ParamValues;
-use crate::sync::sync_cell::SyncCell;
+use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
 use crate::util::{DisplayParam, copy_cstring, slice_from_raw_parts_checked};
 
 fn port_type_from_format(format: &Format) -> &'static CStr {
@@ -49,7 +49,7 @@ pub struct MainThreadState<P: Plugin> {
     pub host_params: Option<NonNull<clap_host_params>>,
     pub layout_index: usize,
     pub plugin: P,
-    pub editor: Option<P::Editor>,
+    pub editor: Option<ThreadCell<P::Editor>>,
 }
 
 pub struct ProcessState<P: Plugin> {
