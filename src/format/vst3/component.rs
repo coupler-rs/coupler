@@ -17,7 +17,7 @@ use crate::params::{ParamId, ParamInfo};
 use crate::plugin::Plugin;
 use crate::process::{Config, Processor};
 use crate::sync::params::ParamValues;
-use crate::sync::sync_cell::SyncCell;
+use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
 use crate::util::{DisplayParam, slice_from_raw_parts_checked};
 
 fn format_to_speaker_arrangement(format: &Format) -> SpeakerArrangement {
@@ -39,7 +39,7 @@ pub struct MainThreadState<P: Plugin> {
     pub config: Config,
     pub plugin: P,
     pub handler: Option<ComPtr<IComponentHandler>>,
-    pub editor: Option<P::Editor>,
+    pub editor: Option<ThreadCell<P::Editor>>,
     pub frame: Option<ComPtr<IPlugFrame>>,
 }
 

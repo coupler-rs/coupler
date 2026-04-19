@@ -9,7 +9,7 @@ use super::component::MainThreadState;
 use crate::editor::{Editor, EditorHost, EditorHostInner, ParentWindow, RawParent};
 use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
-use crate::sync::sync_cell::SyncCell;
+use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
 
 pub struct Vst3EditorHost {
     pub handler: Option<ComPtr<IComponentHandler>>,
@@ -100,7 +100,7 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
         }));
         let parent = unsafe { ParentWindow::from_raw(raw_parent) };
         let editor = main_thread_state.plugin.editor(host, &parent);
-        main_thread_state.editor = Some(editor);
+        main_thread_state.editor = Some(ThreadCell::new(editor));
 
         kResultOk
     }
