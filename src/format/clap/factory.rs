@@ -2,7 +2,7 @@ use std::cell::UnsafeCell;
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::marker::PhantomData;
 use std::ptr;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 use clap_sys::{host::*, plugin::*, plugin_factory::*, version::*};
 
@@ -19,7 +19,7 @@ struct FactoryState {
 pub struct Factory<P> {
     #[allow(unused)]
     factory: clap_plugin_factory,
-    init_count: Mutex<usize>,
+    init_count: AtomicI32,
     state: UnsafeCell<Option<FactoryState>>,
     _marker: PhantomData<P>,
 }
@@ -36,19 +36,17 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
                 get_plugin_descriptor: Some(Self::get_plugin_descriptor),
                 create_plugin: Some(Self::create_plugin),
             },
-            init_count: Mutex::new(0),
+            init_count: AtomicI32::new(0),
             state: UnsafeCell::new(None),
             _marker: PhantomData,
         }
     }
 
     pub unsafe fn init(&self) -> bool {
-        let mut init_count = self.init_count.lock().unwrap();
+        let count = self.init_count.fetch_add(1, Ordering::SeqCst) + 1;
+        debug_assert!(count > 0, "init counter overflowed into negative");
 
-        let count = *init_count;
-        *init_count = count.checked_add(1).unwrap();
-
-        if count == 0 {
+        if count == 1 {
             let info = P::info();
             let clap_info = P::clap_info();
 
@@ -83,12 +81,10 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
     }
 
     pub unsafe fn deinit(&self) {
-        let mut init_count = self.init_count.lock().unwrap();
+        let count = self.init_count.fetch_sub(1, Ordering::SeqCst) - 1;
+        debug_assert!(count >= 0, "deinit called more times than init");
 
-        let count = *init_count;
-        *init_count = count.checked_sub(1).unwrap();
-
-        if count == 1 {
+        if count == 0 {
             let state = unsafe { &mut *self.state.get() };
 
             if let Some(state) = state.take() {
@@ -102,8 +98,12 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
     }
 
     pub unsafe fn get(&self, factory_id: *const c_char) -> *const c_void {
-        let count = *self.init_count.lock().unwrap();
-        assert!(count != 0);
+        let count = self.init_count.load(Ordering::SeqCst);
+        debug_assert!(count > 0, "get factory called before init");
+
+        if count <= 0 {
+            return ptr::null();
+        }
 
         if unsafe { CStr::from_ptr(factory_id) } == CLAP_PLUGIN_FACTORY_ID {
             return self as *const Self as *const c_void;
