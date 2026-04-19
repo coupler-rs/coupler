@@ -1,5 +1,5 @@
-use std::cell::RefCell;
 use std::ffi::{CStr, c_void};
+use std::rc::Rc;
 use std::sync::Arc;
 
 use vst3::Steinberg::Vst::{IComponentHandler, IComponentHandlerTrait};
@@ -12,21 +12,12 @@ use crate::plugin::Plugin;
 use crate::sync::sync_cell::SyncCell;
 
 pub struct Vst3EditorHost {
-    pub handler: RefCell<Option<ComPtr<IComponentHandler>>>,
-}
-
-impl Vst3EditorHost {
-    pub fn new() -> Vst3EditorHost {
-        Vst3EditorHost {
-            handler: RefCell::new(None),
-        }
-    }
+    pub handler: Option<ComPtr<IComponentHandler>>,
 }
 
 impl EditorHostInner for Vst3EditorHost {
     fn begin_gesture(&self, id: ParamId) {
-        let handler = self.handler.borrow();
-        if let Some(handler) = &*handler {
+        if let Some(handler) = &self.handler {
             unsafe {
                 handler.beginEdit(id);
             }
@@ -34,8 +25,7 @@ impl EditorHostInner for Vst3EditorHost {
     }
 
     fn end_gesture(&self, id: ParamId) {
-        let handler = self.handler.borrow();
-        if let Some(handler) = &*handler {
+        if let Some(handler) = &self.handler {
             unsafe {
                 handler.endEdit(id);
             }
@@ -43,8 +33,7 @@ impl EditorHostInner for Vst3EditorHost {
     }
 
     fn set_param(&self, id: ParamId, value: ParamValue) {
-        let handler = self.handler.borrow();
-        if let Some(handler) = &*handler {
+        if let Some(handler) = &self.handler {
             unsafe {
                 handler.performEdit(id, value);
             }
@@ -106,7 +95,9 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
 
         let mut main_thread_state = self.main_thread_state.borrow();
 
-        let host = EditorHost::from_inner(main_thread_state.editor_host.clone());
+        let host = EditorHost::from_inner(Rc::new(Vst3EditorHost {
+            handler: main_thread_state.handler.clone(),
+        }));
         let parent = unsafe { ParentWindow::from_raw(raw_parent) };
         let editor = main_thread_state.plugin.editor(host, &parent);
         main_thread_state.editor = Some(editor);

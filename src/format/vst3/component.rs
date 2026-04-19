@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, c_void};
 use std::ptr;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use vst3::{Class, ComPtr, ComRef, ComWrapper, Steinberg::Vst::*, Steinberg::*};
@@ -9,7 +8,7 @@ use vst3::{Class, ComPtr, ComRef, ComWrapper, Steinberg::Vst::*, Steinberg::*};
 use super::buffers::ScratchBuffers;
 use super::host::Vst3Host;
 use super::util::{copy_wstring, utf16_from_ptr};
-use super::view::{PlugView, Vst3EditorHost};
+use super::view::PlugView;
 use crate::bus::{BusDir, BusInfo, Format, Layout};
 use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
@@ -39,7 +38,7 @@ fn speaker_arrangement_to_format(speaker_arrangement: SpeakerArrangement) -> Opt
 pub struct MainThreadState<P: Plugin> {
     pub config: Config,
     pub plugin: P,
-    pub editor_host: Rc<Vst3EditorHost>,
+    pub handler: Option<ComPtr<IComponentHandler>>,
     pub editor: Option<P::Editor>,
     pub frame: Option<ComPtr<IPlugFrame>>,
 }
@@ -125,7 +124,7 @@ impl<P: Plugin> Component<P> {
             main_thread_state: Arc::new(SyncCell::new(MainThreadState {
                 config: config.clone(),
                 plugin,
-                editor_host: Rc::new(Vst3EditorHost::new()),
+                handler: None,
                 editor: None,
                 frame: None,
             })),
@@ -718,13 +717,12 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     }
 
     unsafe fn setComponentHandler(&self, handler: *mut IComponentHandler) -> tresult {
-        let main_thread_state = self.main_thread_state.borrow();
+        let mut main_thread_state = self.main_thread_state.borrow();
 
-        let mut current_handler = main_thread_state.editor_host.handler.borrow_mut();
         if let Some(handler) = unsafe { ComRef::from_raw(handler) } {
-            *current_handler = Some(handler.to_com_ptr());
+            main_thread_state.handler = Some(handler.to_com_ptr());
         } else {
-            *current_handler = None;
+            main_thread_state.handler = None;
         }
 
         kResultOk
