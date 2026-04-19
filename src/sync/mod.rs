@@ -3,3 +3,4 @@ pub mod float;
 pub mod param_gestures;
 pub mod params;
 pub mod sync_cell;
+pub mod thread_cell;
