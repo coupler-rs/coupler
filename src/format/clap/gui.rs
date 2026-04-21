@@ -11,8 +11,8 @@ use super::instance::Instance;
 use crate::editor::{Editor, EditorHost, EditorHostInner, ParentWindow, RawParent};
 use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
-use crate::sync::thread_cell::ThreadCell;
 use crate::sync::param_gestures::ParamGestures;
+use crate::sync::thread_cell::ThreadCell;
 
 struct ClapEditorHost {
     host: *const clap_host,
