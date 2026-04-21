@@ -193,7 +193,7 @@ struct Gesture {
 
 struct EditorState {
     host: EditorHost,
-    params: GainGuiParams,
+    params: Rc<RefCell<GainGuiParams>>,
     window: Option<Window>,
     renderer: Renderer,
     framebuffer: Vec<u32>,
@@ -202,10 +202,10 @@ struct EditorState {
 }
 
 impl EditorState {
-    fn new(host: EditorHost, params: GainGuiParams) -> EditorState {
+    fn new(host: EditorHost, params: &Rc<RefCell<GainGuiParams>>) -> EditorState {
         EditorState {
             host,
-            params,
+            params: params.clone(),
             window: None,
             renderer: Renderer::new(),
             framebuffer: Vec::new(),
@@ -247,7 +247,7 @@ impl EditorState {
 
                 let transform = Affine::scale(scale as f32);
 
-                let value = self.params.gain;
+                let value = self.params.borrow().gain;
 
                 let center = Point::new(128.0, 128.0);
                 let radius = 32.0;
@@ -281,7 +281,7 @@ impl EditorState {
                     let delta = -0.005 * (pos.y - gesture.start_mouse_pos.y) as f32;
                     let new_value = (gesture.start_value + delta).clamp(0.0, 1.0);
                     self.host.set_param(0, new_value as f64);
-                    self.params.gain = new_value;
+                    self.params.borrow_mut().gain = new_value;
                 } else {
                     self.update_cursor(window);
                 }
@@ -292,9 +292,9 @@ impl EditorState {
                     if pos.x >= 96.0 && pos.x < 160.0 && pos.y >= 96.0 && pos.y < 160.0 {
                         window.set_cursor(Cursor::SizeNs);
                         self.host.begin_gesture(0);
-                        let value = self.params.gain;
+                        let value = self.params.borrow().gain;
                         self.host.set_param(0, value as f64);
-                        self.params.gain = value;
+                        self.params.borrow_mut().gain = value;
                         self.gesture = Some(Gesture {
                             start_mouse_pos: pos,
                             start_value: value,
@@ -321,6 +321,7 @@ impl EditorState {
 }
 
 pub struct GainGuiEditor {
+    params: Rc<RefCell<GainGuiParams>>,
     #[allow(unused)]
     event_loop: EventLoop,
     state: Rc<RefCell<EditorState>>,
@@ -332,6 +333,8 @@ impl GainGuiEditor {
         parent: &ParentWindow,
         params: &GainGuiParams,
     ) -> portlight::Result<GainGuiEditor> {
+        let params = Rc::new(RefCell::new(params.clone()));
+
         let event_loop = EventLoopOptions::new().mode(EventLoopMode::Guest).build()?;
 
         let mut options = WindowOptions::new();
@@ -344,7 +347,7 @@ impl GainGuiEditor {
         };
         unsafe { options.raw_parent(raw_parent) };
 
-        let state = Rc::new(RefCell::new(EditorState::new(host, params.clone())));
+        let state = Rc::new(RefCell::new(EditorState::new(host, &params)));
         let window = options.open(&event_loop, {
             let state = Rc::downgrade(&state);
             move |event| state.upgrade().unwrap().borrow_mut().handle_event(event)
@@ -354,7 +357,11 @@ impl GainGuiEditor {
 
         state.borrow_mut().window = Some(window);
 
-        Ok(GainGuiEditor { event_loop, state })
+        Ok(GainGuiEditor {
+            params,
+            event_loop,
+            state,
+        })
     }
 }
 
@@ -369,6 +376,6 @@ impl Editor for GainGuiEditor {
     }
 
     fn param_changed(&mut self, id: ParamId, value: ParamValue) {
-        self.state.borrow_mut().params.set_param(id, value);
+        self.params.borrow_mut().set_param(id, value);
     }
 }
