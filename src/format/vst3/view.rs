@@ -10,6 +10,7 @@ use crate::editor::{Editor, EditorHost, EditorHostInner, ParentWindow, RawParent
 use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
 use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
+use crate::util::RequireSendSync;
 
 pub struct Vst3EditorHost {
     pub handler: Option<ComPtr<IComponentHandler>>,
@@ -44,6 +45,8 @@ impl EditorHostInner for Vst3EditorHost {
 pub struct PlugView<P: Plugin> {
     main_thread_state: Arc<SyncCell<MainThreadState<P>>>,
 }
+
+impl<P: Plugin> RequireSendSync for PlugView<P> {}
 
 impl<P: Plugin> PlugView<P> {
     pub fn new(main_thread_state: &Arc<SyncCell<MainThreadState<P>>>) -> PlugView<P> {

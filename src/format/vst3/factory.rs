@@ -7,7 +7,7 @@ use super::component::Component;
 use super::util::copy_wstring;
 use super::{Uuid, Vst3Info, Vst3Plugin};
 use crate::plugin::{Plugin, PluginInfo};
-use crate::util::copy_cstring;
+use crate::util::{RequireSendSync, copy_cstring};
 
 fn uuid_to_tuid(uuid: &Uuid) -> TUID {
     uid(uuid.0, uuid.1, uuid.2, uuid.3)
@@ -16,8 +16,10 @@ fn uuid_to_tuid(uuid: &Uuid) -> TUID {
 pub struct Factory<P> {
     info: PluginInfo,
     vst3_info: Vst3Info,
-    _marker: PhantomData<P>,
+    _marker: PhantomData<fn() -> P>,
 }
+
+impl<P: Plugin> RequireSendSync for Factory<P> {}
 
 impl<P: Plugin + Vst3Plugin> Factory<P> {
     pub fn new() -> Factory<P> {

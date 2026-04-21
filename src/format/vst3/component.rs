@@ -18,7 +18,7 @@ use crate::plugin::Plugin;
 use crate::process::{Config, Processor};
 use crate::sync::params::ParamValues;
 use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
-use crate::util::{DisplayParam, slice_from_raw_parts_checked};
+use crate::util::{DisplayParam, RequireSendSync, slice_from_raw_parts_checked};
 
 fn format_to_speaker_arrangement(format: &Format) -> SpeakerArrangement {
     match format {
@@ -67,6 +67,8 @@ pub struct Component<P: Plugin> {
     // be formed from the audio thread.
     process_state: SyncCell<ProcessState<P>>,
 }
+
+impl<P: Plugin> RequireSendSync for Component<P> {}
 
 impl<P: Plugin> Component<P> {
     pub fn new() -> Component<P> {

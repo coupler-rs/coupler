@@ -53,3 +53,6 @@ where
         self.plugin.display_param(self.id, self.value, f)
     }
 }
+
+#[allow(unused)]
+pub trait RequireSendSync: Send + Sync {}
