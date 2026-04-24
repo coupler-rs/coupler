@@ -52,10 +52,17 @@ pub struct MainThreadState<P: Plugin> {
     pub editor: Option<ThreadCell<P::Editor>>,
 }
 
+struct RawBuffers {
+    data: Vec<BufferData>,
+    ptrs: Vec<*mut f32>,
+}
+
+unsafe impl Send for RawBuffers {}
+unsafe impl Sync for RawBuffers {}
+
 pub struct ProcessState<P: Plugin> {
     gesture_states: GestureStates,
-    buffer_data: Vec<BufferData>,
-    buffer_ptrs: Vec<*mut f32>,
+    buffers: RawBuffers,
     events: Vec<Event>,
     processor: Option<P::Processor>,
 }
@@ -147,8 +154,10 @@ impl<P: Plugin> Instance<P> {
             }),
             process_state: SyncCell::new(ProcessState {
                 gesture_states: GestureStates::with_count(param_count),
-                buffer_data: Vec::new(),
-                buffer_ptrs: Vec::new(),
+                buffers: RawBuffers {
+                    data: Vec::new(),
+                    ptrs: Vec::new(),
+                },
                 events: Vec::with_capacity(4096),
                 processor: None,
             }),
@@ -348,7 +357,7 @@ impl<P: Plugin> Instance<P> {
 
         let layout = &instance.layouts[main_thread_state.layout_index];
 
-        process_state.buffer_data.clear();
+        process_state.buffers.data.clear();
         let mut total_channels = 0;
         for (info, format) in zip(&instance.buses, &layout.formats) {
             let buffer_type = match info.dir {
@@ -357,7 +366,7 @@ impl<P: Plugin> Instance<P> {
             };
             let channel_count = format.channel_count();
 
-            process_state.buffer_data.push(BufferData {
+            process_state.buffers.data.push(BufferData {
                 buffer_type,
                 start: total_channels,
                 end: total_channels + channel_count,
@@ -366,7 +375,7 @@ impl<P: Plugin> Instance<P> {
             total_channels += channel_count;
         }
 
-        process_state.buffer_ptrs.resize(total_channels, NonNull::dangling().as_ptr());
+        process_state.buffers.ptrs.resize(total_channels, NonNull::dangling().as_ptr());
 
         let config = Config {
             layout: layout.clone(),
@@ -447,7 +456,7 @@ impl<P: Plugin> Instance<P> {
         let outputs = unsafe { slice_from_raw_parts_checked(process.audio_outputs, output_count) };
 
         for (&bus_index, output) in zip(&instance.output_bus_map, outputs) {
-            let data = &process_state.buffer_data[bus_index];
+            let data = &process_state.buffers.data[bus_index];
 
             let channel_count = output.channel_count as usize;
             if channel_count != data.end - data.start {
@@ -457,11 +466,11 @@ impl<P: Plugin> Instance<P> {
             let channels = unsafe {
                 slice_from_raw_parts_checked(output.data32 as *const *mut f32, channel_count)
             };
-            process_state.buffer_ptrs[data.start..data.end].copy_from_slice(channels);
+            process_state.buffers.ptrs[data.start..data.end].copy_from_slice(channels);
         }
 
         for (&bus_index, input) in zip(&instance.input_bus_map, inputs) {
-            let data = &process_state.buffer_data[bus_index];
+            let data = &process_state.buffers.data[bus_index];
             let bus_info = &instance.buses[bus_index];
 
             let channel_count = input.channel_count as usize;
@@ -472,7 +481,7 @@ impl<P: Plugin> Instance<P> {
             let channels = unsafe {
                 slice_from_raw_parts_checked(input.data32 as *const *mut f32, channel_count)
             };
-            let ptrs = &mut process_state.buffer_ptrs[data.start..data.end];
+            let ptrs = &mut process_state.buffers.ptrs[data.start..data.end];
 
             match bus_info.dir {
                 BusDir::In => {
@@ -507,8 +516,8 @@ impl<P: Plugin> Instance<P> {
 
         let buffers = unsafe {
             Buffers::from_raw_parts(
-                &process_state.buffer_data,
-                &process_state.buffer_ptrs,
+                &process_state.buffers.data,
+                &process_state.buffers.ptrs,
                 0,
                 len,
             )
