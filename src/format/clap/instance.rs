@@ -20,7 +20,7 @@ use crate::process::{Config, Processor};
 use crate::sync::param_gestures::{GestureStates, GestureUpdate, ParamGestures};
 use crate::sync::params::ParamValues;
 use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
-use crate::util::{DisplayParam, copy_cstring, slice_from_raw_parts_checked};
+use crate::util::{DisplayParam, RequireSendSync, copy_cstring, slice_from_raw_parts_checked};
 
 fn port_type_from_format(format: &Format) -> &'static CStr {
     match format {
@@ -102,7 +102,7 @@ pub struct Instance<P: Plugin> {
     pub process_state: SyncCell<ProcessState<P>>,
 }
 
-unsafe impl<P: Plugin> Sync for Instance<P> {}
+impl<P: Plugin> RequireSendSync for Instance<P> {}
 
 impl<P: Plugin> Instance<P> {
     pub fn new(desc: *const clap_plugin_descriptor, host: *const clap_host) -> Self {
