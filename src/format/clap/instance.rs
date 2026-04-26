@@ -45,8 +45,22 @@ fn map_param_out(param: &ParamInfo, value: ParamValue) -> f64 {
     }
 }
 
-pub struct MainThreadState<P: Plugin> {
+#[derive(Copy, Clone)]
+pub struct HostPtr(pub *const clap_host);
+
+unsafe impl Send for HostPtr {}
+unsafe impl Sync for HostPtr {}
+
+#[derive(Copy, Clone)]
+pub struct Extensions {
     pub host_params: Option<NonNull<clap_host_params>>,
+}
+
+unsafe impl Send for Extensions {}
+unsafe impl Sync for Extensions {}
+
+pub struct MainThreadState<P: Plugin> {
+    pub extensions: Extensions,
     pub layout_index: usize,
     pub plugin: P,
     pub editor: Option<ThreadCell<P::Editor>>,
@@ -71,7 +85,7 @@ pub struct ProcessState<P: Plugin> {
 pub struct Instance<P: Plugin> {
     #[allow(unused)]
     pub clap_plugin: clap_plugin,
-    pub host: *const clap_host,
+    pub host: HostPtr,
     pub buses: Vec<BusInfo>,
     pub layouts: Vec<Layout>,
     pub input_bus_map: Vec<usize>,
@@ -135,7 +149,7 @@ impl<P: Plugin> Instance<P> {
                 get_extension: Some(Self::get_extension),
                 on_main_thread: Some(Self::on_main_thread),
             },
-            host,
+            host: HostPtr(host),
             buses,
             layouts,
             input_bus_map,
@@ -147,7 +161,7 @@ impl<P: Plugin> Instance<P> {
             param_gestures: Arc::new(ParamGestures::with_count(param_count)),
             has_editor,
             main_thread_state: SyncCell::new(MainThreadState {
-                host_params: None,
+                extensions: Extensions { host_params: None },
                 layout_index: 0,
                 plugin,
                 editor: None,
@@ -222,7 +236,7 @@ impl<P: Plugin> Instance<P> {
         }
 
         if params_changed {
-            unsafe { (*self.host).request_callback.unwrap()(self.host) };
+            unsafe { (*self.host.0).request_callback.unwrap()(self.host.0) };
         }
     }
 
@@ -334,9 +348,10 @@ impl<P: Plugin> Instance<P> {
         let mut main_thread_state = instance.main_thread_state.borrow();
 
         let host_params = unsafe {
-            (*instance.host).get_extension.unwrap()(instance.host, CLAP_EXT_PARAMS.as_ptr())
+            (*instance.host.0).get_extension.unwrap()(instance.host.0, CLAP_EXT_PARAMS.as_ptr())
         };
-        main_thread_state.host_params = NonNull::new(host_params as *mut clap_host_params);
+        main_thread_state.extensions.host_params =
+            NonNull::new(host_params as *mut clap_host_params);
 
         true
     }

@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 use std::ffi::{CStr, c_char};
-use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use clap_sys::ext::{gui::*, params::*};
-use clap_sys::{host::*, plugin::*};
+use clap_sys::ext::gui::*;
+use clap_sys::plugin::*;
 
-use super::instance::Instance;
+use super::instance::{Extensions, HostPtr, Instance};
 use crate::editor::{Editor, EditorHost, EditorHostInner, ParentWindow, RawParent};
 use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
@@ -15,8 +14,8 @@ use crate::sync::param_gestures::ParamGestures;
 use crate::sync::thread_cell::ThreadCell;
 
 struct ClapEditorHost {
-    host: *const clap_host,
-    host_params: Option<NonNull<clap_host_params>>,
+    host: HostPtr,
+    extensions: Extensions,
     param_map: Arc<HashMap<ParamId, usize>>,
     param_gestures: Arc<ParamGestures>,
 }
@@ -25,24 +24,24 @@ impl EditorHostInner for ClapEditorHost {
     fn begin_gesture(&self, id: ParamId) {
         self.param_gestures.begin_gesture(self.param_map[&id]);
 
-        if let Some(host_params) = self.host_params {
-            unsafe { host_params.as_ref().request_flush.unwrap()(self.host) };
+        if let Some(host_params) = self.extensions.host_params {
+            unsafe { host_params.as_ref().request_flush.unwrap()(self.host.0) };
         }
     }
 
     fn end_gesture(&self, id: ParamId) {
         self.param_gestures.end_gesture(self.param_map[&id]);
 
-        if let Some(host_params) = self.host_params {
-            unsafe { host_params.as_ref().request_flush.unwrap()(self.host) };
+        if let Some(host_params) = self.extensions.host_params {
+            unsafe { host_params.as_ref().request_flush.unwrap()(self.host.0) };
         }
     }
 
     fn set_param(&self, id: ParamId, value: ParamValue) {
         self.param_gestures.set_value(self.param_map[&id], value);
 
-        if let Some(host_params) = self.host_params {
-            unsafe { host_params.as_ref().request_flush.unwrap()(self.host) };
+        if let Some(host_params) = self.extensions.host_params {
+            unsafe { host_params.as_ref().request_flush.unwrap()(self.host.0) };
         }
     }
 }
@@ -199,7 +198,7 @@ impl<P: Plugin> Instance<P> {
 
         let host = EditorHost::from_inner(Rc::new(ClapEditorHost {
             host: instance.host,
-            host_params: main_thread_state.host_params,
+            extensions: main_thread_state.extensions,
             param_map: Arc::clone(&instance.param_map),
             param_gestures: Arc::clone(&instance.param_gestures),
         }));
