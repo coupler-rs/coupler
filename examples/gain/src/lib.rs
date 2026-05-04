@@ -144,28 +144,20 @@ pub struct GainProcessor {
     params: GainParams,
 }
 
-impl GainProcessor {
-    fn handle_event(&mut self, event: &Event) {
-        if let Data::ParamChange { id, value } = event.data {
-            self.params.set_param(id, value);
-        }
-    }
-}
-
 impl Processor for GainProcessor {
     fn reset(&mut self) {}
 
-    fn flush(&mut self, events: Events) {
-        for event in events {
-            self.handle_event(event);
-        }
+    fn set_param(&mut self, id: ParamId, value: ParamValue) {
+        self.params.set_param(id, value);
     }
 
     fn process(&mut self, buffers: Buffers, events: Events) {
         let mut buffers: (BufferMut,) = buffers.try_into().unwrap();
         for (mut buffer, events) in buffers.0.split_at_events(events) {
             for event in events {
-                self.handle_event(event);
+                if let Data::ParamChange { id, value } = event.data {
+                    self.set_param(id, value);
+                }
             }
 
             for sample in buffer.samples() {

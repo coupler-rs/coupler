@@ -1,6 +1,7 @@
 use crate::buffers::Buffers;
 use crate::bus::Layout;
 use crate::events::Events;
+use crate::params::{ParamId, ParamValue};
 
 #[derive(Clone)]
 pub struct Config {
@@ -11,6 +12,6 @@ pub struct Config {
 
 pub trait Processor: Send + Sized + 'static {
     fn reset(&mut self);
-    fn flush(&mut self, events: Events);
+    fn set_param(&mut self, id: ParamId, value: ParamValue);
     fn process(&mut self, buffers: Buffers, events: Events);
 }

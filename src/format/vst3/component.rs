@@ -145,6 +145,13 @@ impl<P: Plugin> Component<P> {
             plugin.set_param(id, value);
         }
     }
+
+    fn sync_processor(&self, processor: &mut P::Processor) {
+        for (index, value) in self.processor_params.poll() {
+            let id = self.params[index].id;
+            processor.set_param(id, value);
+        }
+    }
 }
 
 impl<P: Plugin> Class for Component<P> {
@@ -489,22 +496,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         };
 
         if state == 0 {
-            // Flush plugin -> processor parameter changes
-            process_state.events.clear();
-            for (index, value) in self.processor_params.poll() {
-                process_state.events.push(Event {
-                    time: 0,
-                    data: Data::ParamChange {
-                        id: self.params[index].id,
-                        value,
-                    },
-                });
-            }
-
-            if !process_state.events.is_empty() {
-                processor.flush(Events::new(&process_state.events));
-            }
-
+            self.sync_processor(processor);
             processor.reset();
         }
 
@@ -533,56 +525,76 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
             return kInvalidArgument;
         };
 
-        process_state.events.clear();
+        self.sync_processor(processor);
 
-        for (index, value) in self.processor_params.poll() {
-            process_state.events.push(Event {
-                time: 0,
-                data: Data::ParamChange {
-                    id: self.params[index].id,
-                    value,
-                },
-            });
-        }
+        if let Some(buffers) = buffers {
+            process_state.events.clear();
 
-        if let Some(param_changes) = unsafe { ComRef::from_raw(data.inputParameterChanges) } {
-            for index in 0..unsafe { param_changes.getParameterCount() } {
-                let param_data = unsafe { param_changes.getParameterData(index) };
-                let Some(param_data) = (unsafe { ComRef::from_raw(param_data) }) else {
-                    continue;
-                };
-
-                let id = unsafe { param_data.getParameterId() };
-                let point_count = unsafe { param_data.getPointCount() };
-
-                let Some(&param_index) = self.param_map.get(&id) else {
-                    continue;
-                };
-
-                for index in 0..point_count {
-                    let mut offset = 0;
-                    let mut value = 0.0;
-                    let result = unsafe { param_data.getPoint(index, &mut offset, &mut value) };
-
-                    if result != kResultOk {
+            if let Some(param_changes) = unsafe { ComRef::from_raw(data.inputParameterChanges) } {
+                for index in 0..unsafe { param_changes.getParameterCount() } {
+                    let param_data = unsafe { param_changes.getParameterData(index) };
+                    let Some(param_data) = (unsafe { ComRef::from_raw(param_data) }) else {
                         continue;
+                    };
+
+                    let id = unsafe { param_data.getParameterId() };
+                    let point_count = unsafe { param_data.getPointCount() };
+
+                    let Some(&param_index) = self.param_map.get(&id) else {
+                        continue;
+                    };
+
+                    for index in 0..point_count {
+                        let mut offset = 0;
+                        let mut value = 0.0;
+                        let result = unsafe { param_data.getPoint(index, &mut offset, &mut value) };
+
+                        if result != kResultOk {
+                            continue;
+                        }
+
+                        process_state.events.push(Event {
+                            time: offset as i64,
+                            data: Data::ParamChange { id, value },
+                        });
+
+                        self.plugin_params.set(param_index, value);
                     }
-
-                    process_state.events.push(Event {
-                        time: offset as i64,
-                        data: Data::ParamChange { id, value },
-                    });
-
-                    self.plugin_params.set(param_index, value);
                 }
             }
-        }
 
-        let events = Events::new(&process_state.events);
-        if let Some(buffers) = buffers {
+            let events = Events::new(&process_state.events);
             processor.process(buffers, events);
         } else {
-            processor.flush(events);
+            if let Some(param_changes) = unsafe { ComRef::from_raw(data.inputParameterChanges) } {
+                for index in 0..unsafe { param_changes.getParameterCount() } {
+                    let param_data = unsafe { param_changes.getParameterData(index) };
+                    let Some(param_data) = (unsafe { ComRef::from_raw(param_data) }) else {
+                        continue;
+                    };
+
+                    let id = unsafe { param_data.getParameterId() };
+                    let point_count = unsafe { param_data.getPointCount() };
+
+                    let Some(&param_index) = self.param_map.get(&id) else {
+                        continue;
+                    };
+
+                    for index in 0..point_count {
+                        let mut offset = 0;
+                        let mut value = 0.0;
+                        let result = unsafe { param_data.getPoint(index, &mut offset, &mut value) };
+
+                        if result != kResultOk {
+                            continue;
+                        }
+
+                        processor.set_param(id, value);
+
+                        self.plugin_params.set(param_index, value);
+                    }
+                }
+            }
         }
 
         kResultOk

@@ -189,75 +189,24 @@ impl<P: Plugin> Instance<P> {
         }
     }
 
-    fn sync_processor(&self, events: &mut Vec<Event>) {
+    fn sync_processor(&self, processor: &mut P::Processor) {
         for (index, value) in self.processor_params.poll() {
-            events.push(Event {
-                time: 0,
-                data: Data::ParamChange {
-                    id: self.params[index].id,
-                    value,
-                },
-            });
-        }
-    }
-
-    unsafe fn process_param_events(
-        &self,
-        in_events: *const clap_input_events,
-        events: &mut Vec<Event>,
-    ) {
-        let mut params_changed = false;
-
-        let size = unsafe { (*in_events).size.unwrap()(in_events) };
-        for i in 0..size {
-            let event = unsafe { (*in_events).get.unwrap()(in_events, i) };
-
-            if unsafe { (*event).space_id } == CLAP_CORE_EVENT_SPACE_ID
-                && unsafe { (*event).type_ } == CLAP_EVENT_PARAM_VALUE
-            {
-                let event = unsafe { &*(event as *const clap_event_param_value) };
-
-                if let Some(&index) = self.param_map.get(&event.param_id) {
-                    let value = map_param_in(&self.params[index], event.value);
-
-                    events.push(Event {
-                        time: event.header.time as i64,
-                        data: Data::ParamChange {
-                            id: event.param_id,
-                            value,
-                        },
-                    });
-
-                    self.plugin_params.set(index, value);
-
-                    params_changed = true;
-                }
-            }
-        }
-
-        if params_changed {
-            unsafe { (*self.host.0).request_callback.unwrap()(self.host.0) };
+            let id = self.params[index].id;
+            processor.set_param(id, value);
         }
     }
 
     unsafe fn process_gestures(
         &self,
         gesture_states: &mut GestureStates,
-        events: &mut Vec<Event>,
+        processor: &mut P::Processor,
         out_events: *const clap_output_events,
         time: u32,
     ) {
         for update in self.param_gestures.poll(gesture_states) {
-            let param = &self.params[update.index];
-
             if let Some(value) = update.set_value {
-                events.push(Event {
-                    time: time as i64,
-                    data: Data::ParamChange {
-                        id: param.id,
-                        value,
-                    },
-                });
+                let id = self.params[update.index].id;
+                processor.set_param(id, value);
 
                 self.plugin_params.set(update.index, value);
             }
@@ -431,14 +380,7 @@ impl<P: Plugin> Instance<P> {
         let process_state = &mut *process_state_guard;
 
         if let Some(processor) = &mut process_state.processor {
-            // Flush plugin -> processor parameter changes
-            process_state.events.clear();
-            instance.sync_processor(&mut process_state.events);
-
-            if !process_state.events.is_empty() {
-                processor.flush(Events::new(&process_state.events));
-            }
-
+            instance.sync_processor(processor);
             processor.reset();
         }
     }
@@ -515,19 +457,41 @@ impl<P: Plugin> Instance<P> {
             }
         }
 
-        process_state.events.clear();
-        instance.sync_processor(&mut process_state.events);
-        unsafe { instance.process_param_events(process.in_events, &mut process_state.events) };
+        instance.sync_processor(processor);
 
-        let last_sample = process.frames_count.saturating_sub(1);
-        unsafe {
-            instance.process_gestures(
-                &mut process_state.gesture_states,
-                &mut process_state.events,
-                process.out_events,
-                last_sample,
-            )
-        };
+        process_state.events.clear();
+        let mut params_changed = false;
+
+        let size = unsafe { (*process.in_events).size.unwrap()(process.in_events) };
+        for i in 0..size {
+            let event = unsafe { (*process.in_events).get.unwrap()(process.in_events, i) };
+
+            if unsafe { (*event).space_id } == CLAP_CORE_EVENT_SPACE_ID
+                && unsafe { (*event).type_ } == CLAP_EVENT_PARAM_VALUE
+            {
+                let event = unsafe { &*(event as *const clap_event_param_value) };
+
+                if let Some(&index) = instance.param_map.get(&event.param_id) {
+                    let value = map_param_in(&instance.params[index], event.value);
+
+                    process_state.events.push(Event {
+                        time: event.header.time as i64,
+                        data: Data::ParamChange {
+                            id: event.param_id,
+                            value,
+                        },
+                    });
+
+                    instance.plugin_params.set(index, value);
+
+                    params_changed = true;
+                }
+            }
+        }
+
+        if params_changed {
+            unsafe { (*instance.host.0).request_callback.unwrap()(instance.host.0) };
+        }
 
         let buffers = unsafe {
             Buffers::from_raw_parts(
@@ -538,6 +502,16 @@ impl<P: Plugin> Instance<P> {
             )
         };
         processor.process(buffers, Events::new(&process_state.events));
+
+        let last_sample = process.frames_count.saturating_sub(1);
+        unsafe {
+            instance.process_gestures(
+                &mut process_state.gesture_states,
+                processor,
+                process.out_events,
+                last_sample,
+            )
+        };
 
         CLAP_PROCESS_CONTINUE
     }
@@ -860,19 +834,38 @@ impl<P: Plugin> Instance<P> {
 
         // If we are in the active state, flush will be called on the audio thread.
         if let Some(processor) = &mut process_state.processor {
-            process_state.events.clear();
-            instance.sync_processor(&mut process_state.events);
-            unsafe { instance.process_param_events(in_, &mut process_state.events) };
-            unsafe {
-                instance.process_gestures(
-                    &mut process_state.gesture_states,
-                    &mut process_state.events,
-                    out,
-                    0,
-                )
-            };
+            instance.sync_processor(processor);
 
-            processor.flush(Events::new(&process_state.events));
+            let mut params_changed = false;
+
+            let size = unsafe { (*in_).size.unwrap()(in_) };
+            for i in 0..size {
+                let event = unsafe { (*in_).get.unwrap()(in_, i) };
+
+                if unsafe { (*event).space_id } == CLAP_CORE_EVENT_SPACE_ID
+                    && unsafe { (*event).type_ } == CLAP_EVENT_PARAM_VALUE
+                {
+                    let event = unsafe { &*(event as *const clap_event_param_value) };
+
+                    if let Some(&index) = instance.param_map.get(&event.param_id) {
+                        let value = map_param_in(&instance.params[index], event.value);
+
+                        processor.set_param(event.param_id, value);
+
+                        instance.plugin_params.set(index, value);
+
+                        params_changed = true;
+                    }
+                }
+            }
+
+            if params_changed {
+                unsafe { (*instance.host.0).request_callback.unwrap()(instance.host.0) };
+            }
+
+            unsafe {
+                instance.process_gestures(&mut process_state.gesture_states, processor, out, 0)
+            };
         }
         // Otherwise, flush will be called on the main thread.
         else {

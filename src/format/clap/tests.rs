@@ -104,7 +104,7 @@ struct TestProcessor;
 
 impl Processor for TestProcessor {
     fn reset(&mut self) {}
-    fn flush(&mut self, _events: Events) {}
+    fn set_param(&mut self, _id: ParamId, _value: ParamValue) {}
     fn process(&mut self, _buffers: Buffers, _events: Events) {}
 }
 
