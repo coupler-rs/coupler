@@ -563,6 +563,8 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
                 }
             }
 
+            process_state.events.sort_unstable_by_key(|event| event.time);
+
             let events = Events::new(&process_state.events);
             processor.process(buffers, events);
         } else {
