@@ -6,7 +6,7 @@ pub use coupler_derive::{Enum, Params};
 
 mod range;
 
-pub use range::{Encode, Log, Range};
+pub use range::{DefaultRange, Encode, Log, Range};
 
 pub type ParamId = u32;
 pub type ParamValue = f64;

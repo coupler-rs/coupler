@@ -1,11 +1,11 @@
 use proc_macro2::TokenStream;
-use quote::{ToTokens, quote};
+use quote::quote;
 use syn::{Data, DeriveInput, Error, Expr, Field, Fields, LitInt, LitStr};
 
 pub struct ParamAttr {
     pub id: LitInt,
     pub name: LitStr,
-    pub range: Option<Expr>,
+    pub range: TokenStream,
     pub parse: Option<Expr>,
     pub display: Option<Expr>,
     pub format: Option<LitStr>,
@@ -128,6 +128,12 @@ pub fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
         LitStr::new(&ident.to_string(), ident.span())
     };
 
+    let range = if let Some(range) = range {
+        quote! { #range }
+    } else {
+        quote! { ::coupler::params::DefaultRange }
+    };
+
     Ok(Some(ParamAttr {
         id,
         name,
@@ -136,24 +142,6 @@ pub fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
         display,
         format,
     }))
-}
-
-pub fn gen_encode(field: &Field, param: &ParamAttr, value: impl ToTokens) -> TokenStream {
-    let ty = &field.ty;
-    if let Some(range) = &param.range {
-        quote! { ::coupler::params::Range::<#ty>::encode(&(#range), &#value) }
-    } else {
-        quote! { <#ty as ::coupler::params::Encode>::encode(&#value) }
-    }
-}
-
-pub fn gen_decode(field: &Field, param: &ParamAttr, value: impl ToTokens) -> TokenStream {
-    let ty = &field.ty;
-    if let Some(range) = &param.range {
-        quote! { ::coupler::params::Range::<#ty>::decode(&(#range), #value) }
-    } else {
-        quote! { <#ty as ::coupler::params::Encode>::decode(#value) }
-    }
 }
 
 struct ParamField<'a> {
@@ -204,57 +192,48 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
         let ty = &field.field.ty;
         let id = &field.param.id;
         let name = &field.param.name;
-
-        let default = gen_encode(field.field, &field.param, quote! { __default.#ident });
-
-        let steps = if let Some(range) = &field.param.range {
-            let ty = &field.field.ty;
-            quote! { ::coupler::params::Range::<#ty>::steps(&(#range)) }
-        } else {
-            quote! { <#ty as ::coupler::params::Encode>::steps() }
-        };
+        let range = &field.param.range;
 
         quote! {
             ::coupler::params::ParamInfo {
                 id: #id,
                 name: ::std::string::ToString::to_string(#name),
-                default: #default,
-                steps: #steps,
+                default: ::coupler::params::Range::<#ty>::encode(&(#range), &__default.#ident),
+                steps: ::coupler::params::Range::<#ty>::steps(&(#range)),
             }
         }
     });
 
     let set_cases = fields.iter().map(|field| {
         let ident = &field.field.ident;
+        let ty = &field.field.ty;
         let id = &field.param.id;
-
-        let decode = gen_decode(field.field, &field.param, quote! { __value });
+        let range = &field.param.range;
 
         quote! {
             #id => {
-                self.#ident = #decode;
+                self.#ident = ::coupler::params::Range::<#ty>::decode(&(#range), __value);
             }
         }
     });
 
     let get_cases = fields.iter().map(|field| {
         let ident = &field.field.ident;
+        let ty = &field.field.ty;
         let id = &field.param.id;
-
-        let encode = gen_encode(field.field, &field.param, quote! { &self.#ident });
+        let range = &field.param.range;
 
         quote! {
-            #id => {
-                #encode
-            }
+            #id => ::coupler::params::Range::<#ty>::encode(&(#range), &self.#ident),
         }
     });
 
     let parse_cases = fields.iter().map(|field| {
         let ty = &field.field.ty;
         let id = &field.param.id;
+        let range = &field.param.range;
 
-        let encode = gen_encode(field.field, &field.param, quote! { __value });
+        let encode = quote! { ::coupler::params::Range::<#ty>::encode(&(#range), &__value) };
         let parse = if let Some(parse) = &field.param.parse {
             quote! {
                 match (#parse)(__text) {
@@ -280,8 +259,10 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
 
     let display_cases = fields.iter().map(|field| {
         let id = &field.param.id;
+        let ty = &field.field.ty;
+        let range = &field.param.range;
 
-        let decode = gen_decode(field.field, &field.param, quote! { __value });
+        let decode = quote! { ::coupler::params::Range::<#ty>::decode(&(#range), __value) };
         let display = if let Some(display) = &field.param.display {
             quote! { (#display)(#decode, __fmt) }
         } else if let Some(format) = &field.param.format {

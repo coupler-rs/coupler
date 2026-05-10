@@ -12,6 +12,22 @@ pub trait Encode {
     fn decode(value: ParamValue) -> Self;
 }
 
+pub struct DefaultRange;
+
+impl<T: Encode> Range<T> for DefaultRange {
+    fn steps(&self) -> Option<u32> {
+        T::steps()
+    }
+
+    fn encode(&self, value: &T) -> ParamValue {
+        T::encode(value)
+    }
+
+    fn decode(&self, value: ParamValue) -> T {
+        T::decode(value)
+    }
+}
+
 #[derive(Copy, Clone)]
 pub struct Log<T>(pub T);
 
