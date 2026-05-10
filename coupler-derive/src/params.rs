@@ -4,7 +4,7 @@ use syn::{Data, DeriveInput, Error, Expr, Field, Fields, LitInt, LitStr};
 
 pub struct ParamAttr {
     pub id: LitInt,
-    pub name: Option<LitStr>,
+    pub name: LitStr,
     pub range: Option<Expr>,
     pub parse: Option<Expr>,
     pub display: Option<Expr>,
@@ -121,6 +121,13 @@ pub fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
         return Err(Error::new_spanned(field, "missing `id` attribute"));
     };
 
+    let name = if let Some(name) = name {
+        name.clone()
+    } else {
+        let ident = field.ident.as_ref().unwrap();
+        LitStr::new(&ident.to_string(), ident.span())
+    };
+
     Ok(Some(ParamAttr {
         id,
         name,
@@ -196,12 +203,7 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
         let ident = field.field.ident.as_ref().unwrap();
         let ty = &field.field.ty;
         let id = &field.param.id;
-
-        let name = if let Some(name) = &field.param.name {
-            name.clone()
-        } else {
-            LitStr::new(&ident.to_string(), ident.span())
-        };
+        let name = &field.param.name;
 
         let default = gen_encode(field.field, &field.param, quote! { __default.#ident });
 
