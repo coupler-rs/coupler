@@ -5,13 +5,16 @@ use std::rc::Rc;
 
 use serde::{Deserialize, Serialize};
 
-use coupler::editor::{Editor, ParentWindow, RawParent, Size};
-use coupler::format::clap::*;
-use coupler::format::vst3::*;
-use coupler::params::{ParamId, ParamInfo, ParamValue};
-use coupler::{
-    buffers::*, bus::*, editor::*, events::*, host::*, params::*, plugin::*, process::*,
-};
+use coupler::buffers::{BufferMut, Buffers};
+use coupler::bus::{BusDir, BusInfo, Format, Layout};
+use coupler::editor::{Editor, EditorHost, ParentWindow, RawParent, Size};
+use coupler::events::{Data, Events};
+use coupler::format::clap::{ClapInfo, ClapPlugin};
+use coupler::format::vst3::{Uuid, Vst3Info, Vst3Plugin};
+use coupler::host::Host;
+use coupler::params::{ParamId, ParamInfo, ParamValue, Params};
+use coupler::plugin::{Plugin, PluginInfo};
+use coupler::process::{Config, Processor};
 
 use flicker::Renderer;
 
