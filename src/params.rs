@@ -4,8 +4,10 @@ use std::str::FromStr;
 #[cfg(feature = "derive")]
 pub use coupler_derive::{Enum, Params};
 
+mod format;
 mod range;
 
+pub use format::{DefaultFormat, Format};
 pub use range::{DefaultRange, Encode, Log, Range};
 
 pub type ParamId = u32;

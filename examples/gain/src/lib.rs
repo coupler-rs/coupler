@@ -16,7 +16,7 @@ use coupler::process::{Config, Processor};
 
 #[derive(Params, Serialize, Deserialize, Clone)]
 struct GainParams {
-    #[param(id = 0, name = "Gain", range = 0.0..1.0, format = "{:.2}")]
+    #[param(id = 0, name = "Gain", range = 0.0..1.0)]
     gain: f32,
 }
 

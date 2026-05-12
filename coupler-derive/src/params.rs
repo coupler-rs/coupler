@@ -6,9 +6,7 @@ pub struct ParamAttr {
     pub id: LitInt,
     pub name: LitStr,
     pub range: TokenStream,
-    pub parse: Option<Expr>,
-    pub display: Option<Expr>,
-    pub format: Option<LitStr>,
+    pub format: TokenStream,
 }
 
 pub fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
@@ -17,8 +15,6 @@ pub fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
     let mut id = None;
     let mut name = None;
     let mut range = None;
-    let mut parse = None;
-    let mut display = None;
     let mut format = None;
 
     for attr in &field.attrs {
@@ -59,31 +55,6 @@ pub fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
                 }
 
                 range = Some(meta.value()?.parse::<Expr>()?);
-            } else if ident == "parse" {
-                if parse.is_some() {
-                    return Err(Error::new_spanned(
-                        &meta.path,
-                        "duplicate param attribute `parse`",
-                    ));
-                }
-
-                parse = Some(meta.value()?.parse::<Expr>()?);
-            } else if ident == "display" {
-                if display.is_some() {
-                    return Err(Error::new_spanned(
-                        &meta.path,
-                        "duplicate param attribute `display`",
-                    ));
-                }
-
-                if format.is_some() {
-                    return Err(Error::new_spanned(
-                        ident,
-                        "`format` attribute cannot be used with `display`",
-                    ));
-                }
-
-                display = Some(meta.value()?.parse::<Expr>()?);
             } else if ident == "format" {
                 if format.is_some() {
                     return Err(Error::new_spanned(
@@ -92,14 +63,7 @@ pub fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
                     ));
                 }
 
-                if display.is_some() {
-                    return Err(Error::new_spanned(
-                        ident,
-                        "`format` attribute cannot be used with `display`",
-                    ));
-                }
-
-                format = Some(meta.value()?.parse::<LitStr>()?);
+                format = Some(meta.value()?.parse::<Expr>()?);
             } else {
                 return Err(Error::new_spanned(
                     &meta.path,
@@ -134,12 +98,16 @@ pub fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
         quote! { ::coupler::params::DefaultRange }
     };
 
+    let format = if let Some(format) = format {
+        quote! { #format }
+    } else {
+        quote! { ::coupler::params::DefaultFormat }
+    };
+
     Ok(Some(ParamAttr {
         id,
         name,
         range,
-        parse,
-        display,
         format,
     }))
 }
@@ -232,27 +200,14 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
         let ty = &field.field.ty;
         let id = &field.param.id;
         let range = &field.param.range;
-
-        let encode = quote! { ::coupler::params::Range::<#ty>::encode(&(#range), &__value) };
-        let parse = if let Some(parse) = &field.param.parse {
-            quote! {
-                match (#parse)(__text) {
-                    ::std::option::Option::Some(__value) => ::std::option::Option::Some(#encode),
-                    _ => ::std::option::Option::None,
-                }
-            }
-        } else {
-            quote! {
-                match <#ty as ::std::str::FromStr>::from_str(__text) {
-                    ::std::result::Result::Ok(__value) => ::std::option::Option::Some(#encode),
-                    _ => ::std::option::Option::None,
-                }
-            }
-        };
+        let format = &field.param.format;
 
         quote! {
-            #id => {
-                #parse
+            #id => match ::coupler::params::Format::<#ty>::parse(&(#format), __text) {
+                ::std::option::Option::Some(__value) => ::std::option::Option::Some(
+                    ::coupler::params::Range::<#ty>::encode(&(#range), &__value),
+                ),
+                _ => ::std::option::Option::None,
             }
         }
     });
@@ -261,20 +216,14 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
         let id = &field.param.id;
         let ty = &field.field.ty;
         let range = &field.param.range;
-
-        let decode = quote! { ::coupler::params::Range::<#ty>::decode(&(#range), __value) };
-        let display = if let Some(display) = &field.param.display {
-            quote! { (#display)(#decode, __fmt) }
-        } else if let Some(format) = &field.param.format {
-            quote! { write!(__fmt, #format, #decode) }
-        } else {
-            quote! { write!(__fmt, "{}", #decode) }
-        };
+        let format = &field.param.format;
 
         quote! {
-            #id => {
-                #display
-            }
+            #id => ::coupler::params::Format::<#ty>::display(
+                &(#format),
+                ::coupler::params::Range::<#ty>::decode(&(#range), __value),
+                __fmt,
+            ),
         }
     });
 
