@@ -1,5 +1,4 @@
-use std::fmt::{self, Formatter};
-use std::io::{self, Read, Write};
+use std::{fmt, io};
 
 use serde::{Deserialize, Serialize};
 
@@ -88,18 +87,18 @@ impl Plugin for Gain {
         &self,
         id: ParamId,
         value: ParamValue,
-        fmt: &mut Formatter,
+        write: impl fmt::Write,
     ) -> Result<(), fmt::Error> {
-        self.params.display_param(id, value, fmt)
+        self.params.display_param(id, value, write)
     }
 
-    fn save(&self, output: impl Write) -> io::Result<()> {
+    fn save(&self, output: impl io::Write) -> io::Result<()> {
         serde_json::to_writer(output, &self.params)?;
 
         Ok(())
     }
 
-    fn load(&mut self, input: impl Read) -> io::Result<()> {
+    fn load(&mut self, input: impl io::Read) -> io::Result<()> {
         self.params = serde_json::from_reader(input)?;
 
         Ok(())

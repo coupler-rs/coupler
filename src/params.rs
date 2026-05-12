@@ -1,4 +1,4 @@
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Display};
 use std::str::FromStr;
 
 #[cfg(feature = "derive")]
@@ -29,7 +29,7 @@ pub trait Params {
         &self,
         id: ParamId,
         value: ParamValue,
-        fmt: &mut Formatter,
+        write: impl fmt::Write,
     ) -> Result<(), fmt::Error>;
 }
 

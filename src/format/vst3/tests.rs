@@ -1,8 +1,6 @@
 use std::error::Error;
 use std::ffi::CStr;
-use std::fmt::{self, Formatter};
-use std::io::{self, Read, Write};
-use std::{ptr, slice};
+use std::{fmt, io, ptr, slice};
 
 use crate::buffers::Buffers;
 use crate::bus::{BusInfo, Layout};
@@ -69,14 +67,14 @@ impl Plugin for TestPlugin {
         &self,
         _id: ParamId,
         _value: ParamValue,
-        _fmt: &mut Formatter,
+        _write: impl fmt::Write,
     ) -> Result<(), fmt::Error> {
         Ok(())
     }
-    fn save(&self, _output: impl Write) -> io::Result<()> {
+    fn save(&self, _output: impl io::Write) -> io::Result<()> {
         Ok(())
     }
-    fn load(&mut self, _input: impl Read) -> io::Result<()> {
+    fn load(&mut self, _input: impl io::Read) -> io::Result<()> {
         Ok(())
     }
     fn processor(&mut self, _config: &Config) -> Self::Processor {

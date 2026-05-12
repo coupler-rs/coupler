@@ -222,7 +222,7 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
             #id => ::coupler::params::Format::<#ty>::display(
                 &(#format),
                 ::coupler::params::Range::<#ty>::decode(&(#range), __value),
-                __fmt,
+                __write,
             ),
         }
     });
@@ -262,7 +262,7 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
                 &self,
                 __id: ::coupler::params::ParamId,
                 __value: ::coupler::params::ParamValue,
-                __fmt: &mut ::std::fmt::Formatter,
+                __write: impl fmt::Write,
             ) -> ::std::result::Result<(), ::std::fmt::Error> {
                 match __id {
                     #(#display_cases)*

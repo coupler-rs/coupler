@@ -20,7 +20,7 @@ use crate::process::{Config, Processor};
 use crate::sync::param_gestures::{GestureStates, GestureUpdate, ParamGestures};
 use crate::sync::params::ParamValues;
 use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
-use crate::util::{DisplayParam, RequireSendSync, copy_cstring, slice_from_raw_parts_checked};
+use crate::util::{RequireSendSync, copy_cstring, slice_from_raw_parts_checked};
 
 fn port_type_from_format(format: &Format) -> &'static CStr {
     match format {
@@ -780,13 +780,11 @@ impl<P: Plugin> Instance<P> {
         if let Some(&index) = instance.param_map.get(&param_id) {
             let param = &instance.params[index];
 
-            let text = format!(
-                "{}",
-                DisplayParam::new(
-                    &main_thread_state.plugin,
-                    param_id,
-                    map_param_in(param, value)
-                )
+            let mut text = String::new();
+            let _ = main_thread_state.plugin.display_param(
+                param_id,
+                map_param_in(param, value),
+                &mut text,
             );
 
             let dst = unsafe { slice::from_raw_parts_mut(display, size as usize) };

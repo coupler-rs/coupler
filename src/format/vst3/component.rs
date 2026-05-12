@@ -18,7 +18,7 @@ use crate::plugin::Plugin;
 use crate::process::{Config, Processor};
 use crate::sync::params::ParamValues;
 use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
-use crate::util::{DisplayParam, RequireSendSync, slice_from_raw_parts_checked};
+use crate::util::{RequireSendSync, slice_from_raw_parts_checked};
 
 fn format_to_speaker_arrangement(format: &Format) -> SpeakerArrangement {
     match format {
@@ -662,11 +662,9 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         let main_thread_state = self.main_thread_state.borrow();
 
         if self.param_map.contains_key(&id) {
-            let display = format!(
-                "{}",
-                DisplayParam::new(&main_thread_state.plugin, id, valueNormalized)
-            );
-            copy_wstring(&display, unsafe { &mut *string });
+            let mut text = String::new();
+            let _ = main_thread_state.plugin.display_param(id, valueNormalized, &mut text);
+            copy_wstring(&text, unsafe { &mut *string });
 
             return kResultOk;
         }

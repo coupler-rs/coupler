@@ -1,10 +1,6 @@
 use std::ffi::CString;
-use std::fmt::{self, Display, Formatter};
 use std::os::raw::c_char;
 use std::slice;
-
-use crate::params::{ParamId, ParamValue};
-use crate::plugin::Plugin;
 
 pub fn copy_cstring(src: &str, dst: &mut [c_char]) {
     let c_string = CString::new(src).unwrap_or_else(|_| CString::default());
@@ -30,27 +26,6 @@ pub unsafe fn slice_from_raw_parts_checked<'a, T>(ptr: *const T, len: usize) -> 
         unsafe { slice::from_raw_parts(ptr, len) }
     } else {
         &[]
-    }
-}
-
-pub struct DisplayParam<'a, P> {
-    plugin: &'a P,
-    id: ParamId,
-    value: ParamValue,
-}
-
-impl<'a, P> DisplayParam<'a, P> {
-    pub fn new(plugin: &'a P, id: ParamId, value: ParamValue) -> Self {
-        DisplayParam { plugin, id, value }
-    }
-}
-
-impl<'a, P> Display for DisplayParam<'a, P>
-where
-    P: Plugin,
-{
-    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
-        self.plugin.display_param(self.id, self.value, f)
     }
 }
 

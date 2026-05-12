@@ -1,5 +1,4 @@
-use std::fmt::{self, Formatter};
-use std::io::{self, Read, Write};
+use std::{fmt, io};
 
 use crate::bus::{BusInfo, Layout};
 use crate::editor::{Editor, EditorHost, ParentWindow, Size};
@@ -46,11 +45,11 @@ pub trait Plugin: Send + Sized + 'static {
         &self,
         id: ParamId,
         value: ParamValue,
-        fmt: &mut Formatter,
+        write: impl fmt::Write,
     ) -> Result<(), fmt::Error>;
 
-    fn save(&self, output: impl Write) -> io::Result<()>;
-    fn load(&mut self, input: impl Read) -> io::Result<()>;
+    fn save(&self, output: impl io::Write) -> io::Result<()>;
+    fn load(&mut self, input: impl io::Read) -> io::Result<()>;
 
     fn processor(&mut self, config: &Config) -> Self::Processor;
 
