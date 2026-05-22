@@ -6,6 +6,7 @@ mod factory;
 mod gui;
 mod host;
 mod instance;
+mod util;
 
 #[cfg(test)]
 mod tests;
@@ -13,12 +14,16 @@ mod tests;
 #[doc(hidden)]
 pub use factory::Factory;
 
-pub struct ClapInfo {
-    pub id: String,
+pub struct ClapInfo<'a> {
+    pub id: &'a str,
+}
+
+pub trait BuildClapInfo {
+    fn info(self, info: ClapInfo);
 }
 
 pub trait ClapPlugin {
-    fn clap_info() -> ClapInfo;
+    fn clap_info(build: impl BuildClapInfo);
 }
 
 #[doc(hidden)]

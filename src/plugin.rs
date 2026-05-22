@@ -7,19 +7,23 @@ use crate::params::{ParamId, ParamInfo, ParamValue};
 use crate::process::{Config, Processor};
 
 #[derive(Default)]
-pub struct PluginInfo {
-    pub name: String,
-    pub version: String,
-    pub vendor: String,
-    pub url: String,
-    pub email: String,
+pub struct PluginInfo<'a> {
+    pub name: &'a str,
+    pub version: &'a str,
+    pub vendor: &'a str,
+    pub url: &'a str,
+    pub email: &'a str,
+}
+
+pub trait BuildInfo {
+    fn info(self, info: PluginInfo);
 }
 
 pub trait Plugin: Send + Sized + 'static {
     type Processor: Processor;
     type Editor: Editor;
 
-    fn info() -> PluginInfo;
+    fn info(build: impl BuildInfo);
     fn new(host: Host) -> Self;
 
     fn buses(&self) -> Vec<BusInfo>;

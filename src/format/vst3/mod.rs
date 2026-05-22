@@ -42,7 +42,11 @@ pub struct Vst3Info {
 }
 
 pub trait Vst3Plugin {
-    fn vst3_info() -> Vst3Info;
+    fn vst3_info(build: impl BuildVst3Info);
+}
+
+pub trait BuildVst3Info {
+    fn info(self, info: Vst3Info);
 }
 
 #[doc(hidden)]

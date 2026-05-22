@@ -4,14 +4,14 @@ use std::{fmt, io};
 use clap_sys::plugin_factory::{CLAP_PLUGIN_FACTORY_ID, clap_plugin_factory};
 use clap_sys::version::CLAP_VERSION;
 
-use super::{ClapInfo, ClapPlugin, Factory};
+use super::{BuildClapInfo, ClapInfo, ClapPlugin, Factory};
 use crate::buffers::Buffers;
 use crate::bus::{BusConfig, BusInfo};
 use crate::editor::{Editor, EditorHost, ParentWindow, Size};
 use crate::events::Events;
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
-use crate::plugin::{Plugin, PluginInfo};
+use crate::plugin::{BuildInfo, Plugin, PluginInfo};
 use crate::process::{Config, Processor};
 
 const NAME: &str = "test plugin";
@@ -27,14 +27,14 @@ impl Plugin for TestPlugin {
     type Processor = TestProcessor;
     type Editor = TestEditor;
 
-    fn info() -> PluginInfo {
-        PluginInfo {
-            name: NAME.to_string(),
-            version: VERSION.to_string(),
-            vendor: VENDOR.to_string(),
-            url: URL.to_string(),
-            email: EMAIL.to_string(),
-        }
+    fn info(build: impl BuildInfo) {
+        build.info(PluginInfo {
+            name: NAME,
+            version: VERSION,
+            vendor: VENDOR,
+            url: URL,
+            email: EMAIL,
+        })
     }
     fn new(_host: Host) -> Self {
         TestPlugin
@@ -92,8 +92,8 @@ impl Plugin for TestPlugin {
 }
 
 impl ClapPlugin for TestPlugin {
-    fn clap_info() -> ClapInfo {
-        ClapInfo { id: ID.to_string() }
+    fn clap_info(build: impl BuildClapInfo) {
+        build.info(ClapInfo { id: ID })
     }
 }
 

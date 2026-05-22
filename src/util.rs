@@ -2,6 +2,8 @@ use std::ffi::CString;
 use std::os::raw::c_char;
 use std::slice;
 
+use crate::plugin::{BuildInfo, Plugin, PluginInfo};
+
 pub fn copy_cstring(src: &str, dst: &mut [c_char]) {
     let c_string = CString::new(src).unwrap_or_else(|_| CString::default());
     let bytes = c_string.as_bytes_with_nul();
@@ -31,3 +33,22 @@ pub unsafe fn slice_from_raw_parts_checked<'a, T>(ptr: *const T, len: usize) -> 
 
 #[allow(unused)]
 pub trait RequireSendSync: Send + Sync {}
+
+pub fn with_info<P, F>(f: F)
+where
+    P: Plugin,
+    F: FnOnce(PluginInfo),
+{
+    struct BuildInfoFn<F>(F);
+
+    impl<F> BuildInfo for BuildInfoFn<F>
+    where
+        F: FnOnce(PluginInfo),
+    {
+        fn info(self, info: PluginInfo) {
+            self.0(info)
+        }
+    }
+
+    P::info(BuildInfoFn(f))
+}

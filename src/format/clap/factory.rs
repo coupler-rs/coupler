@@ -8,7 +8,9 @@ use clap_sys::{host::*, plugin::*, plugin_factory::*, version::*};
 
 use super::ClapPlugin;
 use super::instance::Instance;
+use super::util::with_clap_info;
 use crate::plugin::Plugin;
+use crate::util::with_info;
 
 struct FactoryState {
     descriptor: clap_plugin_descriptor,
@@ -49,14 +51,21 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
         *init_count = count.checked_add(1).unwrap();
 
         if count == 0 {
-            let info = P::info();
-            let clap_info = P::clap_info();
+            let mut id = None;
+            with_clap_info::<P, _>(|info| {
+                id = Some(CString::new(info.id).unwrap());
+            });
 
-            let id = CString::new(&*clap_info.id).unwrap().into_raw();
-            let name = CString::new(&*info.name).unwrap().into_raw();
-            let vendor = CString::new(&*info.vendor).unwrap().into_raw();
-            let url = CString::new(&*info.url).unwrap().into_raw();
-            let version = CString::new(&*info.version).unwrap().into_raw();
+            let mut name = None;
+            let mut vendor = None;
+            let mut url = None;
+            let mut version = None;
+            with_info::<P, _>(|info| {
+                name = Some(CString::new(info.name).unwrap());
+                vendor = Some(CString::new(info.vendor).unwrap());
+                url = Some(CString::new(info.url).unwrap());
+                version = Some(CString::new(info.version).unwrap());
+            });
 
             const EMPTY: &CStr = c"";
             const FEATURES: &[*const c_char] = &[ptr::null()];
@@ -66,13 +75,13 @@ impl<P: Plugin + ClapPlugin> Factory<P> {
             *state = Some(FactoryState {
                 descriptor: clap_plugin_descriptor {
                     clap_version: CLAP_VERSION,
-                    id,
-                    name,
-                    vendor,
-                    url,
+                    id: id.unwrap().into_raw(),
+                    name: name.unwrap().into_raw(),
+                    vendor: vendor.unwrap().into_raw(),
+                    url: url.unwrap().into_raw(),
                     manual_url: EMPTY.as_ptr(),
                     support_url: EMPTY.as_ptr(),
-                    version,
+                    version: version.unwrap().into_raw(),
                     description: EMPTY.as_ptr(),
                     features: FEATURES.as_ptr(),
                 },

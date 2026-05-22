@@ -11,7 +11,7 @@ use vst3::Steinberg::{
 use vst3::Steinberg::{char8, char16, int32};
 use vst3::{ComPtr, Interface, uid};
 
-use super::{Uuid, Vst3Info, Vst3Plugin, get_plugin_factory};
+use super::{BuildVst3Info, Uuid, Vst3Info, Vst3Plugin, get_plugin_factory};
 use crate::buffers::Buffers;
 use crate::bus::{BusConfig, BusInfo};
 use crate::editor::{Editor, EditorHost, ParentWindow, Size};
@@ -34,14 +34,14 @@ impl Plugin for TestPlugin {
     type Processor = TestProcessor;
     type Editor = TestEditor;
 
-    fn info() -> PluginInfo {
-        PluginInfo {
-            name: NAME.to_string(),
-            version: VERSION.to_string(),
-            vendor: VENDOR.to_string(),
-            url: URL.to_string(),
-            email: EMAIL.to_string(),
-        }
+    fn info(build: impl BuildInfo) {
+        build.info(PluginInfo {
+            name: NAME,
+            version: VERSION,
+            vendor: VENDOR,
+            url: URL,
+            email: EMAIL,
+        })
     }
     fn new(_host: Host) -> Self {
         TestPlugin
@@ -99,10 +99,10 @@ impl Plugin for TestPlugin {
 }
 
 impl Vst3Plugin for TestPlugin {
-    fn vst3_info() -> Vst3Info {
-        Vst3Info {
+    fn vst3_info(build: impl BuildVst3Info) {
+        build.info(Vst3Info {
             class_id: Uuid(CLASS_ID[0], CLASS_ID[1], CLASS_ID[2], CLASS_ID[3]),
-        }
+        })
     }
 }
 

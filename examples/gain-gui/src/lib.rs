@@ -8,11 +8,11 @@ use coupler::buffers::{BufferMut, Buffers};
 use coupler::bus::{BusConfig, BusDir, BusInfo, Layout};
 use coupler::editor::{Editor, EditorHost, ParentWindow, RawParent, Size};
 use coupler::events::{Data, Events};
-use coupler::format::clap::{ClapInfo, ClapPlugin};
-use coupler::format::vst3::{Uuid, Vst3Info, Vst3Plugin};
+use coupler::format::clap::{BuildClapInfo, ClapInfo, ClapPlugin};
+use coupler::format::vst3::{BuildVst3Info, Uuid, Vst3Info, Vst3Plugin};
 use coupler::host::Host;
 use coupler::params::{ParamId, ParamInfo, ParamValue, Params};
-use coupler::plugin::{Plugin, PluginInfo};
+use coupler::plugin::{BuildInfo, Plugin, PluginInfo};
 use coupler::process::{Config, Processor};
 
 use flicker::Renderer;
@@ -42,14 +42,14 @@ impl Plugin for GainGui {
     type Processor = GainGuiProcessor;
     type Editor = GainGuiEditor;
 
-    fn info() -> PluginInfo {
-        PluginInfo {
-            name: "Gain (GUI)".to_string(),
-            version: "0.1.0".to_string(),
-            vendor: "Vendor".to_string(),
-            url: "https://example.com".to_string(),
-            email: "example@example.com".to_string(),
-        }
+    fn info(build: impl BuildInfo) {
+        build.info(PluginInfo {
+            name: "Gain (GUI)",
+            version: "0.1.0",
+            vendor: "Vendor",
+            url: "https://example.com",
+            email: "example@example.com",
+        })
     }
 
     fn new(_host: Host) -> Self {
@@ -136,18 +136,18 @@ impl Plugin for GainGui {
 }
 
 impl Vst3Plugin for GainGui {
-    fn vst3_info() -> Vst3Info {
-        Vst3Info {
+    fn vst3_info(build: impl BuildVst3Info) {
+        build.info(Vst3Info {
             class_id: Uuid::from_name("rs.coupler.gain-gui"),
-        }
+        })
     }
 }
 
 impl ClapPlugin for GainGui {
-    fn clap_info() -> ClapInfo {
-        ClapInfo {
-            id: "rs.coupler.gain-gui".to_string(),
-        }
+    fn clap_info(build: impl BuildClapInfo) {
+        build.info(ClapInfo {
+            id: "rs.coupler.gain-gui",
+        })
     }
 }
 
