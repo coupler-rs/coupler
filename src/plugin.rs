@@ -6,25 +6,13 @@ use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
 use crate::process::{Config, Processor};
 
+#[derive(Default)]
 pub struct PluginInfo {
     pub name: String,
     pub version: String,
     pub vendor: String,
     pub url: String,
     pub email: String,
-}
-
-#[allow(clippy::derivable_impls)]
-impl Default for PluginInfo {
-    fn default() -> PluginInfo {
-        PluginInfo {
-            name: String::new(),
-            version: String::new(),
-            vendor: String::new(),
-            url: String::new(),
-            email: String::new(),
-        }
-    }
 }
 
 pub trait Plugin: Send + Sized + 'static {
