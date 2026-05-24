@@ -103,17 +103,17 @@ pub fn expand_enum(input: &DeriveInput) -> Result<TokenStream, Error> {
 
     Ok(quote! {
         impl #impl_generics ::coupler::params::Encode for #ident #ty_generics #where_clause {
-            fn steps() -> Option<u32> {
+            fn steps() -> Option<::std::primitive::u32> {
                 Some(#count)
             }
 
-            fn encode(&self) -> ParamValue {
+            fn encode(&self) -> ::coupler::params::ParamValue {
                 match self {
                     #(#encode_cases)*
                 }
             }
 
-            fn decode(__value: ParamValue) -> Self {
+            fn decode(__value: ::coupler::params::ParamValue) -> Self {
                 match (__value * #count as ::std::primitive::f64) as ::std::primitive::u32 {
                     #(#decode_cases)*
                     _ => #ident::#last_variant,
@@ -124,7 +124,7 @@ pub fn expand_enum(input: &DeriveInput) -> Result<TokenStream, Error> {
         impl #impl_generics ::std::str::FromStr for #ident #ty_generics #where_clause {
             type Err = ();
 
-            fn from_str(__str: &str) -> Result<Self, Self::Err> {
+            fn from_str(__str: &str) -> ::std::result::Result<Self, Self::Err> {
                 match __str {
                     #(#from_str_cases)*
                     _ => ::std::result::Result::Err(()),
