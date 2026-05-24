@@ -1,20 +1,18 @@
 use std::ffi::{CStr, c_char};
 use std::{fmt, io};
 
-use crate::buffers::Buffers;
-use crate::editor::{Editor, EditorHost, ParentWindow, Size};
-use crate::events::Events;
-
 use clap_sys::plugin_factory::{CLAP_PLUGIN_FACTORY_ID, clap_plugin_factory};
 use clap_sys::version::CLAP_VERSION;
 
+use super::{ClapInfo, ClapPlugin, Factory};
+use crate::buffers::Buffers;
 use crate::bus::{BusConfig, BusInfo};
+use crate::editor::{Editor, EditorHost, ParentWindow, Size};
+use crate::events::Events;
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
 use crate::plugin::{Plugin, PluginInfo};
 use crate::process::{Config, Processor};
-
-use super::{ClapInfo, ClapPlugin, Factory};
 
 const NAME: &str = "test plugin";
 const VERSION: &str = "1.2.3";

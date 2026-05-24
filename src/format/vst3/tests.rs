@@ -2,15 +2,6 @@ use std::error::Error;
 use std::ffi::CStr;
 use std::{fmt, io, ptr, slice};
 
-use crate::buffers::Buffers;
-use crate::bus::{BusConfig, BusInfo};
-use crate::editor::{Editor, EditorHost, ParentWindow, Size};
-use crate::events::Events;
-use crate::host::Host;
-use crate::params::{ParamId, ParamInfo, ParamValue};
-use crate::plugin::{Plugin, PluginInfo};
-use crate::process::{Config, Processor};
-
 use vst3::Steinberg::Vst::{IComponent, SDKVersionString};
 use vst3::Steinberg::{
     FIDString, IPluginFactory, IPluginFactory2, IPluginFactory2Trait, IPluginFactory3,
@@ -21,6 +12,14 @@ use vst3::Steinberg::{char8, char16, int32};
 use vst3::{ComPtr, Interface, uid};
 
 use super::{Uuid, Vst3Info, Vst3Plugin, get_plugin_factory};
+use crate::buffers::Buffers;
+use crate::bus::{BusConfig, BusInfo};
+use crate::editor::{Editor, EditorHost, ParentWindow, Size};
+use crate::events::Events;
+use crate::host::Host;
+use crate::params::{ParamId, ParamInfo, ParamValue};
+use crate::plugin::{Plugin, PluginInfo};
+use crate::process::{Config, Processor};
 
 const NAME: &str = "test plugin";
 const VERSION: &str = "1.2.3";
