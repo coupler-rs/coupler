@@ -13,7 +13,7 @@ use vst3::{ComPtr, Interface, uid};
 
 use super::{BuildVst3Info, Uuid, Vst3Info, Vst3Plugin, get_plugin_factory};
 use crate::buffers::Buffers;
-use crate::bus::{BuildBuses, BusConfig};
+use crate::bus::{BuildBusConfigs, BuildBuses};
 use crate::editor::{Editor, EditorHost, ParentWindow, Size};
 use crate::events::Events;
 use crate::host::Host;
@@ -47,9 +47,7 @@ impl Plugin for TestPlugin {
         TestPlugin
     }
     fn buses(&self, _build: impl BuildBuses) {}
-    fn bus_configs(&self) -> Vec<BusConfig> {
-        Vec::new()
-    }
+    fn bus_configs(&self, _build: impl BuildBusConfigs) {}
     fn params(&self) -> Vec<ParamInfo> {
         Vec::new()
     }

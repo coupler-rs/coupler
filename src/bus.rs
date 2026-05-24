@@ -11,8 +11,8 @@ pub struct BusInfo<'a> {
 }
 
 #[derive(Clone, Default, Eq, PartialEq, Hash)]
-pub struct BusConfig {
-    pub layouts: Vec<Layout>,
+pub struct BusConfig<'a> {
+    pub layouts: &'a [Layout],
 }
 
 #[derive(Clone, Eq, PartialEq, Hash)]
@@ -32,4 +32,8 @@ impl Layout {
 
 pub trait BuildBuses {
     fn bus(self, bus: BusInfo) -> Self;
+}
+
+pub trait BuildBusConfigs {
+    fn config(self, config: BusConfig) -> Self;
 }

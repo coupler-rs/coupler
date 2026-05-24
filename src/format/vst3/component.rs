@@ -18,7 +18,9 @@ use crate::plugin::Plugin;
 use crate::process::{Config, Processor};
 use crate::sync::params::ParamValues;
 use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
-use crate::util::{OwnedBusInfo, RequireSendSync, collect_buses, slice_from_raw_parts_checked};
+use crate::util::{
+    OwnedBusInfo, RequireSendSync, collect_bus_configs, collect_buses, slice_from_raw_parts_checked,
+};
 
 fn layout_to_speaker_arrangement(layout: &Layout) -> SpeakerArrangement {
     match layout {
@@ -80,7 +82,7 @@ impl<P: Plugin> Component<P> {
         let plugin = P::new(Host::from_inner(host.clone()));
 
         let buses = collect_buses(&plugin);
-        let bus_configs = plugin.bus_configs();
+        let bus_configs = collect_bus_configs(&plugin);
 
         let mut input_bus_map = Vec::new();
         let mut output_bus_map = Vec::new();
