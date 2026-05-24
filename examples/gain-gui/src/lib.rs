@@ -77,7 +77,7 @@ impl Plugin for GainGui {
     }
 
     fn params(&self) -> Vec<ParamInfo> {
-        GainGuiParams::params()
+        self.params.params()
     }
 
     fn set_param(&mut self, id: ParamId, value: ParamValue) {

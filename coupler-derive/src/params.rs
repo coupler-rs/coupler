@@ -229,7 +229,7 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
 
     Ok(quote! {
         impl #impl_generics ::coupler::params::Params for #ident #ty_generics #where_clause {
-            fn params() -> ::std::vec::Vec<::coupler::params::ParamInfo> {
+            fn params(&self) -> ::std::vec::Vec<::coupler::params::ParamInfo> {
                 let __default: #ident #ty_generics = ::std::default::Default::default();
 
                 ::std::vec![

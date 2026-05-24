@@ -21,7 +21,7 @@ pub struct ParamInfo {
 }
 
 pub trait Params {
-    fn params() -> Vec<ParamInfo>;
+    fn params(&self) -> Vec<ParamInfo>;
     fn set_param(&mut self, id: ParamId, value: ParamValue);
     fn get_param(&self, id: ParamId) -> ParamValue;
     fn parse_param(&self, id: ParamId, text: &str) -> Option<ParamValue>;

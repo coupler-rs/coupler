@@ -68,7 +68,7 @@ impl Plugin for Gain {
     }
 
     fn params(&self) -> Vec<ParamInfo> {
-        GainParams::params()
+        self.params.params()
     }
 
     fn set_param(&mut self, id: ParamId, value: ParamValue) {
