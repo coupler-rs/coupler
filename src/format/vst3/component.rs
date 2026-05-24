@@ -9,7 +9,7 @@ use super::buffers::ScratchBuffers;
 use super::host::Vst3Host;
 use super::util::{copy_wstring, utf16_from_ptr};
 use super::view::PlugView;
-use crate::bus::{BusConfig, BusDir, BusInfo, Layout};
+use crate::bus::{BusDir, BusInfo, Layout};
 use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
@@ -54,7 +54,7 @@ pub struct Component<P: Plugin> {
     buses: Vec<BusInfo>,
     input_bus_map: Vec<usize>,
     output_bus_map: Vec<usize>,
-    bus_config_set: HashSet<BusConfig>,
+    bus_config_set: HashSet<Vec<Layout>>,
     params: Vec<ParamInfo>,
     param_map: HashMap<ParamId, usize>,
     plugin_params: ParamValues,
@@ -92,7 +92,7 @@ impl<P: Plugin> Component<P> {
             }
         }
 
-        let bus_config_set = bus_configs.iter().cloned().collect::<HashSet<_>>();
+        let bus_config_set = bus_configs.iter().map(|config| config.layouts.clone()).collect();
 
         let layouts = if let Some(bus_config) = bus_configs.first() {
             bus_config.layouts.clone()
@@ -406,9 +406,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
             return kInvalidArgument;
         }
 
-        let mut candidate = BusConfig {
-            layouts: Vec::new(),
-        };
+        let mut candidate = Vec::new();
 
         let mut inputs = unsafe { slice_from_raw_parts_checked(inputs, input_count).iter() };
         let mut outputs = unsafe { slice_from_raw_parts_checked(outputs, output_count).iter() };
@@ -427,7 +425,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
             };
 
             if let Some(layout) = speaker_arrangement_to_layout(arrangement) {
-                candidate.layouts.push(layout);
+                candidate.push(layout);
             } else {
                 return kResultFalse;
             }
@@ -435,7 +433,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
 
         if self.bus_config_set.contains(&candidate) {
             let mut main_thread_state = self.main_thread_state.borrow();
-            main_thread_state.config.layouts = candidate.layouts;
+            main_thread_state.config.layouts = candidate;
             return kResultTrue;
         }
 
