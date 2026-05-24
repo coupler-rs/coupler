@@ -36,7 +36,9 @@ fn speaker_arrangement_to_layout(speaker_arrangement: SpeakerArrangement) -> Opt
 }
 
 pub struct MainThreadState<P: Plugin> {
-    pub config: Config,
+    pub layouts: Vec<Layout>,
+    pub sample_rate: f64,
+    pub max_buffer_size: usize,
     pub plugin: P,
     pub handler: Option<ComPtr<IComponentHandler>>,
     pub editor: Option<ThreadCell<P::Editor>>,
@@ -44,7 +46,8 @@ pub struct MainThreadState<P: Plugin> {
 }
 
 struct ProcessState<P: Plugin> {
-    config: Config,
+    layouts: Vec<Layout>,
+    max_buffer_size: usize,
     scratch_buffers: ScratchBuffers,
     events: Vec<Event>,
     processor: Option<P::Processor>,
@@ -100,12 +103,6 @@ impl<P: Plugin> Component<P> {
             Vec::new()
         };
 
-        let config = Config {
-            layouts,
-            sample_rate: 0.0,
-            max_buffer_size: 0,
-        };
-
         let scratch_buffers = ScratchBuffers::new(input_bus_map.len(), output_bus_map.len());
 
         let params = plugin.params();
@@ -130,14 +127,17 @@ impl<P: Plugin> Component<P> {
             _host: host,
             has_editor,
             main_thread_state: Arc::new(SyncCell::new(MainThreadState {
-                config: config.clone(),
+                layouts,
+                sample_rate: 0.0,
+                max_buffer_size: 0,
                 plugin,
                 handler: None,
                 editor: None,
                 frame: None,
             })),
             process_state: SyncCell::new(ProcessState {
-                config,
+                layouts: Vec::new(),
+                max_buffer_size: 0,
                 scratch_buffers,
                 events: Vec::with_capacity(4096),
                 processor: None,
@@ -219,7 +219,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
 
                 if let Some(&bus_index) = bus_index {
                     let info = self.buses.get(bus_index);
-                    let layout = main_thread_state.config.layouts.get(bus_index);
+                    let layout = main_thread_state.layouts.get(bus_index);
 
                     if let (Some(info), Some(layout)) = (info, layout) {
                         let bus = unsafe { &mut *bus };
@@ -287,7 +287,9 @@ impl<P: Plugin> IComponentTrait for Component<P> {
     }
 
     unsafe fn setActive(&self, state: TBool) -> tresult {
-        let mut main_thread_state = self.main_thread_state.borrow();
+        let mut main_thread_state_guard = self.main_thread_state.borrow();
+        let main_thread_state = &mut *main_thread_state_guard;
+
         let mut process_state_guard = self.process_state.borrow();
         let process_state = &mut *process_state_guard;
 
@@ -298,15 +300,25 @@ impl<P: Plugin> IComponentTrait for Component<P> {
 
             process_state.processor = None;
         } else {
-            process_state.config = main_thread_state.config.clone();
-            process_state.scratch_buffers.resize(&self.buses, &process_state.config);
+            process_state.layouts = main_thread_state.layouts.clone();
+            process_state.max_buffer_size = main_thread_state.max_buffer_size;
+            process_state.scratch_buffers.resize(
+                &self.buses,
+                &main_thread_state.layouts,
+                main_thread_state.max_buffer_size,
+            );
 
             // Discard any pending plugin -> processor parameter changes, since they will already be
             // reflected in the initial state of the processor.
             for _ in self.processor_params.poll() {}
 
-            process_state.processor =
-                Some(main_thread_state.plugin.processor(&process_state.config));
+            let config = Config {
+                layouts: &main_thread_state.layouts,
+                sample_rate: main_thread_state.sample_rate,
+                max_buffer_size: main_thread_state.max_buffer_size,
+            };
+
+            process_state.processor = Some(main_thread_state.plugin.processor(&config));
         }
 
         kResultOk
@@ -433,7 +445,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
 
         if self.bus_config_set.contains(&candidate) {
             let mut main_thread_state = self.main_thread_state.borrow();
-            main_thread_state.config.layouts = candidate;
+            main_thread_state.layouts = candidate;
             return kResultTrue;
         }
 
@@ -456,7 +468,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
 
         if let Some(&bus_index) = bus_index {
             #[allow(clippy::unnecessary_cast)] // The type of BusDirection varies by platform
-            if let Some(layout) = main_thread_state.config.layouts.get(bus_index as usize) {
+            if let Some(layout) = main_thread_state.layouts.get(bus_index as usize) {
                 let arr = unsafe { &mut *arr };
                 *arr = layout_to_speaker_arrangement(layout);
                 return kResultOk;
@@ -478,15 +490,22 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         let mut main_thread_state = self.main_thread_state.borrow();
 
         self.sync_plugin(&mut main_thread_state.plugin);
-        main_thread_state.plugin.latency(&main_thread_state.config) as uint32
+
+        let config = Config {
+            layouts: &main_thread_state.layouts,
+            sample_rate: main_thread_state.sample_rate,
+            max_buffer_size: main_thread_state.max_buffer_size,
+        };
+
+        main_thread_state.plugin.latency(&config) as uint32
     }
 
     unsafe fn setupProcessing(&self, setup: *mut ProcessSetup) -> tresult {
         let mut main_thread_state = self.main_thread_state.borrow();
 
         let setup = unsafe { &*setup };
-        main_thread_state.config.sample_rate = setup.sampleRate;
-        main_thread_state.config.max_buffer_size = setup.maxSamplesPerBlock as usize;
+        main_thread_state.sample_rate = setup.sampleRate;
+        main_thread_state.max_buffer_size = setup.maxSamplesPerBlock as usize;
 
         kResultOk
     }
@@ -522,7 +541,8 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
                 &self.buses,
                 &self.input_bus_map,
                 &self.output_bus_map,
-                &process_state.config,
+                &process_state.layouts,
+                process_state.max_buffer_size,
                 data,
             )
         }) else {

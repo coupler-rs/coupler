@@ -4,8 +4,8 @@ use crate::events::Events;
 use crate::params::{ParamId, ParamValue};
 
 #[derive(Clone)]
-pub struct Config {
-    pub layouts: Vec<Layout>,
+pub struct Config<'a> {
+    pub layouts: &'a [Layout],
     pub sample_rate: f64,
     pub max_buffer_size: usize,
 }

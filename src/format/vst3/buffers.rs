@@ -5,8 +5,7 @@ use std::{ptr, slice};
 use vst3::Steinberg::Vst::ProcessData;
 
 use crate::buffers::{BufferData, BufferType, Buffers};
-use crate::bus::{BusDir, BusInfo};
-use crate::process::Config;
+use crate::bus::{BusDir, BusInfo, Layout};
 use crate::util::slice_from_raw_parts_checked;
 
 // Alternative to `slice::from_raw_parts` that can be used safely even when passed an unaligned
@@ -51,12 +50,12 @@ impl ScratchBuffers {
         self.outputs_active[index] = active;
     }
 
-    pub fn resize(&mut self, buses: &[BusInfo], config: &Config) {
+    pub fn resize(&mut self, buses: &[BusInfo], layouts: &[Layout], max_buffer_size: usize) {
         self.data.clear();
         let mut total_channels = 0;
         let mut output_channels = 0;
         let mut in_out_channels = 0;
-        for (info, layout) in zip(buses, &config.layouts) {
+        for (info, layout) in zip(buses, layouts) {
             let buffer_type = match info.dir {
                 BusDir::In => BufferType::Const,
                 BusDir::Out | BusDir::InOut => BufferType::Mut,
@@ -83,11 +82,11 @@ impl ScratchBuffers {
         // Each input buffer can be aliased by an output buffer, each output buffer can belong to an
         // inactive bus, and each input provided to an in-out bus might need to be copied to
         // scratch space temporarily while copying inputs to outputs.
-        let scratch_space = config.max_buffer_size * (total_channels + in_out_channels);
+        let scratch_space = max_buffer_size * (total_channels + in_out_channels);
         self.buffers.resize(scratch_space, 0.0);
 
         // Silence buffer, to be used for inactive input buses
-        self.silence.resize(config.max_buffer_size, 0.0);
+        self.silence.resize(max_buffer_size, 0.0);
 
         self.output_ptrs.clear();
         self.output_ptrs.reserve(output_channels);
@@ -113,11 +112,12 @@ impl ScratchBuffers {
         buses: &[BusInfo],
         input_bus_map: &[usize],
         output_bus_map: &[usize],
-        config: &Config,
+        layouts: &[Layout],
+        max_buffer_size: usize,
         data: &ProcessData,
     ) -> Result<Option<Buffers<'a, 'b>>, ()> {
         let len = data.numSamples as usize;
-        if len > config.max_buffer_size {
+        if len > max_buffer_size {
             return Err(());
         }
 
@@ -138,12 +138,12 @@ impl ScratchBuffers {
 
         // Validate that the host has provided us with the correct number of channels for each bus.
         for (&bus_index, input) in zip(input_bus_map, inputs) {
-            if input.numChannels as usize != config.layouts[bus_index].channel_count() {
+            if input.numChannels as usize != layouts[bus_index].channel_count() {
                 return Err(());
             }
         }
         for (&bus_index, output) in zip(output_bus_map, outputs) {
-            if output.numChannels as usize != config.layouts[bus_index].channel_count() {
+            if output.numChannels as usize != layouts[bus_index].channel_count() {
                 return Err(());
             }
         }

@@ -342,7 +342,7 @@ impl<P: Plugin> Instance<P> {
         process_state.buffers.ptrs.resize(total_channels, NonNull::dangling().as_ptr());
 
         let config = Config {
-            layouts: bus_config.layouts.clone(),
+            layouts: &bus_config.layouts,
             sample_rate,
             max_buffer_size: max_frames_count as usize,
         };
