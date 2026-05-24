@@ -12,8 +12,8 @@ use crate::plugin::Plugin;
 use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
 use crate::util::RequireSendSync;
 
-pub struct Vst3EditorHost {
-    pub handler: Option<ComPtr<IComponentHandler>>,
+struct Vst3EditorHost {
+    handler: Option<ComPtr<IComponentHandler>>,
 }
 
 impl EditorHostInner for Vst3EditorHost {
