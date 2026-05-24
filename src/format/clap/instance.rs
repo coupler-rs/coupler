@@ -10,7 +10,7 @@ use clap_sys::{events::*, host::*, id::*, plugin::*, process::*, stream::*};
 
 use super::host::ClapHost;
 use crate::buffers::{BufferData, BufferType, Buffers};
-use crate::bus::{BusDir, BusInfo, Format, Layout};
+use crate::bus::{BusConfig, BusDir, BusInfo, Layout};
 use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
@@ -22,10 +22,10 @@ use crate::sync::params::ParamValues;
 use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
 use crate::util::{RequireSendSync, copy_cstring, slice_from_raw_parts_checked};
 
-fn port_type_from_format(format: &Format) -> &'static CStr {
-    match format {
-        Format::Mono => CLAP_PORT_MONO,
-        Format::Stereo => CLAP_PORT_STEREO,
+fn port_type_from_layout(layout: &Layout) -> &'static CStr {
+    match layout {
+        Layout::Mono => CLAP_PORT_MONO,
+        Layout::Stereo => CLAP_PORT_STEREO,
     }
 }
 
@@ -61,7 +61,7 @@ unsafe impl Sync for Extensions {}
 
 pub struct MainThreadState<P: Plugin> {
     pub extensions: Extensions,
-    pub layout_index: usize,
+    pub bus_config_index: usize,
     pub plugin: P,
     pub editor: Option<ThreadCell<P::Editor>>,
 }
@@ -87,7 +87,7 @@ pub struct Instance<P: Plugin> {
     pub clap_plugin: clap_plugin,
     pub host: HostPtr,
     pub buses: Vec<BusInfo>,
-    pub layouts: Vec<Layout>,
+    pub bus_configs: Vec<BusConfig>,
     pub input_bus_map: Vec<usize>,
     pub output_bus_map: Vec<usize>,
     pub params: Vec<ParamInfo>,
@@ -109,7 +109,7 @@ impl<P: Plugin> Instance<P> {
         let plugin = P::new(Host::from_inner(Arc::new(ClapHost {})));
 
         let buses = plugin.buses();
-        let layouts = plugin.layouts();
+        let bus_configs = plugin.bus_configs();
 
         let mut input_bus_map = Vec::new();
         let mut output_bus_map = Vec::new();
@@ -151,7 +151,7 @@ impl<P: Plugin> Instance<P> {
             },
             host: HostPtr(host),
             buses,
-            layouts,
+            bus_configs,
             input_bus_map,
             output_bus_map,
             params,
@@ -162,7 +162,7 @@ impl<P: Plugin> Instance<P> {
             has_editor,
             main_thread_state: SyncCell::new(MainThreadState {
                 extensions: Extensions { host_params: None },
-                layout_index: 0,
+                bus_config_index: 0,
                 plugin,
                 editor: None,
             }),
@@ -319,16 +319,16 @@ impl<P: Plugin> Instance<P> {
         let mut main_thread_state = instance.main_thread_state.borrow();
         let mut process_state = instance.process_state.borrow();
 
-        let layout = &instance.layouts[main_thread_state.layout_index];
+        let bus_config = &instance.bus_configs[main_thread_state.bus_config_index];
 
         process_state.buffers.data.clear();
         let mut total_channels = 0;
-        for (info, format) in zip(&instance.buses, &layout.formats) {
+        for (info, layout) in zip(&instance.buses, &bus_config.layouts) {
             let buffer_type = match info.dir {
                 BusDir::In => BufferType::Const,
                 BusDir::Out | BusDir::InOut => BufferType::Mut,
             };
-            let channel_count = format.channel_count();
+            let channel_count = layout.channel_count();
 
             process_state.buffers.data.push(BufferData {
                 buffer_type,
@@ -342,7 +342,7 @@ impl<P: Plugin> Instance<P> {
         process_state.buffers.ptrs.resize(total_channels, NonNull::dangling().as_ptr());
 
         let config = Config {
-            formats: layout.formats.clone(),
+            layouts: bus_config.layouts.clone(),
             sample_rate,
             max_buffer_size: max_frames_count as usize,
         };
@@ -590,10 +590,10 @@ impl<P: Plugin> Instance<P> {
         if let Some(&bus_index) = bus_index {
             let bus_info = instance.buses.get(bus_index);
 
-            let layout = &instance.layouts[main_thread_state.layout_index];
-            let format = layout.formats.get(bus_index);
+            let bus_config = &instance.bus_configs[main_thread_state.bus_config_index];
+            let layout = bus_config.layouts.get(bus_index);
 
-            if let (Some(bus_info), Some(format)) = (bus_info, format) {
+            if let (Some(bus_info), Some(layout)) = (bus_info, layout) {
                 let port_info = unsafe { &mut *info };
 
                 port_info.id = index;
@@ -603,8 +603,8 @@ impl<P: Plugin> Instance<P> {
                 } else {
                     0
                 };
-                port_info.channel_count = format.channel_count() as u32;
-                port_info.port_type = port_type_from_format(format).as_ptr();
+                port_info.channel_count = layout.channel_count() as u32;
+                port_info.port_type = port_type_from_layout(layout).as_ptr();
                 port_info.in_place_pair = if bus_info.dir == BusDir::InOut {
                     // Find the other half of this input-output pair
                     let bus_map = if is_input {
@@ -636,7 +636,7 @@ impl<P: Plugin> Instance<P> {
     unsafe extern "C" fn audio_ports_config_count(plugin: *const clap_plugin) -> u32 {
         let instance = unsafe { &*(plugin as *const Self) };
 
-        instance.layouts.len() as u32
+        instance.bus_configs.len() as u32
     }
 
     unsafe extern "C" fn audio_ports_config_get(
@@ -646,7 +646,7 @@ impl<P: Plugin> Instance<P> {
     ) -> bool {
         let instance = unsafe { &*(plugin as *const Self) };
 
-        if let Some(layout) = instance.layouts.get(index as usize) {
+        if let Some(bus_config) = instance.bus_configs.get(index as usize) {
             let config = unsafe { &mut *config };
 
             config.id = index;
@@ -657,9 +657,9 @@ impl<P: Plugin> Instance<P> {
             if let Some(&bus_index) = instance.input_bus_map.first() {
                 config.has_main_input = true;
 
-                let format = &layout.formats[bus_index];
-                config.main_input_channel_count = format.channel_count() as u32;
-                config.main_input_port_type = port_type_from_format(format).as_ptr();
+                let layout = &bus_config.layouts[bus_index];
+                config.main_input_channel_count = layout.channel_count() as u32;
+                config.main_input_port_type = port_type_from_layout(layout).as_ptr();
             } else {
                 config.has_main_input = false;
                 config.main_input_channel_count = 0;
@@ -669,9 +669,9 @@ impl<P: Plugin> Instance<P> {
             if let Some(&bus_index) = instance.output_bus_map.first() {
                 config.has_main_output = true;
 
-                let format = &layout.formats[bus_index];
-                config.main_output_channel_count = format.channel_count() as u32;
-                config.main_output_port_type = port_type_from_format(format).as_ptr();
+                let layout = &bus_config.layouts[bus_index];
+                config.main_output_channel_count = layout.channel_count() as u32;
+                config.main_output_port_type = port_type_from_layout(layout).as_ptr();
             } else {
                 config.has_main_output = false;
                 config.main_output_channel_count = 0;
@@ -691,8 +691,8 @@ impl<P: Plugin> Instance<P> {
         let instance = unsafe { &*(plugin as *const Self) };
         let mut main_thread_state = instance.main_thread_state.borrow();
 
-        if instance.layouts.get(config_id as usize).is_some() {
-            main_thread_state.layout_index = config_id as usize;
+        if instance.bus_configs.get(config_id as usize).is_some() {
+            main_thread_state.bus_config_index = config_id as usize;
             return true;
         }
 

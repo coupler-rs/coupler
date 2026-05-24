@@ -11,21 +11,21 @@ pub struct BusInfo {
 }
 
 #[derive(Clone, Default, Eq, PartialEq, Hash)]
-pub struct Layout {
-    pub formats: Vec<Format>,
+pub struct BusConfig {
+    pub layouts: Vec<Layout>,
 }
 
 #[derive(Clone, Eq, PartialEq, Hash)]
-pub enum Format {
+pub enum Layout {
     Mono,
     Stereo,
 }
 
-impl Format {
+impl Layout {
     pub fn channel_count(&self) -> usize {
         match self {
-            Format::Mono => 1,
-            Format::Stereo => 2,
+            Layout::Mono => 1,
+            Layout::Stereo => 2,
         }
     }
 }

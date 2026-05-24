@@ -56,12 +56,12 @@ impl ScratchBuffers {
         let mut total_channels = 0;
         let mut output_channels = 0;
         let mut in_out_channels = 0;
-        for (info, format) in zip(buses, &config.formats) {
+        for (info, layout) in zip(buses, &config.layouts) {
             let buffer_type = match info.dir {
                 BusDir::In => BufferType::Const,
                 BusDir::Out | BusDir::InOut => BufferType::Mut,
             };
-            let channel_count = format.channel_count();
+            let channel_count = layout.channel_count();
 
             self.data.push(BufferData {
                 buffer_type,
@@ -103,7 +103,7 @@ impl ScratchBuffers {
     /// responsible for detecting if separate input and output buffers have been passed for an
     /// in-out bus and copying those inputs to the corresponding outputs.
     ///
-    /// This method will return `Err` if the channel counts do not match the current layout or if
+    /// This method will return `Err` if the channel counts do not match the current layouts or if
     /// the buffer's length exceeds the maximum buffer size. It will return `Ok(None)` if the
     /// buffer's length is 0, as hosts are not guaranteed to provide the correct number of inputs
     /// and outputs in that case, and we don't need to construct a `Buffers` object as we will be
@@ -138,12 +138,12 @@ impl ScratchBuffers {
 
         // Validate that the host has provided us with the correct number of channels for each bus.
         for (&bus_index, input) in zip(input_bus_map, inputs) {
-            if input.numChannels as usize != config.formats[bus_index].channel_count() {
+            if input.numChannels as usize != config.layouts[bus_index].channel_count() {
                 return Err(());
             }
         }
         for (&bus_index, output) in zip(output_bus_map, outputs) {
-            if output.numChannels as usize != config.formats[bus_index].channel_count() {
+            if output.numChannels as usize != config.layouts[bus_index].channel_count() {
                 return Err(());
             }
         }

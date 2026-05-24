@@ -1,11 +1,11 @@
 use crate::buffers::Buffers;
-use crate::bus::Format;
+use crate::bus::Layout;
 use crate::events::Events;
 use crate::params::{ParamId, ParamValue};
 
 #[derive(Clone)]
 pub struct Config {
-    pub formats: Vec<Format>,
+    pub layouts: Vec<Layout>,
     pub sample_rate: f64,
     pub max_buffer_size: usize,
 }

@@ -8,7 +8,7 @@ use crate::events::Events;
 use clap_sys::plugin_factory::{CLAP_PLUGIN_FACTORY_ID, clap_plugin_factory};
 use clap_sys::version::CLAP_VERSION;
 
-use crate::bus::{BusInfo, Layout};
+use crate::bus::{BusConfig, BusInfo};
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
 use crate::plugin::{Plugin, PluginInfo};
@@ -44,7 +44,7 @@ impl Plugin for TestPlugin {
     fn buses(&self) -> Vec<BusInfo> {
         Vec::new()
     }
-    fn layouts(&self) -> Vec<Layout> {
+    fn bus_configs(&self) -> Vec<BusConfig> {
         Vec::new()
     }
     fn params(&self) -> Vec<ParamInfo> {

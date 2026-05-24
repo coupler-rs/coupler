@@ -1,6 +1,6 @@
 use std::{fmt, io};
 
-use crate::bus::{BusInfo, Layout};
+use crate::bus::{BusConfig, BusInfo};
 use crate::editor::{Editor, EditorHost, ParentWindow, Size};
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
@@ -35,7 +35,7 @@ pub trait Plugin: Send + Sized + 'static {
     fn new(host: Host) -> Self;
 
     fn buses(&self) -> Vec<BusInfo>;
-    fn layouts(&self) -> Vec<Layout>;
+    fn bus_configs(&self) -> Vec<BusConfig>;
 
     fn params(&self) -> Vec<ParamInfo>;
     fn set_param(&mut self, id: ParamId, value: ParamValue);

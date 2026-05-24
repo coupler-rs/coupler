@@ -9,7 +9,7 @@ use super::buffers::ScratchBuffers;
 use super::host::Vst3Host;
 use super::util::{copy_wstring, utf16_from_ptr};
 use super::view::PlugView;
-use crate::bus::{BusDir, BusInfo, Format, Layout};
+use crate::bus::{BusConfig, BusDir, BusInfo, Layout};
 use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
@@ -20,17 +20,17 @@ use crate::sync::params::ParamValues;
 use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
 use crate::util::{RequireSendSync, slice_from_raw_parts_checked};
 
-fn format_to_speaker_arrangement(format: &Format) -> SpeakerArrangement {
-    match format {
-        Format::Mono => SpeakerArr::kMono,
-        Format::Stereo => SpeakerArr::kStereo,
+fn layout_to_speaker_arrangement(layout: &Layout) -> SpeakerArrangement {
+    match layout {
+        Layout::Mono => SpeakerArr::kMono,
+        Layout::Stereo => SpeakerArr::kStereo,
     }
 }
 
-fn speaker_arrangement_to_format(speaker_arrangement: SpeakerArrangement) -> Option<Format> {
+fn speaker_arrangement_to_layout(speaker_arrangement: SpeakerArrangement) -> Option<Layout> {
     match speaker_arrangement {
-        SpeakerArr::kMono => Some(Format::Mono),
-        SpeakerArr::kStereo => Some(Format::Stereo),
+        SpeakerArr::kMono => Some(Layout::Mono),
+        SpeakerArr::kStereo => Some(Layout::Stereo),
         _ => None,
     }
 }
@@ -54,7 +54,7 @@ pub struct Component<P: Plugin> {
     buses: Vec<BusInfo>,
     input_bus_map: Vec<usize>,
     output_bus_map: Vec<usize>,
-    layout_set: HashSet<Layout>,
+    bus_config_set: HashSet<BusConfig>,
     params: Vec<ParamInfo>,
     param_map: HashMap<ParamId, usize>,
     plugin_params: ParamValues,
@@ -77,7 +77,7 @@ impl<P: Plugin> Component<P> {
         let plugin = P::new(Host::from_inner(host.clone()));
 
         let buses = plugin.buses();
-        let layouts = plugin.layouts();
+        let bus_configs = plugin.bus_configs();
 
         let mut input_bus_map = Vec::new();
         let mut output_bus_map = Vec::new();
@@ -92,16 +92,16 @@ impl<P: Plugin> Component<P> {
             }
         }
 
-        let layout_set = layouts.iter().cloned().collect::<HashSet<_>>();
+        let bus_config_set = bus_configs.iter().cloned().collect::<HashSet<_>>();
 
-        let formats = if let Some(layout) = layouts.first() {
-            layout.formats.clone()
+        let layouts = if let Some(bus_config) = bus_configs.first() {
+            bus_config.layouts.clone()
         } else {
             Vec::new()
         };
 
         let config = Config {
-            formats,
+            layouts,
             sample_rate: 0.0,
             max_buffer_size: 0,
         };
@@ -122,7 +122,7 @@ impl<P: Plugin> Component<P> {
             buses,
             input_bus_map,
             output_bus_map,
-            layout_set,
+            bus_config_set,
             params,
             param_map,
             plugin_params: ParamValues::with_count(param_count),
@@ -219,14 +219,14 @@ impl<P: Plugin> IComponentTrait for Component<P> {
 
                 if let Some(&bus_index) = bus_index {
                     let info = self.buses.get(bus_index);
-                    let format = main_thread_state.config.formats.get(bus_index);
+                    let layout = main_thread_state.config.layouts.get(bus_index);
 
-                    if let (Some(info), Some(format)) = (info, format) {
+                    if let (Some(info), Some(layout)) = (info, layout) {
                         let bus = unsafe { &mut *bus };
 
                         bus.mediaType = type_;
                         bus.direction = dir;
-                        bus.channelCount = format.channel_count() as int32;
+                        bus.channelCount = layout.channel_count() as int32;
                         copy_wstring(&info.name, &mut bus.name);
                         bus.busType = if index == 0 {
                             BusTypes_::kMain as BusType
@@ -406,8 +406,8 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
             return kInvalidArgument;
         }
 
-        let mut candidate = Layout {
-            formats: Vec::new(),
+        let mut candidate = BusConfig {
+            layouts: Vec::new(),
         };
 
         let mut inputs = unsafe { slice_from_raw_parts_checked(inputs, input_count).iter() };
@@ -426,16 +426,16 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
                 }
             };
 
-            if let Some(format) = speaker_arrangement_to_format(arrangement) {
-                candidate.formats.push(format);
+            if let Some(layout) = speaker_arrangement_to_layout(arrangement) {
+                candidate.layouts.push(layout);
             } else {
                 return kResultFalse;
             }
         }
 
-        if self.layout_set.contains(&candidate) {
+        if self.bus_config_set.contains(&candidate) {
             let mut main_thread_state = self.main_thread_state.borrow();
-            main_thread_state.config.formats = candidate.formats;
+            main_thread_state.config.layouts = candidate.layouts;
             return kResultTrue;
         }
 
@@ -458,9 +458,9 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
 
         if let Some(&bus_index) = bus_index {
             #[allow(clippy::unnecessary_cast)] // The type of BusDirection varies by platform
-            if let Some(format) = main_thread_state.config.formats.get(bus_index as usize) {
+            if let Some(layout) = main_thread_state.config.layouts.get(bus_index as usize) {
                 let arr = unsafe { &mut *arr };
-                *arr = format_to_speaker_arrangement(format);
+                *arr = layout_to_speaker_arrangement(layout);
                 return kResultOk;
             }
         }

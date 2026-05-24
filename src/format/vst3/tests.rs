@@ -3,7 +3,7 @@ use std::ffi::CStr;
 use std::{fmt, io, ptr, slice};
 
 use crate::buffers::Buffers;
-use crate::bus::{BusInfo, Layout};
+use crate::bus::{BusConfig, BusInfo};
 use crate::editor::{Editor, EditorHost, ParentWindow, Size};
 use crate::events::Events;
 use crate::host::Host;
@@ -50,7 +50,7 @@ impl Plugin for TestPlugin {
     fn buses(&self) -> Vec<BusInfo> {
         Vec::new()
     }
-    fn layouts(&self) -> Vec<Layout> {
+    fn bus_configs(&self) -> Vec<BusConfig> {
         Vec::new()
     }
     fn params(&self) -> Vec<ParamInfo> {
