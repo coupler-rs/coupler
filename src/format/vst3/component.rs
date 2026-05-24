@@ -94,8 +94,14 @@ impl<P: Plugin> Component<P> {
 
         let layout_set = layouts.iter().cloned().collect::<HashSet<_>>();
 
+        let formats = if let Some(layout) = layouts.first() {
+            layout.formats.clone()
+        } else {
+            Vec::new()
+        };
+
         let config = Config {
-            layout: layouts.first().cloned().unwrap_or_default(),
+            formats,
             sample_rate: 0.0,
             max_buffer_size: 0,
         };
@@ -213,7 +219,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
 
                 if let Some(&bus_index) = bus_index {
                     let info = self.buses.get(bus_index);
-                    let format = main_thread_state.config.layout.formats.get(bus_index);
+                    let format = main_thread_state.config.formats.get(bus_index);
 
                     if let (Some(info), Some(format)) = (info, format) {
                         let bus = unsafe { &mut *bus };
@@ -429,7 +435,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
 
         if self.layout_set.contains(&candidate) {
             let mut main_thread_state = self.main_thread_state.borrow();
-            main_thread_state.config.layout = candidate;
+            main_thread_state.config.formats = candidate.formats;
             return kResultTrue;
         }
 
@@ -452,7 +458,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
 
         if let Some(&bus_index) = bus_index {
             #[allow(clippy::unnecessary_cast)] // The type of BusDirection varies by platform
-            if let Some(format) = main_thread_state.config.layout.formats.get(bus_index as usize) {
+            if let Some(format) = main_thread_state.config.formats.get(bus_index as usize) {
                 let arr = unsafe { &mut *arr };
                 *arr = format_to_speaker_arrangement(format);
                 return kResultOk;

@@ -56,7 +56,7 @@ impl ScratchBuffers {
         let mut total_channels = 0;
         let mut output_channels = 0;
         let mut in_out_channels = 0;
-        for (info, format) in zip(buses, &config.layout.formats) {
+        for (info, format) in zip(buses, &config.formats) {
             let buffer_type = match info.dir {
                 BusDir::In => BufferType::Const,
                 BusDir::Out | BusDir::InOut => BufferType::Mut,
@@ -138,12 +138,12 @@ impl ScratchBuffers {
 
         // Validate that the host has provided us with the correct number of channels for each bus.
         for (&bus_index, input) in zip(input_bus_map, inputs) {
-            if input.numChannels as usize != config.layout.formats[bus_index].channel_count() {
+            if input.numChannels as usize != config.formats[bus_index].channel_count() {
                 return Err(());
             }
         }
         for (&bus_index, output) in zip(output_bus_map, outputs) {
-            if output.numChannels as usize != config.layout.formats[bus_index].channel_count() {
+            if output.numChannels as usize != config.formats[bus_index].channel_count() {
                 return Err(());
             }
         }
