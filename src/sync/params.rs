@@ -2,7 +2,6 @@ use std::sync::atomic::Ordering;
 
 use super::bitset::{self, AtomicBitset};
 use super::float::AtomicF64;
-use crate::params::ParamValue;
 
 pub struct ParamValues {
     values: Vec<AtomicF64>,
@@ -17,7 +16,7 @@ impl ParamValues {
         }
     }
 
-    pub fn set(&self, index: usize, value: ParamValue) {
+    pub fn set(&self, index: usize, value: f64) {
         self.values[index].store(value, Ordering::Relaxed);
         self.dirty.set(index, true, Ordering::Release);
     }
@@ -36,7 +35,7 @@ pub struct Poll<'a> {
 }
 
 impl<'a> Iterator for Poll<'a> {
-    type Item = (usize, ParamValue);
+    type Item = (usize, f64);
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(index) = self.iter.next() {

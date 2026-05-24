@@ -7,7 +7,6 @@ use vst3::{Class, ComPtr, ComRef, Steinberg::*};
 
 use super::component::MainThreadState;
 use crate::editor::{Editor, EditorHost, EditorHostInner, ParentWindow, RawParent};
-use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
 use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
 use crate::util::RequireSendSync;
@@ -17,7 +16,7 @@ struct Vst3EditorHost {
 }
 
 impl EditorHostInner for Vst3EditorHost {
-    fn begin_gesture(&self, id: ParamId) {
+    fn begin_gesture(&self, id: u32) {
         if let Some(handler) = &self.handler {
             unsafe {
                 handler.beginEdit(id);
@@ -25,7 +24,7 @@ impl EditorHostInner for Vst3EditorHost {
         }
     }
 
-    fn end_gesture(&self, id: ParamId) {
+    fn end_gesture(&self, id: u32) {
         if let Some(handler) = &self.handler {
             unsafe {
                 handler.endEdit(id);
@@ -33,7 +32,7 @@ impl EditorHostInner for Vst3EditorHost {
         }
     }
 
-    fn set_param(&self, id: ParamId, value: ParamValue) {
+    fn set_param(&self, id: u32, value: f64) {
         if let Some(handler) = &self.handler {
             unsafe {
                 handler.performEdit(id, value);

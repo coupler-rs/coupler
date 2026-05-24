@@ -236,21 +236,21 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
                    #(.param(#param_info))*;
             }
 
-            fn set_param(&mut self, __id: ::coupler::params::ParamId, __value: ::coupler::params::ParamValue) {
+            fn set_param(&mut self, __id: ::std::primitive::u32, __value: ::std::primitive::f64) {
                 match __id {
                     #(#set_cases)*
                     _ => {}
                 }
             }
 
-            fn get_param(&self, __id: ::coupler::params::ParamId) -> ::coupler::params::ParamValue {
+            fn get_param(&self, __id: ::std::primitive::u32) -> ::std::primitive::f64 {
                 match __id {
                     #(#get_cases)*
                     _ => 0.0,
                 }
             }
 
-            fn parse_param(&self, __id: ::coupler::params::ParamId, __text: &::std::primitive::str) -> ::std::option::Option<::coupler::params::ParamValue> {
+            fn parse_param(&self, __id: ::std::primitive::u32, __text: &::std::primitive::str) -> ::std::option::Option<::std::primitive::f64> {
                 match __id {
                     #(#parse_cases)*
                     _ => ::std::option::Option::None
@@ -259,8 +259,8 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
 
             fn display_param(
                 &self,
-                __id: ::coupler::params::ParamId,
-                __value: ::coupler::params::ParamValue,
+                __id: ::std::primitive::u32,
+                __value: ::std::primitive::f64,
                 __write: impl fmt::Write,
             ) -> ::std::result::Result<(), ::std::fmt::Error> {
                 match __id {

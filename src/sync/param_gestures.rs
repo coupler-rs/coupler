@@ -2,7 +2,6 @@ use std::sync::atomic::Ordering;
 
 use super::bitset::{self, AtomicBitset, Bitset};
 use super::float::AtomicF64;
-use crate::params::ParamValue;
 
 pub struct ParamGestures {
     values: Vec<AtomicF64>,
@@ -31,7 +30,7 @@ impl ParamGestures {
         self.dirty.set(index, true, Ordering::Release);
     }
 
-    pub fn set_value(&self, index: usize, value: ParamValue) {
+    pub fn set_value(&self, index: usize, value: f64) {
         self.values[index].store(value, Ordering::Relaxed);
         self.values_dirty.set(index, true, Ordering::Release);
         self.dirty.set(index, true, Ordering::Release);
@@ -64,7 +63,7 @@ impl GestureStates {
 pub struct GestureUpdate {
     pub index: usize,
     pub begin_gesture: bool,
-    pub set_value: Option<ParamValue>,
+    pub set_value: Option<f64>,
     pub end_gesture: bool,
 }
 

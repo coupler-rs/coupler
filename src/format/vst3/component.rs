@@ -13,7 +13,6 @@ use crate::bus::{BusDir, Layout};
 use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
-use crate::params::ParamId;
 use crate::plugin::Plugin;
 use crate::process::{Config, Processor};
 use crate::sync::params::ParamValues;
@@ -62,7 +61,7 @@ pub struct Component<P: Plugin> {
     output_bus_map: Vec<usize>,
     bus_config_set: HashSet<Vec<Layout>>,
     params: Vec<OwnedParamInfo>,
-    param_map: HashMap<ParamId, usize>,
+    param_map: HashMap<u32, usize>,
     plugin_params: ParamValues,
     processor_params: ParamValues,
     _host: Arc<Vst3Host>,

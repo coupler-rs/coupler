@@ -14,7 +14,6 @@ use crate::bus::{BusDir, Layout};
 use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
-use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
 use crate::process::{Config, Processor};
 use crate::sync::param_gestures::{GestureStates, GestureUpdate, ParamGestures};
@@ -32,7 +31,7 @@ fn port_type_from_layout(layout: &Layout) -> &'static CStr {
     }
 }
 
-fn map_param_in(param: &OwnedParamInfo, value: f64) -> ParamValue {
+fn map_param_in(param: &OwnedParamInfo, value: f64) -> f64 {
     if let Some(steps) = param.steps {
         (value + 0.5) / steps as f64
     } else {
@@ -40,7 +39,7 @@ fn map_param_in(param: &OwnedParamInfo, value: f64) -> ParamValue {
     }
 }
 
-fn map_param_out(param: &OwnedParamInfo, value: ParamValue) -> f64 {
+fn map_param_out(param: &OwnedParamInfo, value: f64) -> f64 {
     if let Some(steps) = param.steps {
         (value * steps as f64).floor()
     } else {
@@ -94,7 +93,7 @@ pub struct Instance<P: Plugin> {
     pub input_bus_map: Vec<usize>,
     pub output_bus_map: Vec<usize>,
     pub params: Vec<OwnedParamInfo>,
-    pub param_map: Arc<HashMap<ParamId, usize>>,
+    pub param_map: Arc<HashMap<u32, usize>>,
     // Processor -> plugin parameter changes
     pub plugin_params: ParamValues,
     // Plugin -> processor parameter changes

@@ -10,7 +10,7 @@ use crate::bus::{BuildBusConfigs, BuildBuses};
 use crate::editor::{Editor, EditorHost, ParentWindow, Size};
 use crate::events::Events;
 use crate::host::Host;
-use crate::params::{BuildParams, ParamId, ParamValue};
+use crate::params::BuildParams;
 use crate::plugin::{BuildInfo, Plugin, PluginInfo};
 use crate::process::{Config, Processor};
 
@@ -42,17 +42,17 @@ impl Plugin for TestPlugin {
     fn buses(&self, _build: impl BuildBuses) {}
     fn bus_configs(&self, _build: impl BuildBusConfigs) {}
     fn params(&self, _build: impl BuildParams) {}
-    fn set_param(&mut self, _id: ParamId, _value: ParamValue) {}
-    fn get_param(&self, _id: ParamId) -> ParamValue {
+    fn set_param(&mut self, _id: u32, _value: f64) {}
+    fn get_param(&self, _id: u32) -> f64 {
         0.0
     }
-    fn parse_param(&self, _id: ParamId, _text: &str) -> Option<ParamValue> {
+    fn parse_param(&self, _id: u32, _text: &str) -> Option<f64> {
         None
     }
     fn display_param(
         &self,
-        _id: ParamId,
-        _value: ParamValue,
+        _id: u32,
+        _value: f64,
         _write: impl fmt::Write,
     ) -> Result<(), fmt::Error> {
         Ok(())
@@ -95,7 +95,7 @@ struct TestProcessor;
 
 impl Processor for TestProcessor {
     fn reset(&mut self) {}
-    fn set_param(&mut self, _id: ParamId, _value: ParamValue) {}
+    fn set_param(&mut self, _id: u32, _value: f64) {}
     fn process(&mut self, _buffers: Buffers, _events: Events) {}
 }
 
@@ -108,7 +108,7 @@ impl Editor for TestEditor {
             height: 0.0,
         }
     }
-    fn param_changed(&mut self, _id: ParamId, _value: ParamValue) {}
+    fn param_changed(&mut self, _id: u32, _value: f64) {}
 }
 
 unsafe fn str_from_ptr<'a>(ptr: *const c_char) -> Result<&'a str, std::str::Utf8Error> {

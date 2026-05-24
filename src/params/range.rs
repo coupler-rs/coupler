@@ -1,15 +1,13 @@
-use super::ParamValue;
-
 pub trait Range<T> {
     fn steps(&self) -> Option<u32>;
-    fn encode(&self, value: &T) -> ParamValue;
-    fn decode(&self, value: ParamValue) -> T;
+    fn encode(&self, value: &T) -> f64;
+    fn decode(&self, value: f64) -> T;
 }
 
 pub trait Encode {
     fn steps() -> Option<u32>;
-    fn encode(&self) -> ParamValue;
-    fn decode(value: ParamValue) -> Self;
+    fn encode(&self) -> f64;
+    fn decode(value: f64) -> Self;
 }
 
 pub struct DefaultRange;
@@ -19,11 +17,11 @@ impl<T: Encode> Range<T> for DefaultRange {
         T::steps()
     }
 
-    fn encode(&self, value: &T) -> ParamValue {
+    fn encode(&self, value: &T) -> f64 {
         T::encode(value)
     }
 
-    fn decode(&self, value: ParamValue) -> T {
+    fn decode(&self, value: f64) -> T {
         T::decode(value)
     }
 }
@@ -40,12 +38,12 @@ macro_rules! float_range {
             }
 
             #[inline]
-            fn encode(&self, value: &$float) -> ParamValue {
+            fn encode(&self, value: &$float) -> f64 {
                 ((value - self.start) / (self.end - self.start)) as f64
             }
 
             #[inline]
-            fn decode(&self, value: ParamValue) -> $float {
+            fn decode(&self, value: f64) -> $float {
                 (1.0 - value as $float) * self.start + value as $float * self.end
             }
         }
@@ -57,12 +55,12 @@ macro_rules! float_range {
             }
 
             #[inline]
-            fn encode(&self, value: &$float) -> ParamValue {
+            fn encode(&self, value: &$float) -> f64 {
                 ((value - self.start()) / (self.end() - self.start())) as f64
             }
 
             #[inline]
-            fn decode(&self, value: ParamValue) -> $float {
+            fn decode(&self, value: f64) -> $float {
                 (1.0 - value as $float) * self.start() + value as $float * self.end()
             }
         }
@@ -74,12 +72,12 @@ macro_rules! float_range {
             }
 
             #[inline]
-            fn encode(&self, value: &$float) -> ParamValue {
+            fn encode(&self, value: &$float) -> f64 {
                 (value / self.0.start).log(self.0.end / self.0.start) as f64
             }
 
             #[inline]
-            fn decode(&self, value: ParamValue) -> $float {
+            fn decode(&self, value: f64) -> $float {
                 self.0.start * (self.0.end / self.0.start).powf(value as $float)
             }
         }
@@ -91,12 +89,12 @@ macro_rules! float_range {
             }
 
             #[inline]
-            fn encode(&self, value: &$float) -> ParamValue {
+            fn encode(&self, value: &$float) -> f64 {
                 (value / self.0.start()).log(self.0.end() / self.0.start()) as f64
             }
 
             #[inline]
-            fn decode(&self, value: ParamValue) -> $float {
+            fn decode(&self, value: f64) -> $float {
                 self.0.start() * (self.0.end() / self.0.start()).powf(value as $float)
             }
         }
@@ -106,11 +104,11 @@ macro_rules! float_range {
                 (0.0..1.0).steps()
             }
 
-            fn encode(&self) -> ParamValue {
+            fn encode(&self) -> f64 {
                 (0.0..1.0).encode(self)
             }
 
-            fn decode(value: ParamValue) -> Self {
+            fn decode(value: f64) -> Self {
                 (0.0..1.0).decode(value)
             }
         }
@@ -129,13 +127,13 @@ macro_rules! int_range {
             }
 
             #[inline]
-            fn encode(&self, value: &$int) -> ParamValue {
+            fn encode(&self, value: &$int) -> f64 {
                 let steps_recip = 1.0 / (self.end as f64 - self.start as f64);
                 (*value as f64 - self.start as f64 + 0.5) * steps_recip
             }
 
             #[inline]
-            fn decode(&self, value: ParamValue) -> $int {
+            fn decode(&self, value: f64) -> $int {
                 let steps = self.end as f64 - self.start as f64;
                 (self.start as f64 + value * steps) as $int
             }
@@ -148,13 +146,13 @@ macro_rules! int_range {
             }
 
             #[inline]
-            fn encode(&self, value: &$int) -> ParamValue {
+            fn encode(&self, value: &$int) -> f64 {
                 let steps_recip = 1.0 / (*self.end() as f64 + 1.0 - *self.start() as f64);
                 (*value as f64 - *self.start() as f64 + 0.5) * steps_recip
             }
 
             #[inline]
-            fn decode(&self, value: ParamValue) -> $int {
+            fn decode(&self, value: f64) -> $int {
                 let steps = *self.end() as f64 + 1.0 - *self.start() as f64;
                 (*self.start() as f64 + value * steps) as $int
             }
@@ -165,11 +163,11 @@ macro_rules! int_range {
                 (0..2).steps()
             }
 
-            fn encode(&self) -> ParamValue {
+            fn encode(&self) -> f64 {
                 (0..2).encode(self)
             }
 
-            fn decode(value: ParamValue) -> Self {
+            fn decode(value: f64) -> Self {
                 (0..2).decode(value)
             }
         }
@@ -191,14 +189,14 @@ impl Encode for bool {
         Some(2)
     }
 
-    fn encode(&self) -> ParamValue {
+    fn encode(&self) -> f64 {
         match self {
             false => 0.25,
             true => 0.75,
         }
     }
 
-    fn decode(value: ParamValue) -> Self {
+    fn decode(value: f64) -> Self {
         value >= 0.5
     }
 }

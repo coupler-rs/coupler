@@ -3,7 +3,7 @@ use std::os::raw::c_char;
 use std::slice;
 
 use crate::bus::{BuildBusConfigs, BuildBuses, BusConfig, BusDir, BusInfo, Layout};
-use crate::params::{BuildParams, ParamId, ParamInfo, ParamValue};
+use crate::params::{BuildParams, ParamInfo};
 use crate::plugin::{BuildInfo, Plugin, PluginInfo};
 
 pub fn copy_cstring(src: &str, dst: &mut [c_char]) {
@@ -100,9 +100,9 @@ pub fn collect_bus_configs<P: Plugin>(plugin: &P) -> Vec<OwnedBusConfig> {
 }
 
 pub struct OwnedParamInfo {
-    pub id: ParamId,
+    pub id: u32,
     pub name: String,
-    pub default: ParamValue,
+    pub default: f64,
     pub steps: Option<u32>,
 }
 

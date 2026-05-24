@@ -107,13 +107,13 @@ pub fn expand_enum(input: &DeriveInput) -> Result<TokenStream, Error> {
                 Some(#count)
             }
 
-            fn encode(&self) -> ::coupler::params::ParamValue {
+            fn encode(&self) -> ::std::primitive::f64 {
                 match self {
                     #(#encode_cases)*
                 }
             }
 
-            fn decode(__value: ::coupler::params::ParamValue) -> Self {
+            fn decode(__value: ::std::primitive::f64) -> Self {
                 match (__value * #count as ::std::primitive::f64) as ::std::primitive::u32 {
                     #(#decode_cases)*
                     _ => #ident::#last_variant,

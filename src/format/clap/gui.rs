@@ -8,7 +8,6 @@ use clap_sys::plugin::*;
 
 use super::instance::{Extensions, HostPtr, Instance};
 use crate::editor::{Editor, EditorHost, EditorHostInner, ParentWindow, RawParent};
-use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
 use crate::sync::param_gestures::ParamGestures;
 use crate::sync::thread_cell::ThreadCell;
@@ -16,12 +15,12 @@ use crate::sync::thread_cell::ThreadCell;
 struct ClapEditorHost {
     host: HostPtr,
     extensions: Extensions,
-    param_map: Arc<HashMap<ParamId, usize>>,
+    param_map: Arc<HashMap<u32, usize>>,
     param_gestures: Arc<ParamGestures>,
 }
 
 impl EditorHostInner for ClapEditorHost {
-    fn begin_gesture(&self, id: ParamId) {
+    fn begin_gesture(&self, id: u32) {
         self.param_gestures.begin_gesture(self.param_map[&id]);
 
         if let Some(host_params) = self.extensions.host_params {
@@ -29,7 +28,7 @@ impl EditorHostInner for ClapEditorHost {
         }
     }
 
-    fn end_gesture(&self, id: ParamId) {
+    fn end_gesture(&self, id: u32) {
         self.param_gestures.end_gesture(self.param_map[&id]);
 
         if let Some(host_params) = self.extensions.host_params {
@@ -37,7 +36,7 @@ impl EditorHostInner for ClapEditorHost {
         }
     }
 
-    fn set_param(&self, id: ParamId, value: ParamValue) {
+    fn set_param(&self, id: u32, value: f64) {
         self.param_gestures.set_value(self.param_map[&id], value);
 
         if let Some(host_params) = self.extensions.host_params {

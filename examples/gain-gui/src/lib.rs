@@ -11,7 +11,7 @@ use coupler::events::{Data, Events};
 use coupler::format::clap::{BuildClapInfo, ClapInfo, ClapPlugin};
 use coupler::format::vst3::{BuildVst3Info, Uuid, Vst3Info, Vst3Plugin};
 use coupler::host::Host;
-use coupler::params::{BuildParams, ParamId, ParamValue, Params};
+use coupler::params::{BuildParams, Params};
 use coupler::plugin::{BuildInfo, Plugin, PluginInfo};
 use coupler::process::{Config, Processor};
 
@@ -79,24 +79,19 @@ impl Plugin for GainGui {
         self.params.params(build)
     }
 
-    fn set_param(&mut self, id: ParamId, value: ParamValue) {
+    fn set_param(&mut self, id: u32, value: f64) {
         self.params.set_param(id, value);
     }
 
-    fn get_param(&self, id: ParamId) -> ParamValue {
+    fn get_param(&self, id: u32) -> f64 {
         self.params.get_param(id)
     }
 
-    fn parse_param(&self, id: ParamId, text: &str) -> Option<ParamValue> {
+    fn parse_param(&self, id: u32, text: &str) -> Option<f64> {
         self.params.parse_param(id, text)
     }
 
-    fn display_param(
-        &self,
-        id: ParamId,
-        value: ParamValue,
-        write: impl fmt::Write,
-    ) -> Result<(), fmt::Error> {
+    fn display_param(&self, id: u32, value: f64, write: impl fmt::Write) -> Result<(), fmt::Error> {
         self.params.display_param(id, value, write)
     }
 
@@ -157,7 +152,7 @@ pub struct GainGuiProcessor {
 impl Processor for GainGuiProcessor {
     fn reset(&mut self) {}
 
-    fn set_param(&mut self, id: ParamId, value: ParamValue) {
+    fn set_param(&mut self, id: u32, value: f64) {
         self.params.set_param(id, value);
     }
 
@@ -368,7 +363,7 @@ impl Editor for GainGuiEditor {
         }
     }
 
-    fn param_changed(&mut self, id: ParamId, value: ParamValue) {
+    fn param_changed(&mut self, id: u32, value: f64) {
         self.params.borrow_mut().set_param(id, value);
     }
 }
