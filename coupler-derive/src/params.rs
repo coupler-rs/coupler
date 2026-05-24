@@ -165,7 +165,7 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
         quote! {
             ::coupler::params::ParamInfo {
                 id: #id,
-                name: ::std::string::ToString::to_string(#name),
+                name: #name,
                 default: ::coupler::params::Range::<#ty>::encode(&(#range), &__default.#ident),
                 steps: ::coupler::params::Range::<#ty>::steps(&(#range)),
             }
@@ -229,12 +229,11 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
 
     Ok(quote! {
         impl #impl_generics ::coupler::params::Params for #ident #ty_generics #where_clause {
-            fn params(&self) -> ::std::vec::Vec<::coupler::params::ParamInfo> {
+            fn params(&self, __build: impl ::coupler::params::BuildParams) {
                 let __default: #ident #ty_generics = ::std::default::Default::default();
 
-                ::std::vec![
-                    #(#param_info,)*
-                ]
+                __build
+                   #(.param(#param_info))*;
             }
 
             fn set_param(&mut self, __id: ::coupler::params::ParamId, __value: ::coupler::params::ParamValue) {

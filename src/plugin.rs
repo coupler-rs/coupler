@@ -3,7 +3,7 @@ use std::{fmt, io};
 use crate::bus::{BuildBusConfigs, BuildBuses};
 use crate::editor::{Editor, EditorHost, ParentWindow, Size};
 use crate::host::Host;
-use crate::params::{ParamId, ParamInfo, ParamValue};
+use crate::params::{BuildParams, ParamId, ParamValue};
 use crate::process::{Config, Processor};
 
 #[derive(Default)]
@@ -29,7 +29,7 @@ pub trait Plugin: Send + Sized + 'static {
     fn buses(&self, build: impl BuildBuses);
     fn bus_configs(&self, build: impl BuildBusConfigs);
 
-    fn params(&self) -> Vec<ParamInfo>;
+    fn params(&self, build: impl BuildParams);
     fn set_param(&mut self, id: ParamId, value: ParamValue);
     fn get_param(&self, id: ParamId) -> ParamValue;
     fn parse_param(&self, id: ParamId, text: &str) -> Option<ParamValue>;

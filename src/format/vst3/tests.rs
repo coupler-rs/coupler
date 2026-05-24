@@ -17,7 +17,7 @@ use crate::bus::{BuildBusConfigs, BuildBuses};
 use crate::editor::{Editor, EditorHost, ParentWindow, Size};
 use crate::events::Events;
 use crate::host::Host;
-use crate::params::{ParamId, ParamInfo, ParamValue};
+use crate::params::{BuildParams, ParamId, ParamValue};
 use crate::plugin::{BuildInfo, Plugin, PluginInfo};
 use crate::process::{Config, Processor};
 
@@ -48,9 +48,7 @@ impl Plugin for TestPlugin {
     }
     fn buses(&self, _build: impl BuildBuses) {}
     fn bus_configs(&self, _build: impl BuildBusConfigs) {}
-    fn params(&self) -> Vec<ParamInfo> {
-        Vec::new()
-    }
+    fn params(&self, _build: impl BuildParams) {}
     fn set_param(&mut self, _id: ParamId, _value: ParamValue) {}
     fn get_param(&self, _id: ParamId) -> ParamValue {
         0.0

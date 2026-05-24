@@ -14,15 +14,15 @@ use crate::bus::{BusDir, Layout};
 use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
-use crate::params::{ParamId, ParamInfo, ParamValue};
+use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
 use crate::process::{Config, Processor};
 use crate::sync::param_gestures::{GestureStates, GestureUpdate, ParamGestures};
 use crate::sync::params::ParamValues;
 use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
 use crate::util::{
-    OwnedBusConfig, OwnedBusInfo, RequireSendSync, collect_bus_configs, collect_buses,
-    copy_cstring, slice_from_raw_parts_checked,
+    OwnedBusConfig, OwnedBusInfo, OwnedParamInfo, RequireSendSync, collect_bus_configs,
+    collect_buses, collect_params, copy_cstring, slice_from_raw_parts_checked,
 };
 
 fn port_type_from_layout(layout: &Layout) -> &'static CStr {
@@ -32,7 +32,7 @@ fn port_type_from_layout(layout: &Layout) -> &'static CStr {
     }
 }
 
-fn map_param_in(param: &ParamInfo, value: f64) -> ParamValue {
+fn map_param_in(param: &OwnedParamInfo, value: f64) -> ParamValue {
     if let Some(steps) = param.steps {
         (value + 0.5) / steps as f64
     } else {
@@ -40,7 +40,7 @@ fn map_param_in(param: &ParamInfo, value: f64) -> ParamValue {
     }
 }
 
-fn map_param_out(param: &ParamInfo, value: ParamValue) -> f64 {
+fn map_param_out(param: &OwnedParamInfo, value: ParamValue) -> f64 {
     if let Some(steps) = param.steps {
         (value * steps as f64).floor()
     } else {
@@ -93,7 +93,7 @@ pub struct Instance<P: Plugin> {
     pub bus_configs: Vec<OwnedBusConfig>,
     pub input_bus_map: Vec<usize>,
     pub output_bus_map: Vec<usize>,
-    pub params: Vec<ParamInfo>,
+    pub params: Vec<OwnedParamInfo>,
     pub param_map: Arc<HashMap<ParamId, usize>>,
     // Processor -> plugin parameter changes
     pub plugin_params: ParamValues,
@@ -127,7 +127,7 @@ impl<P: Plugin> Instance<P> {
             }
         }
 
-        let params = plugin.params();
+        let params = collect_params(&plugin);
         let param_count = params.len();
 
         let mut param_map = HashMap::new();

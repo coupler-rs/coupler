@@ -9,7 +9,7 @@ use coupler::events::{Data, Events};
 use coupler::format::clap::{BuildClapInfo, ClapInfo, ClapPlugin};
 use coupler::format::vst3::{BuildVst3Info, Uuid, Vst3Info, Vst3Plugin};
 use coupler::host::Host;
-use coupler::params::{ParamId, ParamInfo, ParamValue, Params};
+use coupler::params::{BuildParams, ParamId, ParamValue, Params};
 use coupler::plugin::{BuildInfo, Plugin, PluginInfo};
 use coupler::process::{Config, Processor};
 
@@ -66,8 +66,8 @@ impl Plugin for Gain {
             });
     }
 
-    fn params(&self) -> Vec<ParamInfo> {
-        self.params.params()
+    fn params(&self, build: impl BuildParams) {
+        self.params.params(build)
     }
 
     fn set_param(&mut self, id: ParamId, value: ParamValue) {

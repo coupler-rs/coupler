@@ -13,15 +13,19 @@ pub use range::{DefaultRange, Encode, Log, Range};
 pub type ParamId = u32;
 pub type ParamValue = f64;
 
-pub struct ParamInfo {
+pub struct ParamInfo<'a> {
     pub id: ParamId,
-    pub name: String,
+    pub name: &'a str,
     pub default: ParamValue,
     pub steps: Option<u32>,
 }
 
+pub trait BuildParams {
+    fn param(self, info: ParamInfo) -> Self;
+}
+
 pub trait Params {
-    fn params(&self) -> Vec<ParamInfo>;
+    fn params(&self, build: impl BuildParams);
     fn set_param(&mut self, id: ParamId, value: ParamValue);
     fn get_param(&self, id: ParamId) -> ParamValue;
     fn parse_param(&self, id: ParamId, text: &str) -> Option<ParamValue>;

@@ -13,13 +13,14 @@ use crate::bus::{BusDir, Layout};
 use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
-use crate::params::{ParamId, ParamInfo};
+use crate::params::ParamId;
 use crate::plugin::Plugin;
 use crate::process::{Config, Processor};
 use crate::sync::params::ParamValues;
 use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
 use crate::util::{
-    OwnedBusInfo, RequireSendSync, collect_bus_configs, collect_buses, slice_from_raw_parts_checked,
+    OwnedBusInfo, OwnedParamInfo, RequireSendSync, collect_bus_configs, collect_buses,
+    collect_params, slice_from_raw_parts_checked,
 };
 
 fn layout_to_speaker_arrangement(layout: &Layout) -> SpeakerArrangement {
@@ -60,7 +61,7 @@ pub struct Component<P: Plugin> {
     input_bus_map: Vec<usize>,
     output_bus_map: Vec<usize>,
     bus_config_set: HashSet<Vec<Layout>>,
-    params: Vec<ParamInfo>,
+    params: Vec<OwnedParamInfo>,
     param_map: HashMap<ParamId, usize>,
     plugin_params: ParamValues,
     processor_params: ParamValues,
@@ -107,7 +108,7 @@ impl<P: Plugin> Component<P> {
 
         let scratch_buffers = ScratchBuffers::new(input_bus_map.len(), output_bus_map.len());
 
-        let params = plugin.params();
+        let params = collect_params(&plugin);
         let param_count = params.len();
 
         let mut param_map = HashMap::new();

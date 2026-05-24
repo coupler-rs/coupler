@@ -3,6 +3,7 @@ use std::os::raw::c_char;
 use std::slice;
 
 use crate::bus::{BuildBusConfigs, BuildBuses, BusConfig, BusDir, BusInfo, Layout};
+use crate::params::{BuildParams, ParamId, ParamInfo, ParamValue};
 use crate::plugin::{BuildInfo, Plugin, PluginInfo};
 
 pub fn copy_cstring(src: &str, dst: &mut [c_char]) {
@@ -96,4 +97,31 @@ pub fn collect_bus_configs<P: Plugin>(plugin: &P) -> Vec<OwnedBusConfig> {
     let mut configs = Vec::new();
     plugin.bus_configs(CollectBusConfigs(&mut configs));
     configs
+}
+
+pub struct OwnedParamInfo {
+    pub id: ParamId,
+    pub name: String,
+    pub default: ParamValue,
+    pub steps: Option<u32>,
+}
+
+pub fn collect_params<P: Plugin>(plugin: &P) -> Vec<OwnedParamInfo> {
+    struct CollectParams<'a>(&'a mut Vec<OwnedParamInfo>);
+
+    impl<'a> BuildParams for CollectParams<'a> {
+        fn param(self, param: ParamInfo) -> Self {
+            self.0.push(OwnedParamInfo {
+                id: param.id,
+                name: param.name.to_string(),
+                default: param.default,
+                steps: param.steps,
+            });
+            self
+        }
+    }
+
+    let mut params = Vec::new();
+    plugin.params(CollectParams(&mut params));
+    params
 }
