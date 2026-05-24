@@ -5,7 +5,7 @@ use std::{fmt, io};
 use serde::{Deserialize, Serialize};
 
 use coupler::buffers::{BufferMut, Buffers};
-use coupler::bus::{BusConfig, BusDir, BusInfo, Layout};
+use coupler::bus::{BuildBuses, BusConfig, BusDir, BusInfo, Layout};
 use coupler::editor::{Editor, EditorHost, ParentWindow, RawParent, Size};
 use coupler::events::{Data, Events};
 use coupler::format::clap::{BuildClapInfo, ClapInfo, ClapPlugin};
@@ -58,11 +58,11 @@ impl Plugin for GainGui {
         }
     }
 
-    fn buses(&self) -> Vec<BusInfo> {
-        vec![BusInfo {
-            name: "Main".to_string(),
+    fn buses(&self, build: impl BuildBuses) {
+        build.bus(BusInfo {
+            name: "Main",
             dir: BusDir::InOut,
-        }]
+        });
     }
 
     fn bus_configs(&self) -> Vec<BusConfig> {

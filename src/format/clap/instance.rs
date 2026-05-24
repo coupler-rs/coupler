@@ -10,7 +10,7 @@ use clap_sys::{events::*, host::*, id::*, plugin::*, process::*, stream::*};
 
 use super::host::ClapHost;
 use crate::buffers::{BufferData, BufferType, Buffers};
-use crate::bus::{BusConfig, BusDir, BusInfo, Layout};
+use crate::bus::{BusConfig, BusDir, Layout};
 use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
@@ -20,7 +20,9 @@ use crate::process::{Config, Processor};
 use crate::sync::param_gestures::{GestureStates, GestureUpdate, ParamGestures};
 use crate::sync::params::ParamValues;
 use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
-use crate::util::{RequireSendSync, copy_cstring, slice_from_raw_parts_checked};
+use crate::util::{
+    OwnedBusInfo, RequireSendSync, collect_buses, copy_cstring, slice_from_raw_parts_checked,
+};
 
 fn port_type_from_layout(layout: &Layout) -> &'static CStr {
     match layout {
@@ -86,7 +88,7 @@ pub struct Instance<P: Plugin> {
     #[allow(unused)]
     pub clap_plugin: clap_plugin,
     pub host: HostPtr,
-    pub buses: Vec<BusInfo>,
+    pub buses: Vec<OwnedBusInfo>,
     pub bus_configs: Vec<BusConfig>,
     pub input_bus_map: Vec<usize>,
     pub output_bus_map: Vec<usize>,
@@ -108,7 +110,7 @@ impl<P: Plugin> Instance<P> {
     pub fn new(desc: *const clap_plugin_descriptor, host: *const clap_host) -> Self {
         let plugin = P::new(Host::from_inner(Arc::new(ClapHost {})));
 
-        let buses = plugin.buses();
+        let buses = collect_buses(&plugin);
         let bus_configs = plugin.bus_configs();
 
         let mut input_bus_map = Vec::new();

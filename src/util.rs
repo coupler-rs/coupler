@@ -2,6 +2,7 @@ use std::ffi::CString;
 use std::os::raw::c_char;
 use std::slice;
 
+use crate::bus::{BuildBuses, BusDir, BusInfo};
 use crate::plugin::{BuildInfo, Plugin, PluginInfo};
 
 pub fn copy_cstring(src: &str, dst: &mut [c_char]) {
@@ -51,4 +52,27 @@ where
     }
 
     P::info(BuildInfoFn(f))
+}
+
+pub struct OwnedBusInfo {
+    pub name: String,
+    pub dir: BusDir,
+}
+
+pub fn collect_buses<P: Plugin>(plugin: &P) -> Vec<OwnedBusInfo> {
+    struct CollectBuses<'a>(&'a mut Vec<OwnedBusInfo>);
+
+    impl<'a> BuildBuses for CollectBuses<'a> {
+        fn bus(self, bus: BusInfo) -> Self {
+            self.0.push(OwnedBusInfo {
+                name: bus.name.to_string(),
+                dir: bus.dir,
+            });
+            self
+        }
+    }
+
+    let mut buses = Vec::new();
+    plugin.buses(CollectBuses(&mut buses));
+    buses
 }

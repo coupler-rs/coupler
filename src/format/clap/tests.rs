@@ -6,7 +6,7 @@ use clap_sys::version::CLAP_VERSION;
 
 use super::{BuildClapInfo, ClapInfo, ClapPlugin, Factory};
 use crate::buffers::Buffers;
-use crate::bus::{BusConfig, BusInfo};
+use crate::bus::{BuildBuses, BusConfig};
 use crate::editor::{Editor, EditorHost, ParentWindow, Size};
 use crate::events::Events;
 use crate::host::Host;
@@ -39,9 +39,7 @@ impl Plugin for TestPlugin {
     fn new(_host: Host) -> Self {
         TestPlugin
     }
-    fn buses(&self) -> Vec<BusInfo> {
-        Vec::new()
-    }
+    fn buses(&self, _build: impl BuildBuses) {}
     fn bus_configs(&self) -> Vec<BusConfig> {
         Vec::new()
     }

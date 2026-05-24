@@ -9,7 +9,7 @@ use super::buffers::ScratchBuffers;
 use super::host::Vst3Host;
 use super::util::{copy_wstring, utf16_from_ptr};
 use super::view::PlugView;
-use crate::bus::{BusDir, BusInfo, Layout};
+use crate::bus::{BusDir, Layout};
 use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
@@ -18,7 +18,7 @@ use crate::plugin::Plugin;
 use crate::process::{Config, Processor};
 use crate::sync::params::ParamValues;
 use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
-use crate::util::{RequireSendSync, slice_from_raw_parts_checked};
+use crate::util::{OwnedBusInfo, RequireSendSync, collect_buses, slice_from_raw_parts_checked};
 
 fn layout_to_speaker_arrangement(layout: &Layout) -> SpeakerArrangement {
     match layout {
@@ -54,7 +54,7 @@ struct ProcessState<P: Plugin> {
 }
 
 pub struct Component<P: Plugin> {
-    buses: Vec<BusInfo>,
+    buses: Vec<OwnedBusInfo>,
     input_bus_map: Vec<usize>,
     output_bus_map: Vec<usize>,
     bus_config_set: HashSet<Vec<Layout>>,
@@ -79,7 +79,7 @@ impl<P: Plugin> Component<P> {
 
         let plugin = P::new(Host::from_inner(host.clone()));
 
-        let buses = plugin.buses();
+        let buses = collect_buses(&plugin);
         let bus_configs = plugin.bus_configs();
 
         let mut input_bus_map = Vec::new();

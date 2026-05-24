@@ -5,8 +5,8 @@ pub enum BusDir {
     InOut,
 }
 
-pub struct BusInfo {
-    pub name: String,
+pub struct BusInfo<'a> {
+    pub name: &'a str,
     pub dir: BusDir,
 }
 
@@ -28,4 +28,8 @@ impl Layout {
             Layout::Stereo => 2,
         }
     }
+}
+
+pub trait BuildBuses {
+    fn bus(self, bus: BusInfo) -> Self;
 }

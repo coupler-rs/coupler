@@ -5,8 +5,8 @@ use std::{ptr, slice};
 use vst3::Steinberg::Vst::ProcessData;
 
 use crate::buffers::{BufferData, BufferType, Buffers};
-use crate::bus::{BusDir, BusInfo, Layout};
-use crate::util::slice_from_raw_parts_checked;
+use crate::bus::{BusDir, Layout};
+use crate::util::{OwnedBusInfo, slice_from_raw_parts_checked};
 
 // Alternative to `slice::from_raw_parts` that can be used safely even when passed an unaligned
 // pointer. Creates an iterator that fetches each item in an array using `ptr::read_unaligned`.
@@ -50,7 +50,7 @@ impl ScratchBuffers {
         self.outputs_active[index] = active;
     }
 
-    pub fn resize(&mut self, buses: &[BusInfo], layouts: &[Layout], max_buffer_size: usize) {
+    pub fn resize(&mut self, buses: &[OwnedBusInfo], layouts: &[Layout], max_buffer_size: usize) {
         self.data.clear();
         let mut total_channels = 0;
         let mut output_channels = 0;
@@ -109,7 +109,7 @@ impl ScratchBuffers {
     /// calling `Processor::flush` instead of `Processor::process`.
     pub unsafe fn get_buffers<'a, 'b>(
         &'a mut self,
-        buses: &[BusInfo],
+        buses: &[OwnedBusInfo],
         input_bus_map: &[usize],
         output_bus_map: &[usize],
         layouts: &[Layout],
