@@ -113,7 +113,7 @@ impl Plugin for GainGui {
         Ok(())
     }
 
-    fn processor(&mut self, _config: &Config) -> Self::Processor {
+    fn processor(&mut self, _config: Config) -> Self::Processor {
         GainGuiProcessor {
             params: self.params.clone(),
         }

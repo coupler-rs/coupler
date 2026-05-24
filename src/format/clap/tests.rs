@@ -69,7 +69,7 @@ impl Plugin for TestPlugin {
     fn load(&mut self, _input: impl io::Read) -> io::Result<()> {
         Ok(())
     }
-    fn processor(&mut self, _config: &Config) -> Self::Processor {
+    fn processor(&mut self, _config: Config) -> Self::Processor {
         TestProcessor
     }
     fn has_editor(&self) -> bool {
@@ -86,7 +86,7 @@ impl Plugin for TestPlugin {
     }
 
     #[allow(unused_variables)]
-    fn latency(&self, _config: &Config) -> u64 {
+    fn latency(&self, _config: Config) -> u64 {
         0
     }
 }

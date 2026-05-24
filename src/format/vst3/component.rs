@@ -318,7 +318,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
                 max_buffer_size: main_thread_state.max_buffer_size,
             };
 
-            process_state.processor = Some(main_thread_state.plugin.processor(&config));
+            process_state.processor = Some(main_thread_state.plugin.processor(config));
         }
 
         kResultOk
@@ -497,7 +497,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
             max_buffer_size: main_thread_state.max_buffer_size,
         };
 
-        main_thread_state.plugin.latency(&config) as uint32
+        main_thread_state.plugin.latency(config) as uint32
     }
 
     unsafe fn setupProcessing(&self, setup: *mut ProcessSetup) -> tresult {

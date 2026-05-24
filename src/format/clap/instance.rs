@@ -351,7 +351,7 @@ impl<P: Plugin> Instance<P> {
         // reflected in the initial state of the processor.
         for _ in instance.processor_params.poll() {}
 
-        process_state.processor = Some(main_thread_state.plugin.processor(&config));
+        process_state.processor = Some(main_thread_state.plugin.processor(config));
 
         true
     }

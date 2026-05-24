@@ -104,7 +104,7 @@ impl Plugin for Gain {
         Ok(())
     }
 
-    fn processor(&mut self, _config: &Config) -> Self::Processor {
+    fn processor(&mut self, _config: Config) -> Self::Processor {
         GainProcessor {
             params: self.params.clone(),
         }

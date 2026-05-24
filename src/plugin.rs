@@ -39,14 +39,14 @@ pub trait Plugin: Send + Sized + 'static {
     fn save(&self, output: impl io::Write) -> io::Result<()>;
     fn load(&mut self, input: impl io::Read) -> io::Result<()>;
 
-    fn processor(&mut self, config: &Config) -> Self::Processor;
+    fn processor(&mut self, config: Config) -> Self::Processor;
 
     fn has_editor(&self) -> bool;
     fn editor_size(&self) -> Size;
     fn editor(&mut self, host: EditorHost, parent: &ParentWindow) -> Self::Editor;
 
     #[allow(unused_variables)]
-    fn latency(&self, config: &Config) -> u64 {
+    fn latency(&self, config: Config) -> u64 {
         0
     }
 }
