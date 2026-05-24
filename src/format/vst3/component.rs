@@ -60,7 +60,7 @@ pub struct Component<P: Plugin> {
     input_bus_map: Vec<usize>,
     output_bus_map: Vec<usize>,
     bus_config_set: HashSet<Vec<Layout>>,
-    params: Vec<OwnedParamInfo>,
+    params: Arc<Vec<OwnedParamInfo>>,
     param_map: HashMap<u32, usize>,
     plugin_params: ParamValues,
     processor_params: ParamValues,
@@ -122,7 +122,7 @@ impl<P: Plugin> Component<P> {
             input_bus_map,
             output_bus_map,
             bus_config_set,
-            params,
+            params: Arc::new(params),
             param_map,
             plugin_params: ParamValues::with_count(param_count),
             processor_params: ParamValues::with_count(param_count),
@@ -149,15 +149,13 @@ impl<P: Plugin> Component<P> {
 
     fn sync_plugin(&self, plugin: &mut P) {
         for (index, value) in self.plugin_params.poll() {
-            let id = self.params[index].id;
-            plugin.set_param(id, value);
+            plugin.set_param(index, value);
         }
     }
 
     fn sync_processor(&self, processor: &mut P::Processor) {
         for (index, value) in self.processor_params.poll() {
-            let id = self.params[index].id;
-            processor.set_param(id, value);
+            processor.set_param(index, value);
         }
     }
 }
@@ -352,12 +350,12 @@ impl<P: Plugin> IComponentTrait for Component<P> {
             self.sync_plugin(&mut main_thread_state.plugin);
 
             if main_thread_state.plugin.load(&mut StreamReader(state)).is_ok() {
-                for (index, param) in self.params.iter().enumerate() {
-                    let value = main_thread_state.plugin.get_param(param.id);
+                for (index, _param) in self.params.iter().enumerate() {
+                    let value = main_thread_state.plugin.get_param(index);
                     self.processor_params.set(index, value);
 
                     if let Some(editor) = &mut main_thread_state.editor {
-                        editor.param_changed(param.id, value);
+                        editor.param_changed(index, value);
                     }
                 }
 
@@ -581,7 +579,10 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
 
                         process_state.events.push(Event {
                             time: offset as i64,
-                            data: Data::ParamChange { id, value },
+                            data: Data::ParamChange {
+                                index: param_index,
+                                value,
+                            },
                         });
 
                         self.plugin_params.set(param_index, value);
@@ -617,7 +618,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
                             continue;
                         }
 
-                        processor.set_param(id, value);
+                        processor.set_param(param_index, value);
 
                         self.plugin_params.set(param_index, value);
                     }
@@ -687,9 +688,9 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     ) -> tresult {
         let main_thread_state = self.main_thread_state.borrow();
 
-        if self.param_map.contains_key(&id) {
+        if let Some(&index) = self.param_map.get(&id) {
             let mut text = String::new();
-            let _ = main_thread_state.plugin.display_param(id, valueNormalized, &mut text);
+            let _ = main_thread_state.plugin.display_param(index, valueNormalized, &mut text);
             copy_wstring(&text, unsafe { &mut *string });
 
             return kResultOk;
@@ -706,9 +707,9 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     ) -> tresult {
         let main_thread_state = self.main_thread_state.borrow();
 
-        if self.param_map.contains_key(&id) {
+        if let Some(&index) = self.param_map.get(&id) {
             if let Ok(display) = String::from_utf16(unsafe { utf16_from_ptr(string) }) {
-                if let Some(value) = main_thread_state.plugin.parse_param(id, &display) {
+                if let Some(value) = main_thread_state.plugin.parse_param(index, &display) {
                     unsafe { *valueNormalized = value };
                     return kResultOk;
                 }
@@ -733,8 +734,8 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     unsafe fn getParamNormalized(&self, id: ParamID) -> ParamValue {
         let main_thread_state = self.main_thread_state.borrow();
 
-        if self.param_map.contains_key(&id) {
-            return main_thread_state.plugin.get_param(id);
+        if let Some(&index) = self.param_map.get(&id) {
+            return main_thread_state.plugin.get_param(index);
         }
 
         0.0
@@ -743,11 +744,11 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
     unsafe fn setParamNormalized(&self, id: ParamID, value: ParamValue) -> tresult {
         let mut main_thread_state = self.main_thread_state.borrow();
 
-        if self.param_map.contains_key(&id) {
-            main_thread_state.plugin.set_param(id, value);
+        if let Some(&index) = self.param_map.get(&id) {
+            main_thread_state.plugin.set_param(index, value);
 
             if let Some(editor) = &mut main_thread_state.editor {
-                editor.param_changed(id, value);
+                editor.param_changed(index, value);
             }
 
             return kResultOk;
@@ -777,7 +778,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
             return ptr::null_mut();
         }
 
-        let view = ComWrapper::new(PlugView::new(&self.main_thread_state));
+        let view = ComWrapper::new(PlugView::new(&self.params, &self.main_thread_state));
         view.to_com_ptr::<IPlugView>().unwrap().into_raw()
     }
 }

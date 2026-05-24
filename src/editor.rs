@@ -3,9 +3,9 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 
 pub trait EditorHostInner {
-    fn begin_gesture(&self, id: u32);
-    fn end_gesture(&self, id: u32);
-    fn set_param(&self, id: u32, value: f64);
+    fn begin_gesture(&self, index: usize);
+    fn end_gesture(&self, index: usize);
+    fn set_param(&self, index: usize, value: f64);
 }
 
 #[derive(Clone)]
@@ -23,16 +23,16 @@ impl EditorHost {
         }
     }
 
-    pub fn begin_gesture(&self, id: u32) {
-        self.inner.begin_gesture(id);
+    pub fn begin_gesture(&self, index: usize) {
+        self.inner.begin_gesture(index);
     }
 
-    pub fn end_gesture(&self, id: u32) {
-        self.inner.end_gesture(id);
+    pub fn end_gesture(&self, index: usize) {
+        self.inner.end_gesture(index);
     }
 
-    pub fn set_param(&self, id: u32, value: f64) {
-        self.inner.set_param(id, value);
+    pub fn set_param(&self, index: usize, value: f64) {
+        self.inner.set_param(index, value);
     }
 }
 
@@ -64,7 +64,7 @@ pub struct Size {
 
 pub trait Editor: Sized + 'static {
     fn size(&self) -> Size;
-    fn param_changed(&mut self, id: u32, value: f64);
+    fn param_changed(&mut self, index: usize, value: f64);
 }
 
 pub struct NoEditor;
@@ -77,5 +77,5 @@ impl Editor for NoEditor {
         }
     }
 
-    fn param_changed(&mut self, _id: u32, _value: f64) {}
+    fn param_changed(&mut self, _index: usize, _value: f64) {}
 }

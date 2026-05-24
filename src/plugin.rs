@@ -30,10 +30,15 @@ pub trait Plugin: Send + Sized + 'static {
     fn bus_configs(&self, build: impl BuildBusConfigs);
 
     fn params(&self, build: impl BuildParams);
-    fn set_param(&mut self, id: u32, value: f64);
-    fn get_param(&self, id: u32) -> f64;
-    fn parse_param(&self, id: u32, text: &str) -> Option<f64>;
-    fn display_param(&self, id: u32, value: f64, write: impl fmt::Write) -> Result<(), fmt::Error>;
+    fn set_param(&mut self, index: usize, value: f64);
+    fn get_param(&self, index: usize) -> f64;
+    fn parse_param(&self, index: usize, text: &str) -> Option<f64>;
+    fn display_param(
+        &self,
+        index: usize,
+        value: f64,
+        write: impl fmt::Write,
+    ) -> Result<(), fmt::Error>;
 
     fn save(&self, output: impl io::Write) -> io::Result<()>;
     fn load(&mut self, input: impl io::Read) -> io::Result<()>;

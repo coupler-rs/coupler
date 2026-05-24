@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::ffi::{CStr, c_char};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -15,29 +14,28 @@ use crate::sync::thread_cell::ThreadCell;
 struct ClapEditorHost {
     host: HostPtr,
     extensions: Extensions,
-    param_map: Arc<HashMap<u32, usize>>,
     param_gestures: Arc<ParamGestures>,
 }
 
 impl EditorHostInner for ClapEditorHost {
-    fn begin_gesture(&self, id: u32) {
-        self.param_gestures.begin_gesture(self.param_map[&id]);
+    fn begin_gesture(&self, index: usize) {
+        self.param_gestures.begin_gesture(index);
 
         if let Some(host_params) = self.extensions.host_params {
             unsafe { host_params.as_ref().request_flush.unwrap()(self.host.0) };
         }
     }
 
-    fn end_gesture(&self, id: u32) {
-        self.param_gestures.end_gesture(self.param_map[&id]);
+    fn end_gesture(&self, index: usize) {
+        self.param_gestures.end_gesture(index);
 
         if let Some(host_params) = self.extensions.host_params {
             unsafe { host_params.as_ref().request_flush.unwrap()(self.host.0) };
         }
     }
 
-    fn set_param(&self, id: u32, value: f64) {
-        self.param_gestures.set_value(self.param_map[&id], value);
+    fn set_param(&self, index: usize, value: f64) {
+        self.param_gestures.set_value(index, value);
 
         if let Some(host_params) = self.extensions.host_params {
             unsafe { host_params.as_ref().request_flush.unwrap()(self.host.0) };
@@ -198,7 +196,6 @@ impl<P: Plugin> Instance<P> {
         let host = EditorHost::from_inner(Rc::new(ClapEditorHost {
             host: instance.host,
             extensions: main_thread_state.extensions,
-            param_map: Arc::clone(&instance.param_map),
             param_gestures: Arc::clone(&instance.param_gestures),
         }));
         let parent = unsafe { ParentWindow::from_raw(raw_parent) };

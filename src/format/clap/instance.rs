@@ -93,7 +93,7 @@ pub struct Instance<P: Plugin> {
     pub input_bus_map: Vec<usize>,
     pub output_bus_map: Vec<usize>,
     pub params: Vec<OwnedParamInfo>,
-    pub param_map: Arc<HashMap<u32, usize>>,
+    pub param_map: HashMap<u32, usize>,
     // Processor -> plugin parameter changes
     pub plugin_params: ParamValues,
     // Plugin -> processor parameter changes
@@ -157,7 +157,7 @@ impl<P: Plugin> Instance<P> {
             input_bus_map,
             output_bus_map,
             params,
-            param_map: Arc::new(param_map),
+            param_map,
             plugin_params: ParamValues::with_count(param_count),
             processor_params: ParamValues::with_count(param_count),
             param_gestures: Arc::new(ParamGestures::with_count(param_count)),
@@ -182,19 +182,17 @@ impl<P: Plugin> Instance<P> {
 
     fn sync_plugin(&self, main_thread_state: &mut MainThreadState<P>) {
         for (index, value) in self.plugin_params.poll() {
-            let id = self.params[index].id;
-            main_thread_state.plugin.set_param(id, value);
+            main_thread_state.plugin.set_param(index, value);
 
             if let Some(editor) = &mut main_thread_state.editor {
-                editor.param_changed(id, value);
+                editor.param_changed(index, value);
             }
         }
     }
 
     fn sync_processor(&self, processor: &mut P::Processor) {
         for (index, value) in self.processor_params.poll() {
-            let id = self.params[index].id;
-            processor.set_param(id, value);
+            processor.set_param(index, value);
         }
     }
 
@@ -207,8 +205,7 @@ impl<P: Plugin> Instance<P> {
     ) {
         for update in self.param_gestures.poll(gesture_states) {
             if let Some(value) = update.set_value {
-                let id = self.params[update.index].id;
-                processor.set_param(id, value);
+                processor.set_param(update.index, value);
 
                 self.plugin_params.set(update.index, value);
             }
@@ -478,10 +475,7 @@ impl<P: Plugin> Instance<P> {
 
                     process_state.events.push(Event {
                         time: event.header.time as i64,
-                        data: Data::ParamChange {
-                            id: event.param_id,
-                            value,
-                        },
+                        data: Data::ParamChange { index, value },
                     });
 
                     instance.plugin_params.set(index, value);
@@ -762,7 +756,7 @@ impl<P: Plugin> Instance<P> {
 
             let param = &instance.params[index];
             let value = unsafe { &mut *value };
-            *value = map_param_out(param, main_thread_state.plugin.get_param(param_id));
+            *value = map_param_out(param, main_thread_state.plugin.get_param(index));
             return true;
         }
 
@@ -784,7 +778,7 @@ impl<P: Plugin> Instance<P> {
 
             let mut text = String::new();
             let _ = main_thread_state.plugin.display_param(
-                param_id,
+                index,
                 map_param_in(param, value),
                 &mut text,
             );
@@ -810,7 +804,7 @@ impl<P: Plugin> Instance<P> {
         if let Some(&index) = instance.param_map.get(&param_id) {
             if let Ok(text) = unsafe { CStr::from_ptr(display) }.to_str() {
                 let param = &instance.params[index];
-                if let Some(out) = main_thread_state.plugin.parse_param(param_id, text) {
+                if let Some(out) = main_thread_state.plugin.parse_param(index, text) {
                     let value = unsafe { &mut *value };
                     *value = map_param_out(param, out);
                     return true;
@@ -850,7 +844,7 @@ impl<P: Plugin> Instance<P> {
                     if let Some(&index) = instance.param_map.get(&event.param_id) {
                         let value = map_param_in(&instance.params[index], event.value);
 
-                        processor.set_param(event.param_id, value);
+                        processor.set_param(index, value);
 
                         instance.plugin_params.set(index, value);
 
@@ -882,23 +876,21 @@ impl<P: Plugin> Instance<P> {
 
                     if let Some(&index) = instance.param_map.get(&event.param_id) {
                         let value = map_param_in(&instance.params[index], event.value);
-                        main_thread_state.plugin.set_param(event.param_id, value);
+                        main_thread_state.plugin.set_param(index, value);
 
                         if let Some(editor) = &mut main_thread_state.editor {
-                            editor.param_changed(event.param_id, value);
+                            editor.param_changed(index, value);
                         }
                     }
                 }
             }
 
             for update in instance.param_gestures.poll(&mut process_state.gesture_states) {
-                let param = &instance.params[update.index];
-
                 if let Some(value) = update.set_value {
-                    main_thread_state.plugin.set_param(param.id, value);
+                    main_thread_state.plugin.set_param(update.index, value);
 
                     if let Some(editor) = &mut main_thread_state.editor {
-                        editor.param_changed(param.id, value);
+                        editor.param_changed(update.index, value);
                     }
                 }
 
@@ -979,12 +971,12 @@ impl<P: Plugin> Instance<P> {
 
         instance.sync_plugin(&mut *main_thread_state);
         if main_thread_state.plugin.load(&mut StreamReader(stream)).is_ok() {
-            for (index, param) in instance.params.iter().enumerate() {
-                let value = main_thread_state.plugin.get_param(param.id);
+            for (index, _param) in instance.params.iter().enumerate() {
+                let value = main_thread_state.plugin.get_param(index);
                 instance.processor_params.set(index, value);
 
                 if let Some(editor) = &mut main_thread_state.editor {
-                    editor.param_changed(param.id, value);
+                    editor.param_changed(index, value);
                 }
             }
 

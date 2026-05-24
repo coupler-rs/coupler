@@ -236,22 +236,22 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
                    #(.param(#param_info))*;
             }
 
-            fn set_param(&mut self, __id: ::std::primitive::u32, __value: ::std::primitive::f64) {
-                match __id {
+            fn set_param(&mut self, __index: ::std::primitive::usize, __value: ::std::primitive::f64) {
+                match __index {
                     #(#set_cases)*
                     _ => {}
                 }
             }
 
-            fn get_param(&self, __id: ::std::primitive::u32) -> ::std::primitive::f64 {
-                match __id {
+            fn get_param(&self, __index: ::std::primitive::usize) -> ::std::primitive::f64 {
+                match __index {
                     #(#get_cases)*
                     _ => 0.0,
                 }
             }
 
-            fn parse_param(&self, __id: ::std::primitive::u32, __text: &::std::primitive::str) -> ::std::option::Option<::std::primitive::f64> {
-                match __id {
+            fn parse_param(&self, __index: ::std::primitive::usize, __text: &::std::primitive::str) -> ::std::option::Option<::std::primitive::f64> {
+                match __index {
                     #(#parse_cases)*
                     _ => ::std::option::Option::None
                 }
@@ -259,11 +259,11 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
 
             fn display_param(
                 &self,
-                __id: ::std::primitive::u32,
+                __index: ::std::primitive::usize,
                 __value: ::std::primitive::f64,
                 __write: impl fmt::Write,
             ) -> ::std::result::Result<(), ::std::fmt::Error> {
-                match __id {
+                match __index {
                     #(#display_cases)*
                     _ => Ok(())
                 }

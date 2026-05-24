@@ -9,47 +9,53 @@ use super::component::MainThreadState;
 use crate::editor::{Editor, EditorHost, EditorHostInner, ParentWindow, RawParent};
 use crate::plugin::Plugin;
 use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
-use crate::util::RequireSendSync;
+use crate::util::{OwnedParamInfo, RequireSendSync};
 
 struct Vst3EditorHost {
     handler: Option<ComPtr<IComponentHandler>>,
+    params: Arc<Vec<OwnedParamInfo>>,
 }
 
 impl EditorHostInner for Vst3EditorHost {
-    fn begin_gesture(&self, id: u32) {
+    fn begin_gesture(&self, index: usize) {
         if let Some(handler) = &self.handler {
             unsafe {
-                handler.beginEdit(id);
+                handler.beginEdit(self.params[index].id);
             }
         }
     }
 
-    fn end_gesture(&self, id: u32) {
+    fn end_gesture(&self, index: usize) {
         if let Some(handler) = &self.handler {
             unsafe {
-                handler.endEdit(id);
+                handler.endEdit(self.params[index].id);
             }
         }
     }
 
-    fn set_param(&self, id: u32, value: f64) {
+    fn set_param(&self, index: usize, value: f64) {
         if let Some(handler) = &self.handler {
             unsafe {
-                handler.performEdit(id, value);
+                handler.performEdit(self.params[index].id, value);
             }
         }
     }
 }
 
 pub struct PlugView<P: Plugin> {
+    params: Arc<Vec<OwnedParamInfo>>,
     main_thread_state: Arc<SyncCell<MainThreadState<P>>>,
 }
 
 impl<P: Plugin> RequireSendSync for PlugView<P> {}
 
 impl<P: Plugin> PlugView<P> {
-    pub fn new(main_thread_state: &Arc<SyncCell<MainThreadState<P>>>) -> PlugView<P> {
+    pub fn new(
+        params: &Arc<Vec<OwnedParamInfo>>,
+        main_thread_state: &Arc<SyncCell<MainThreadState<P>>>,
+    ) -> PlugView<P> {
         PlugView {
+            params: params.clone(),
             main_thread_state: main_thread_state.clone(),
         }
     }
@@ -99,6 +105,7 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
 
         let host = EditorHost::from_inner(Rc::new(Vst3EditorHost {
             handler: main_thread_state.handler.clone(),
+            params: self.params.clone(),
         }));
         let parent = unsafe { ParentWindow::from_raw(raw_parent) };
         let editor = main_thread_state.plugin.editor(host, &parent);

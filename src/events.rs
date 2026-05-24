@@ -10,7 +10,7 @@ pub struct Event {
 #[derive(Copy, Clone, Debug)]
 #[non_exhaustive]
 pub enum Data {
-    ParamChange { id: u32, value: f64 },
+    ParamChange { index: usize, value: f64 },
 }
 
 #[derive(Copy, Clone)]

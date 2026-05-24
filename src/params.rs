@@ -23,10 +23,15 @@ pub trait BuildParams {
 
 pub trait Params {
     fn params(&self, build: impl BuildParams);
-    fn set_param(&mut self, id: u32, value: f64);
-    fn get_param(&self, id: u32) -> f64;
-    fn parse_param(&self, id: u32, text: &str) -> Option<f64>;
-    fn display_param(&self, id: u32, value: f64, write: impl fmt::Write) -> Result<(), fmt::Error>;
+    fn set_param(&mut self, index: usize, value: f64);
+    fn get_param(&self, index: usize) -> f64;
+    fn parse_param(&self, index: usize, text: &str) -> Option<f64>;
+    fn display_param(
+        &self,
+        index: usize,
+        value: f64,
+        write: impl fmt::Write,
+    ) -> Result<(), fmt::Error>;
 }
 
 pub trait Enum: Encode + FromStr + Display {}

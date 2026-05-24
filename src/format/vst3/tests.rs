@@ -49,16 +49,16 @@ impl Plugin for TestPlugin {
     fn buses(&self, _build: impl BuildBuses) {}
     fn bus_configs(&self, _build: impl BuildBusConfigs) {}
     fn params(&self, _build: impl BuildParams) {}
-    fn set_param(&mut self, _id: u32, _value: f64) {}
-    fn get_param(&self, _id: u32) -> f64 {
+    fn set_param(&mut self, _index: usize, _value: f64) {}
+    fn get_param(&self, _index: usize) -> f64 {
         0.0
     }
-    fn parse_param(&self, _id: u32, _text: &str) -> Option<f64> {
+    fn parse_param(&self, _index: usize, _text: &str) -> Option<f64> {
         None
     }
     fn display_param(
         &self,
-        _id: u32,
+        _index: usize,
         _value: f64,
         _write: impl fmt::Write,
     ) -> Result<(), fmt::Error> {
@@ -104,7 +104,7 @@ struct TestProcessor;
 
 impl Processor for TestProcessor {
     fn reset(&mut self) {}
-    fn set_param(&mut self, _id: u32, _value: f64) {}
+    fn set_param(&mut self, _index: usize, _value: f64) {}
     fn process(&mut self, _buffers: Buffers, _events: Events) {}
 }
 
@@ -117,7 +117,7 @@ impl Editor for TestEditor {
             height: 0.0,
         }
     }
-    fn param_changed(&mut self, _id: u32, _value: f64) {}
+    fn param_changed(&mut self, _index: usize, _value: f64) {}
 }
 
 fn str_from_chars(chars: &[char8]) -> Result<&str, Box<dyn Error>> {

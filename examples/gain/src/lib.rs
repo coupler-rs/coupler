@@ -70,20 +70,25 @@ impl Plugin for Gain {
         self.params.params(build)
     }
 
-    fn set_param(&mut self, id: u32, value: f64) {
-        self.params.set_param(id, value);
+    fn set_param(&mut self, index: usize, value: f64) {
+        self.params.set_param(index, value);
     }
 
-    fn get_param(&self, id: u32) -> f64 {
-        self.params.get_param(id)
+    fn get_param(&self, index: usize) -> f64 {
+        self.params.get_param(index)
     }
 
-    fn parse_param(&self, id: u32, text: &str) -> Option<f64> {
-        self.params.parse_param(id, text)
+    fn parse_param(&self, index: usize, text: &str) -> Option<f64> {
+        self.params.parse_param(index, text)
     }
 
-    fn display_param(&self, id: u32, value: f64, write: impl fmt::Write) -> Result<(), fmt::Error> {
-        self.params.display_param(id, value, write)
+    fn display_param(
+        &self,
+        index: usize,
+        value: f64,
+        write: impl fmt::Write,
+    ) -> Result<(), fmt::Error> {
+        self.params.display_param(index, value, write)
     }
 
     fn save(&self, output: impl io::Write) -> io::Result<()> {
@@ -143,16 +148,16 @@ pub struct GainProcessor {
 impl Processor for GainProcessor {
     fn reset(&mut self) {}
 
-    fn set_param(&mut self, id: u32, value: f64) {
-        self.params.set_param(id, value);
+    fn set_param(&mut self, index: usize, value: f64) {
+        self.params.set_param(index, value);
     }
 
     fn process(&mut self, buffers: Buffers, events: Events) {
         let mut buffers: (BufferMut,) = buffers.try_into().unwrap();
         for (mut buffer, events) in buffers.0.split_at_events(events) {
             for event in events {
-                if let Data::ParamChange { id, value } = event.data {
-                    self.set_param(id, value);
+                if let Data::ParamChange { index, value } = event.data {
+                    self.set_param(index, value);
                 }
             }
 
