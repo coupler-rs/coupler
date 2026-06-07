@@ -61,8 +61,9 @@ pub trait Plugin: Send + Sized + 'static {
         unreachable!()
     }
 
-    #[allow(unused_variables)]
     fn latency(&self, config: Config) -> u64 {
+        let _ = config;
+
         0
     }
 }
