@@ -45,9 +45,21 @@ pub trait Plugin: Send + Sized + 'static {
 
     fn processor(&mut self, config: Config) -> Self::Processor;
 
-    fn has_editor(&self) -> bool;
-    fn editor_size(&self) -> Size;
-    fn editor(&mut self, host: EditorHost, parent: &ParentWindow) -> Self::Editor;
+    fn has_editor(&self) -> bool {
+        false
+    }
+    fn editor_size(&self) -> Size {
+        Size {
+            width: 0.0,
+            height: 0.0,
+        }
+    }
+    fn editor(&mut self, host: EditorHost, parent: &ParentWindow) -> Self::Editor {
+        let _ = host;
+        let _ = parent;
+
+        unreachable!()
+    }
 
     #[allow(unused_variables)]
     fn latency(&self, config: Config) -> u64 {

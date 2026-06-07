@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use coupler::buffers::{BufferMut, Buffers};
 use coupler::bus::{BuildBusConfigs, BuildBuses, BusConfig, BusDir, BusInfo, Layout};
-use coupler::editor::{EditorHost, NoEditor, ParentWindow, Size};
+use coupler::editor::NoEditor;
 use coupler::events::{Data, Events};
 use coupler::format::clap::{BuildClapInfo, ClapInfo, ClapPlugin};
 use coupler::format::vst3::{BuildVst3Info, Uuid, Vst3Info, Vst3Plugin};
@@ -107,21 +107,6 @@ impl Plugin for Gain {
         GainProcessor {
             params: self.params.clone(),
         }
-    }
-
-    fn has_editor(&self) -> bool {
-        false
-    }
-
-    fn editor_size(&self) -> Size {
-        Size {
-            width: 0.0,
-            height: 0.0,
-        }
-    }
-
-    fn editor(&mut self, _host: EditorHost, _parent: &ParentWindow) -> Self::Editor {
-        NoEditor
     }
 }
 
