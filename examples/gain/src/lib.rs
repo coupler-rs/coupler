@@ -15,14 +15,8 @@ use coupler::process::{Config, Processor};
 
 #[derive(Params, Serialize, Deserialize, Clone)]
 struct GainParams {
-    #[param(id = 0, name = "Gain", range = 0.0..1.0)]
+    #[param(id = 0, name = "Gain", range = 0.0..1.0, default = 1.0)]
     gain: f32,
-}
-
-impl Default for GainParams {
-    fn default() -> GainParams {
-        GainParams { gain: 1.0 }
-    }
 }
 
 pub struct Gain {

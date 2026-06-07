@@ -7,6 +7,7 @@ pub struct ParamAttr {
     pub name: LitStr,
     pub range: TokenStream,
     pub format: TokenStream,
+    pub default: TokenStream,
 }
 
 pub fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
@@ -16,6 +17,7 @@ pub fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
     let mut name = None;
     let mut range = None;
     let mut format = None;
+    let mut default = None;
 
     for attr in &field.attrs {
         if !attr.path().is_ident("param") {
@@ -64,6 +66,15 @@ pub fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
                 }
 
                 format = Some(meta.value()?.parse::<Expr>()?);
+            } else if ident == "default" {
+                if default.is_some() {
+                    return Err(Error::new_spanned(
+                        &meta.path,
+                        "duplicate param attribute `default`",
+                    ));
+                }
+
+                default = Some(meta.value()?.parse::<Expr>()?);
             } else {
                 return Err(Error::new_spanned(
                     &meta.path,
@@ -104,11 +115,18 @@ pub fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
         quote! { ::coupler::params::DefaultFormat }
     };
 
+    let default = if let Some(default) = default {
+        quote! { #default }
+    } else {
+        quote! { ::std::default::Default::default() }
+    };
+
     Ok(Some(ParamAttr {
         id,
         name,
         range,
         format,
+        default,
     }))
 }
 
@@ -156,17 +174,17 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
     let ident = &input.ident;
 
     let param_info = fields.iter().map(|field| {
-        let ident = field.field.ident.as_ref().unwrap();
         let ty = &field.field.ty;
         let id = &field.param.id;
         let name = &field.param.name;
         let range = &field.param.range;
+        let default = &field.param.default;
 
         quote! {
             ::coupler::params::ParamInfo {
                 id: #id,
                 name: #name,
-                default: ::coupler::params::Range::<#ty>::encode(&(#range), &__default.#ident),
+                default: ::coupler::params::Range::<#ty>::encode(&(#range), &(#default)),
                 steps: ::coupler::params::Range::<#ty>::steps(&(#range)),
             }
         }
@@ -227,11 +245,18 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
         }
     });
 
+    let default_fields = fields.iter().map(|field| {
+        let ident = &field.field.ident;
+        let default = &field.param.default;
+
+        quote! {
+            #ident: (#default),
+        }
+    });
+
     Ok(quote! {
         impl #impl_generics ::coupler::params::Params for #ident #ty_generics #where_clause {
             fn params(&self, __build: impl ::coupler::params::BuildParams) {
-                let __default: #ident #ty_generics = ::std::default::Default::default();
-
                 __build
                    #(.param(#param_info))*;
             }
@@ -266,6 +291,14 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
                 match __index {
                     #(#display_cases)*
                     _ => Ok(())
+                }
+            }
+        }
+
+        impl #impl_generics ::std::default::Default for #ident #ty_generics #where_clause {
+            fn default() -> Self {
+                #ident {
+                    #(#default_fields)*
                 }
             }
         }
