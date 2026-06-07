@@ -10,7 +10,7 @@ pub struct Config<'a> {
 }
 
 pub trait Processor: Send + Sized + 'static {
-    fn reset(&mut self);
+    fn reset(&mut self) {}
     fn set_param(&mut self, index: usize, value: f64);
     fn process(&mut self, buffers: Buffers, events: Events);
 }

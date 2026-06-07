@@ -155,8 +155,6 @@ pub struct GainGuiProcessor {
 }
 
 impl Processor for GainGuiProcessor {
-    fn reset(&mut self) {}
-
     fn set_param(&mut self, index: usize, value: f64) {
         self.params.set_param(index, value);
     }
