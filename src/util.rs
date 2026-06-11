@@ -6,6 +6,10 @@ use crate::bus::{BuildBusConfigs, BuildBuses, BusConfig, BusDir, BusInfo, Layout
 use crate::params::{BuildParams, ParamInfo};
 use crate::plugin::{BuildInfo, Plugin, PluginInfo};
 
+mod id_map;
+
+pub use id_map::IdMap;
+
 pub fn copy_cstring(src: &str, dst: &mut [c_char]) {
     let c_string = CString::new(src).unwrap_or_else(|_| CString::default());
     let bytes = c_string.as_bytes_with_nul();
