@@ -2,10 +2,6 @@ use std::ffi::CString;
 use std::os::raw::c_char;
 use std::slice;
 
-use crate::bus::{BuildBusConfigs, BuildBuses, BusConfig, BusDir, BusInfo, Layout};
-use crate::params::{BuildParams, ParamInfo};
-use crate::plugin::{BuildInfo, Plugin, PluginInfo};
-
 pub fn copy_cstring(src: &str, dst: &mut [c_char]) {
     let c_string = CString::new(src).unwrap_or_else(|_| CString::default());
     let bytes = c_string.as_bytes_with_nul();
@@ -35,93 +31,3 @@ pub unsafe fn slice_from_raw_parts_checked<'a, T>(ptr: *const T, len: usize) -> 
 
 #[allow(unused)]
 pub trait RequireSendSync: Send + Sync {}
-
-pub fn with_info<P, F>(f: F)
-where
-    P: Plugin,
-    F: FnOnce(PluginInfo),
-{
-    struct BuildInfoFn<F>(F);
-
-    impl<F> BuildInfo for BuildInfoFn<F>
-    where
-        F: FnOnce(PluginInfo),
-    {
-        fn info(self, info: PluginInfo) {
-            self.0(info)
-        }
-    }
-
-    P::info(BuildInfoFn(f))
-}
-
-pub struct OwnedBusInfo {
-    pub name: String,
-    pub dir: BusDir,
-}
-
-pub fn collect_buses<P: Plugin>(plugin: &P) -> Vec<OwnedBusInfo> {
-    struct CollectBuses<'a>(&'a mut Vec<OwnedBusInfo>);
-
-    impl<'a> BuildBuses for CollectBuses<'a> {
-        fn bus(self, bus: BusInfo) -> Self {
-            self.0.push(OwnedBusInfo {
-                name: bus.name.to_string(),
-                dir: bus.dir,
-            });
-            self
-        }
-    }
-
-    let mut buses = Vec::new();
-    plugin.buses(CollectBuses(&mut buses));
-    buses
-}
-
-pub struct OwnedBusConfig {
-    pub layouts: Vec<Layout>,
-}
-
-pub fn collect_bus_configs<P: Plugin>(plugin: &P) -> Vec<OwnedBusConfig> {
-    struct CollectBusConfigs<'a>(&'a mut Vec<OwnedBusConfig>);
-
-    impl<'a> BuildBusConfigs for CollectBusConfigs<'a> {
-        fn config(self, config: BusConfig) -> Self {
-            self.0.push(OwnedBusConfig {
-                layouts: config.layouts.to_vec(),
-            });
-            self
-        }
-    }
-
-    let mut configs = Vec::new();
-    plugin.bus_configs(CollectBusConfigs(&mut configs));
-    configs
-}
-
-pub struct OwnedParamInfo {
-    pub id: u32,
-    pub name: String,
-    pub default: f64,
-    pub steps: Option<u32>,
-}
-
-pub fn collect_params<P: Plugin>(plugin: &P) -> Vec<OwnedParamInfo> {
-    struct CollectParams<'a>(&'a mut Vec<OwnedParamInfo>);
-
-    impl<'a> BuildParams for CollectParams<'a> {
-        fn param(self, param: ParamInfo) -> Self {
-            self.0.push(OwnedParamInfo {
-                id: param.id,
-                name: param.name.to_string(),
-                default: param.default,
-                steps: param.steps,
-            });
-            self
-        }
-    }
-
-    let mut params = Vec::new();
-    plugin.params(CollectParams(&mut params));
-    params
-}

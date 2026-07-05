@@ -2,8 +2,6 @@ use std::slice;
 
 use vst3::Steinberg::char16;
 
-use super::{BuildVst3Info, Vst3Info, Vst3Plugin};
-
 pub fn copy_wstring(src: &str, dst: &mut [char16]) {
     let mut len = 0;
     for (src, dst) in src.encode_utf16().zip(dst.iter_mut()) {
@@ -25,23 +23,4 @@ pub unsafe fn utf16_from_ptr<'a>(ptr: *const char16) -> &'a [u16] {
     }
 
     unsafe { slice::from_raw_parts(ptr, len) }
-}
-
-pub fn with_vst3_info<P, F>(f: F)
-where
-    P: Vst3Plugin,
-    F: FnOnce(Vst3Info),
-{
-    struct BuildVst3InfoFn<F>(F);
-
-    impl<F> BuildVst3Info for BuildVst3InfoFn<F>
-    where
-        F: FnOnce(Vst3Info),
-    {
-        fn info(self, info: Vst3Info) {
-            self.0(info)
-        }
-    }
-
-    P::vst3_info(BuildVst3InfoFn(f))
 }

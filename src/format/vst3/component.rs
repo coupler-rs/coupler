@@ -9,18 +9,16 @@ use super::buffers::ScratchBuffers;
 use super::host::Vst3Host;
 use super::util::{copy_wstring, utf16_from_ptr};
 use super::view::PlugView;
-use crate::bus::{BusDir, Layout};
+use crate::bus::{BusDir, Layout, OwnedBusInfo, collect_bus_configs, collect_buses};
 use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
+use crate::params::{OwnedParamInfo, collect_params};
 use crate::plugin::Plugin;
 use crate::process::{Config, Processor};
 use crate::sync::params::ParamValues;
 use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
-use crate::util::{
-    OwnedBusInfo, OwnedParamInfo, RequireSendSync, collect_bus_configs, collect_buses,
-    collect_params, slice_from_raw_parts_checked,
-};
+use crate::util::{RequireSendSync, slice_from_raw_parts_checked};
 
 fn layout_to_speaker_arrangement(layout: &Layout) -> SpeakerArrangement {
     match layout {

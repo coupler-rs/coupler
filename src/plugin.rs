@@ -19,6 +19,25 @@ pub trait BuildInfo {
     fn info(self, info: PluginInfo);
 }
 
+pub(crate) fn with_info<P, F>(f: F)
+where
+    P: Plugin,
+    F: FnOnce(PluginInfo),
+{
+    struct BuildInfoFn<F>(F);
+
+    impl<F> BuildInfo for BuildInfoFn<F>
+    where
+        F: FnOnce(PluginInfo),
+    {
+        fn info(self, info: PluginInfo) {
+            self.0(info)
+        }
+    }
+
+    P::info(BuildInfoFn(f))
+}
+
 pub trait Plugin: Send + Sized + 'static {
     type Processor: Processor;
     type Editor: Editor;

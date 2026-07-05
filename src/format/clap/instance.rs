@@ -10,19 +10,19 @@ use clap_sys::{events::*, host::*, id::*, plugin::*, process::*, stream::*};
 
 use super::host::ClapHost;
 use crate::buffers::{BufferData, BufferType, Buffers};
-use crate::bus::{BusDir, Layout};
+use crate::bus::{
+    BusDir, Layout, OwnedBusConfig, OwnedBusInfo, collect_bus_configs, collect_buses,
+};
 use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
+use crate::params::{OwnedParamInfo, collect_params};
 use crate::plugin::Plugin;
 use crate::process::{Config, Processor};
 use crate::sync::param_gestures::{GestureStates, GestureUpdate, ParamGestures};
 use crate::sync::params::ParamValues;
 use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
-use crate::util::{
-    OwnedBusConfig, OwnedBusInfo, OwnedParamInfo, RequireSendSync, collect_bus_configs,
-    collect_buses, collect_params, copy_cstring, slice_from_raw_parts_checked,
-};
+use crate::util::{RequireSendSync, copy_cstring, slice_from_raw_parts_checked};
 
 fn port_type_from_layout(layout: &Layout) -> &'static CStr {
     match layout {

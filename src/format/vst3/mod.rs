@@ -41,12 +41,31 @@ pub struct Vst3Info {
     pub class_id: Uuid,
 }
 
-pub trait Vst3Plugin {
-    fn vst3_info(build: impl BuildVst3Info);
-}
-
 pub trait BuildVst3Info {
     fn info(self, info: Vst3Info);
+}
+
+pub(crate) fn with_vst3_info<P, F>(f: F)
+where
+    P: Vst3Plugin,
+    F: FnOnce(Vst3Info),
+{
+    struct BuildVst3InfoFn<F>(F);
+
+    impl<F> BuildVst3Info for BuildVst3InfoFn<F>
+    where
+        F: FnOnce(Vst3Info),
+    {
+        fn info(self, info: Vst3Info) {
+            self.0(info)
+        }
+    }
+
+    P::vst3_info(BuildVst3InfoFn(f))
+}
+
+pub trait Vst3Plugin {
+    fn vst3_info(build: impl BuildVst3Info);
 }
 
 #[doc(hidden)]

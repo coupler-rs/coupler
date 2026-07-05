@@ -5,8 +5,8 @@ use std::{ptr, slice};
 use vst3::Steinberg::Vst::ProcessData;
 
 use crate::buffers::{BufferData, BufferType, Buffers};
-use crate::bus::{BusDir, Layout};
-use crate::util::{OwnedBusInfo, slice_from_raw_parts_checked};
+use crate::bus::{BusDir, Layout, OwnedBusInfo};
+use crate::util::slice_from_raw_parts_checked;
 
 // Alternative to `slice::from_raw_parts` that can be used safely even when passed an unaligned
 // pointer. Creates an iterator that fetches each item in an array using `ptr::read_unaligned`.

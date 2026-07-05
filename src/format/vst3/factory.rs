@@ -4,10 +4,10 @@ use std::marker::PhantomData;
 use vst3::{Class, ComWrapper, Steinberg::Vst::*, Steinberg::*, uid};
 
 use super::component::Component;
-use super::util::{copy_wstring, with_vst3_info};
-use super::{Uuid, Vst3Plugin};
-use crate::plugin::Plugin;
-use crate::util::{RequireSendSync, copy_cstring, with_info};
+use super::util::copy_wstring;
+use super::{Uuid, Vst3Plugin, with_vst3_info};
+use crate::plugin::{Plugin, with_info};
+use crate::util::{RequireSendSync, copy_cstring};
 
 fn uuid_to_tuid(uuid: &Uuid) -> TUID {
     uid(uuid.0, uuid.1, uuid.2, uuid.3)

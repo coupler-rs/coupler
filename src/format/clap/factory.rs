@@ -6,11 +6,9 @@ use std::sync::Mutex;
 
 use clap_sys::{host::*, plugin::*, plugin_factory::*, version::*};
 
-use super::ClapPlugin;
 use super::instance::Instance;
-use super::util::with_clap_info;
-use crate::plugin::Plugin;
-use crate::util::with_info;
+use super::{ClapPlugin, with_clap_info};
+use crate::plugin::{Plugin, with_info};
 
 struct FactoryState {
     descriptor: clap_plugin_descriptor,

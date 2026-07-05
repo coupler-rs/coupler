@@ -7,9 +7,10 @@ use vst3::{Class, ComPtr, ComRef, Steinberg::*};
 
 use super::component::MainThreadState;
 use crate::editor::{Editor, EditorHost, EditorHostInner, ParentWindow, RawParent};
+use crate::params::OwnedParamInfo;
 use crate::plugin::Plugin;
 use crate::sync::{sync_cell::SyncCell, thread_cell::ThreadCell};
-use crate::util::{OwnedParamInfo, RequireSendSync};
+use crate::util::RequireSendSync;
 
 struct Vst3EditorHost {
     handler: Option<ComPtr<IComponentHandler>>,
