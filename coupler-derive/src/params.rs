@@ -172,38 +172,35 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
         }
     });
 
-    let set_cases = fields.iter().map(|field| {
+    let set_cases = fields.iter().enumerate().map(|(index, field)| {
         let ident = &field.field.ident;
         let ty = &field.field.ty;
-        let id = &field.param.id;
         let range = &field.param.range;
 
         quote! {
-            #id => {
+            #index => {
                 self.#ident = ::coupler::params::Range::<#ty>::decode(&(#range), __value);
             }
         }
     });
 
-    let get_cases = fields.iter().map(|field| {
+    let get_cases = fields.iter().enumerate().map(|(index, field)| {
         let ident = &field.field.ident;
         let ty = &field.field.ty;
-        let id = &field.param.id;
         let range = &field.param.range;
 
         quote! {
-            #id => ::coupler::params::Range::<#ty>::encode(&(#range), &self.#ident),
+            #index => ::coupler::params::Range::<#ty>::encode(&(#range), &self.#ident),
         }
     });
 
-    let parse_cases = fields.iter().map(|field| {
+    let parse_cases = fields.iter().enumerate().map(|(index, field)| {
         let ty = &field.field.ty;
-        let id = &field.param.id;
         let range = &field.param.range;
         let format = &field.param.format;
 
         quote! {
-            #id => match ::coupler::params::Format::<#ty>::parse(&(#format), __text) {
+            #index => match ::coupler::params::Format::<#ty>::parse(&(#format), __text) {
                 ::std::option::Option::Some(__value) => ::std::option::Option::Some(
                     ::coupler::params::Range::<#ty>::encode(&(#range), &__value),
                 ),
@@ -212,14 +209,13 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
         }
     });
 
-    let display_cases = fields.iter().map(|field| {
-        let id = &field.param.id;
+    let display_cases = fields.iter().enumerate().map(|(index, field)| {
         let ty = &field.field.ty;
         let range = &field.param.range;
         let format = &field.param.format;
 
         quote! {
-            #id => ::coupler::params::Format::<#ty>::display(
+            #index => ::coupler::params::Format::<#ty>::display(
                 &(#format),
                 ::coupler::params::Range::<#ty>::decode(&(#range), __value),
                 __write,
