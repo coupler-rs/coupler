@@ -257,7 +257,7 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
                 &self,
                 __index: ::std::primitive::usize,
                 __value: ::std::primitive::f64,
-                __write: impl fmt::Write,
+                __write: impl ::std::fmt::Write,
             ) -> ::std::result::Result<(), ::std::fmt::Error> {
                 match __index {
                     #(#display_cases)*
