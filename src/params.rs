@@ -1,6 +1,7 @@
 use std::fmt::{self, Display};
 use std::str::FromStr;
 
+use crate::key::{Key, KeyList};
 use crate::plugin::Plugin;
 
 #[cfg(feature = "derive")]
@@ -13,41 +14,53 @@ pub use format::{DefaultFormat, Format};
 pub use range::{DefaultRange, Encode, Log, Range};
 
 pub struct ParamInfo<'a> {
-    pub id: u32,
     pub name: &'a str,
     pub default: f64,
     pub steps: Option<u32>,
 }
 
 pub trait BuildParams {
-    fn param(self, info: ParamInfo) -> Self;
+    fn param<'k>(self, key: impl Into<Key<'k>>, param: ParamInfo) -> Self;
+    fn reserve<'k>(self, key: impl Into<Key<'k>>) -> Self;
 }
 
 pub(crate) struct OwnedParamInfo {
-    pub id: u32,
     pub name: String,
     pub default: f64,
     pub steps: Option<u32>,
 }
 
-pub(crate) fn collect_params<P: Plugin>(plugin: &P) -> Vec<OwnedParamInfo> {
-    struct CollectParams<'a>(&'a mut Vec<OwnedParamInfo>);
+pub(crate) fn collect_params<P: Plugin>(plugin: &P) -> (Vec<u32>, Vec<OwnedParamInfo>) {
+    struct CollectParams<'a> {
+        keys: &'a mut KeyList,
+        params: &'a mut Vec<OwnedParamInfo>,
+    }
 
     impl<'a> BuildParams for CollectParams<'a> {
-        fn param(self, param: ParamInfo) -> Self {
-            self.0.push(OwnedParamInfo {
-                id: param.id,
+        fn param<'k>(self, key: impl Into<Key<'k>>, param: ParamInfo) -> Self {
+            self.keys.key(key);
+            self.params.push(OwnedParamInfo {
                 name: param.name.to_string(),
                 default: param.default,
                 steps: param.steps,
             });
             self
         }
+
+        fn reserve<'k>(self, key: impl Into<Key<'k>>) -> Self {
+            self.keys.reserve(key);
+            self
+        }
     }
 
+    let mut keys = KeyList::new();
     let mut params = Vec::new();
-    plugin.params(CollectParams(&mut params));
-    params
+    plugin.params(CollectParams {
+        keys: &mut keys,
+        params: &mut params,
+    });
+
+    (keys.into_ids(), params)
 }
 
 pub trait Params {

@@ -24,7 +24,7 @@ use portlight::{
 
 #[derive(Params, Serialize, Deserialize, Clone)]
 struct GainGuiParams {
-    #[param(id = 0, name = "Gain", range = 0.0..1.0)]
+    #[param(name = "Gain", range = 0.0..1.0)]
     gain: f32,
 }
 

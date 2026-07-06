@@ -1,9 +1,9 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Error, Expr, Field, Fields, LitInt, LitStr};
+use syn::{Data, DeriveInput, Error, Expr, Field, Fields, LitStr};
 
 struct ParamAttrs {
-    id: LitInt,
+    key: LitStr,
     name: LitStr,
     range: TokenStream,
     format: TokenStream,
@@ -12,7 +12,7 @@ struct ParamAttrs {
 fn parse_param(field: &Field) -> Result<Option<ParamAttrs>, Error> {
     let mut is_param = false;
 
-    let mut id = None;
+    let mut key = None;
     let mut name = None;
     let mut range = None;
     let mut format = None;
@@ -28,15 +28,15 @@ fn parse_param(field: &Field) -> Result<Option<ParamAttrs>, Error> {
             let ident = meta.path.get_ident().ok_or_else(|| {
                 Error::new_spanned(&meta.path, "expected this path to be an identifier")
             })?;
-            if ident == "id" {
-                if id.is_some() {
+            if ident == "key" {
+                if key.is_some() {
                     return Err(Error::new_spanned(
                         &meta.path,
-                        "duplicate param attribute `id`",
+                        "duplicate param attribute `key`",
                     ));
                 }
 
-                id = Some(meta.value()?.parse::<LitInt>()?);
+                key = Some(meta.value()?.parse::<LitStr>()?);
             } else if ident == "name" {
                 if name.is_some() {
                     return Err(Error::new_spanned(
@@ -79,10 +79,11 @@ fn parse_param(field: &Field) -> Result<Option<ParamAttrs>, Error> {
         return Ok(None);
     }
 
-    let id = if let Some(id) = id {
-        id
+    let key = if let Some(key) = key {
+        key
     } else {
-        return Err(Error::new_spanned(field, "missing `id` attribute"));
+        let ident = field.ident.as_ref().unwrap();
+        LitStr::new(&ident.to_string(), ident.span())
     };
 
     let name = if let Some(name) = name {
@@ -105,7 +106,7 @@ fn parse_param(field: &Field) -> Result<Option<ParamAttrs>, Error> {
     };
 
     Ok(Some(ParamAttrs {
-        id,
+        key,
         name,
         range,
         format,
@@ -155,16 +156,20 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     let ident = &input.ident;
 
-    let param_info = fields.iter().map(|field| {
+    let param_keys = fields.iter().map(|field| {
+        let key = &field.param.key;
+
+        quote! { #key }
+    });
+
+    let param_infos = fields.iter().map(|field| {
         let ident = field.field.ident.as_ref().unwrap();
         let ty = &field.field.ty;
-        let id = &field.param.id;
         let name = &field.param.name;
         let range = &field.param.range;
 
         quote! {
             ::coupler::params::ParamInfo {
-                id: #id,
                 name: #name,
                 default: ::coupler::params::Range::<#ty>::encode(&(#range), &__default.#ident),
                 steps: ::coupler::params::Range::<#ty>::steps(&(#range)),
@@ -229,7 +234,7 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
                 let __default: #ident #ty_generics = ::std::default::Default::default();
 
                 __build
-                    #(.param(#param_info))*;
+                    #(.param(#param_keys, #param_infos))*;
             }
 
             fn set_param(&mut self, __index: ::std::primitive::usize, __value: ::std::primitive::f64) {

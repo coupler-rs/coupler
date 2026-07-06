@@ -92,6 +92,7 @@ pub struct Instance<P: Plugin> {
     pub bus_configs: Vec<OwnedBusConfig>,
     pub input_bus_map: Vec<usize>,
     pub output_bus_map: Vec<usize>,
+    pub param_ids: Vec<u32>,
     pub params: Vec<OwnedParamInfo>,
     pub param_map: HashMap<u32, usize>,
     // Processor -> plugin parameter changes
@@ -126,12 +127,12 @@ impl<P: Plugin> Instance<P> {
             }
         }
 
-        let params = collect_params(&plugin);
-        let param_count = params.len();
+        let (param_ids, params) = collect_params(&plugin);
+        let param_count = param_ids.len();
 
         let mut param_map = HashMap::new();
-        for (index, param) in params.iter().enumerate() {
-            param_map.insert(param.id, index);
+        for (index, &id) in param_ids.iter().enumerate() {
+            param_map.insert(id, index);
         }
 
         let has_editor = plugin.has_editor();
@@ -157,6 +158,7 @@ impl<P: Plugin> Instance<P> {
             input_bus_map,
             output_bus_map,
             params,
+            param_ids,
             param_map,
             plugin_params: ParamValues::with_count(param_count),
             processor_params: ParamValues::with_count(param_count),
@@ -220,6 +222,7 @@ impl<P: Plugin> Instance<P> {
         out_events: *const clap_output_events,
         time: u32,
     ) {
+        let param_id = self.param_ids[update.index];
         let param = &self.params[update.index];
 
         if update.begin_gesture {
@@ -231,7 +234,7 @@ impl<P: Plugin> Instance<P> {
                     type_: CLAP_EVENT_PARAM_GESTURE_BEGIN,
                     flags: CLAP_EVENT_IS_LIVE,
                 },
-                param_id: param.id,
+                param_id,
             };
 
             unsafe {
@@ -251,7 +254,7 @@ impl<P: Plugin> Instance<P> {
                     type_: CLAP_EVENT_PARAM_VALUE,
                     flags: CLAP_EVENT_IS_LIVE,
                 },
-                param_id: param.id,
+                param_id,
                 cookie: ptr::null_mut(),
                 note_id: -1,
                 port_index: -1,
@@ -277,7 +280,7 @@ impl<P: Plugin> Instance<P> {
                     type_: CLAP_EVENT_PARAM_GESTURE_END,
                     flags: CLAP_EVENT_IS_LIVE,
                 },
-                param_id: param.id,
+                param_id,
             };
 
             unsafe {
@@ -722,7 +725,7 @@ impl<P: Plugin> Instance<P> {
         if let Some(param) = instance.params.get(param_index as usize) {
             let param_info = unsafe { &mut *param_info };
 
-            param_info.id = param.id;
+            param_info.id = instance.param_ids[param_index as usize];
             param_info.flags = CLAP_PARAM_IS_AUTOMATABLE;
             param_info.cookie = ptr::null_mut();
             copy_cstring(&param.name, &mut param_info.name);

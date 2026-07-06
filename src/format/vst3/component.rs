@@ -58,7 +58,8 @@ pub struct Component<P: Plugin> {
     input_bus_map: Vec<usize>,
     output_bus_map: Vec<usize>,
     bus_config_set: HashSet<Vec<Layout>>,
-    params: Arc<Vec<OwnedParamInfo>>,
+    param_ids: Arc<Vec<u32>>,
+    params: Vec<OwnedParamInfo>,
     param_map: HashMap<u32, usize>,
     plugin_params: ParamValues,
     processor_params: ParamValues,
@@ -105,12 +106,12 @@ impl<P: Plugin> Component<P> {
 
         let scratch_buffers = ScratchBuffers::new(input_bus_map.len(), output_bus_map.len());
 
-        let params = collect_params(&plugin);
-        let param_count = params.len();
+        let (param_ids, params) = collect_params(&plugin);
+        let param_count = param_ids.len();
 
         let mut param_map = HashMap::new();
-        for (index, param) in params.iter().enumerate() {
-            param_map.insert(param.id, index);
+        for (index, &id) in param_ids.iter().enumerate() {
+            param_map.insert(id, index);
         }
 
         let has_editor = plugin.has_editor();
@@ -120,7 +121,8 @@ impl<P: Plugin> Component<P> {
             input_bus_map,
             output_bus_map,
             bus_config_set,
-            params: Arc::new(params),
+            param_ids: Arc::new(param_ids),
+            params: params,
             param_map,
             plugin_params: ParamValues::with_count(param_count),
             processor_params: ParamValues::with_count(param_count),
@@ -659,7 +661,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
         if let Some(param) = self.params.get(paramIndex as usize) {
             let info = unsafe { &mut *info };
 
-            info.id = param.id as ParamID;
+            info.id = self.param_ids[paramIndex as usize] as ParamID;
             copy_wstring(&param.name, &mut info.title);
             copy_wstring(&param.name, &mut info.shortTitle);
             copy_wstring("", &mut info.units);
@@ -776,7 +778,7 @@ impl<P: Plugin> IEditControllerTrait for Component<P> {
             return ptr::null_mut();
         }
 
-        let view = ComWrapper::new(PlugView::new(&self.params, &self.main_thread_state));
+        let view = ComWrapper::new(PlugView::new(&self.param_ids, &self.main_thread_state));
         view.to_com_ptr::<IPlugView>().unwrap().into_raw()
     }
 }
