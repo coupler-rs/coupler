@@ -1,9 +1,10 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Error, Expr, Field, Fields, LitStr};
+use syn::{Data, DeriveInput, Error, Expr, Field, Fields, LitInt, LitStr};
 
 struct ParamAttrs {
     key: LitStr,
+    generation: Option<LitInt>,
     name: LitStr,
     range: TokenStream,
     format: TokenStream,
@@ -13,6 +14,7 @@ fn parse_param(field: &Field) -> Result<Option<ParamAttrs>, Error> {
     let mut is_param = false;
 
     let mut key = None;
+    let mut generation = None;
     let mut name = None;
     let mut range = None;
     let mut format = None;
@@ -37,6 +39,15 @@ fn parse_param(field: &Field) -> Result<Option<ParamAttrs>, Error> {
                 }
 
                 key = Some(meta.value()?.parse::<LitStr>()?);
+            } else if ident == "generation" {
+                if generation.is_some() {
+                    return Err(Error::new_spanned(
+                        &meta.path,
+                        "duplicate param attribute `generation`",
+                    ));
+                }
+
+                generation = Some(meta.value()?.parse::<LitInt>()?);
             } else if ident == "name" {
                 if name.is_some() {
                     return Err(Error::new_spanned(
@@ -107,6 +118,7 @@ fn parse_param(field: &Field) -> Result<Option<ParamAttrs>, Error> {
 
     Ok(Some(ParamAttrs {
         key,
+        generation,
         name,
         range,
         format,
@@ -159,7 +171,11 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
     let param_keys = fields.iter().map(|field| {
         let key = &field.param.key;
 
-        quote! { #key }
+        if let Some(generation) = &field.param.generation {
+            quote! { ::coupler::key::Key::new(#generation, #key) }
+        } else {
+            quote! { #key }
+        }
     });
 
     let param_infos = fields.iter().map(|field| {
