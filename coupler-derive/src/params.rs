@@ -2,6 +2,64 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Error, Expr, Field, Fields, LitInt, LitStr};
 
+struct Reserved {
+    key: LitStr,
+    generation: Option<LitInt>,
+}
+
+fn parse_reserved(input: &DeriveInput) -> Result<Vec<Reserved>, Error> {
+    let mut reserved = Vec::new();
+
+    for attr in &input.attrs {
+        if !attr.path().is_ident("reserve") {
+            continue;
+        }
+
+        let mut key = None;
+        let mut generation = None;
+
+        attr.parse_nested_meta(|meta| {
+            let ident = meta.path.get_ident().ok_or_else(|| {
+                Error::new_spanned(&meta.path, "expected this path to be an identifier")
+            })?;
+
+            if ident == "key" {
+                if key.is_some() {
+                    return Err(Error::new_spanned(&meta.path, "duplicate attribute `key`"));
+                }
+
+                key = Some(meta.value()?.parse::<LitStr>()?);
+            } else if ident == "generation" {
+                if generation.is_some() {
+                    return Err(Error::new_spanned(
+                        &meta.path,
+                        "duplicate attribute `generation`",
+                    ));
+                }
+
+                generation = Some(meta.value()?.parse::<LitInt>()?);
+            } else {
+                return Err(Error::new_spanned(
+                    &meta.path,
+                    format!("unknown param attribute `{}`", ident),
+                ));
+            }
+
+            Ok(())
+        })?;
+
+        let key = if let Some(key) = key {
+            key
+        } else {
+            return Err(Error::new_spanned(attr, "missing `key` attribute"));
+        };
+
+        reserved.push(Reserved { key, generation });
+    }
+
+    Ok(reserved)
+}
+
 struct ParamAttrs {
     key: LitStr,
     generation: Option<LitInt>,
@@ -30,6 +88,7 @@ fn parse_param(field: &Field) -> Result<Option<ParamAttrs>, Error> {
             let ident = meta.path.get_ident().ok_or_else(|| {
                 Error::new_spanned(&meta.path, "expected this path to be an identifier")
             })?;
+
             if ident == "key" {
                 if key.is_some() {
                     return Err(Error::new_spanned(
@@ -163,10 +222,21 @@ fn parse_fields(input: &DeriveInput) -> Result<Vec<ParamField<'_>>, Error> {
 }
 
 pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
+    let reserved = parse_reserved(input)?;
     let fields = parse_fields(input)?;
 
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     let ident = &input.ident;
+
+    let reserved_keys = reserved.iter().map(|reserved| {
+        let key = &reserved.key;
+
+        if let Some(generation) = &reserved.generation {
+            quote! { ::coupler::key::Key::new(#generation, #key) }
+        } else {
+            quote! { #key }
+        }
+    });
 
     let param_keys = fields.iter().map(|field| {
         let key = &field.param.key;
@@ -250,6 +320,7 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
                 let __default: #ident #ty_generics = ::std::default::Default::default();
 
                 __build
+                    #(.reserve(#reserved_keys))*
                     #(.param(#param_keys, #param_infos))*;
             }
 

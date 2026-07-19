@@ -7,7 +7,7 @@ mod params;
 use enum_::expand_enum;
 use params::expand_params;
 
-#[proc_macro_derive(Params, attributes(param))]
+#[proc_macro_derive(Params, attributes(param, reserve))]
 pub fn derive_params(input: TokenStream) -> TokenStream {
     let input: DeriveInput = parse_macro_input!(input as DeriveInput);
 
