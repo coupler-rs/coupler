@@ -10,13 +10,14 @@ use clap_sys::{events::*, host::*, id::*, plugin::*, process::*, stream::*};
 
 use super::host::ClapHost;
 use crate::buffers::{BufferData, BufferType, Buffers};
-use crate::bus::{
-    BusDir, Layout, OwnedBusConfig, OwnedBusInfo, collect_bus_configs, collect_buses,
+use crate::bus::{BusDir, Layout};
+use crate::collect::{
+    OwnedBusConfig, OwnedBusInfo, OwnedParamInfo, collect_bus_configs, collect_buses,
+    collect_params,
 };
 use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
-use crate::params::{OwnedParamInfo, collect_params};
 use crate::plugin::Plugin;
 use crate::process::{Config, Processor};
 use crate::sync::param_gestures::{GestureStates, GestureUpdate, ParamGestures};

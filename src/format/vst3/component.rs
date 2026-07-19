@@ -9,11 +9,13 @@ use super::buffers::ScratchBuffers;
 use super::host::Vst3Host;
 use super::util::{copy_wstring, utf16_from_ptr};
 use super::view::PlugView;
-use crate::bus::{BusDir, Layout, OwnedBusInfo, collect_bus_configs, collect_buses};
+use crate::bus::{BusDir, Layout};
+use crate::collect::{
+    OwnedBusInfo, OwnedParamInfo, collect_bus_configs, collect_buses, collect_params,
+};
 use crate::editor::Editor;
 use crate::events::{Data, Event, Events};
 use crate::host::Host;
-use crate::params::{OwnedParamInfo, collect_params};
 use crate::plugin::Plugin;
 use crate::process::{Config, Processor};
 use crate::sync::params::ParamValues;

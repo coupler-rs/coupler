@@ -13,5 +13,6 @@ pub mod params;
 pub mod plugin;
 pub mod process;
 
+mod collect;
 mod sync;
 mod util;
