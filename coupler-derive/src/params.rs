@@ -2,14 +2,14 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Error, Expr, Field, Fields, LitInt, LitStr};
 
-pub struct ParamAttr {
-    pub id: LitInt,
-    pub name: LitStr,
-    pub range: TokenStream,
-    pub format: TokenStream,
+struct ParamAttr {
+    id: LitInt,
+    name: LitStr,
+    range: TokenStream,
+    format: TokenStream,
 }
 
-pub fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
+fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
     let mut is_param = false;
 
     let mut id = None;
