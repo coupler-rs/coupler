@@ -229,7 +229,7 @@ pub fn expand_params(input: &DeriveInput) -> Result<TokenStream, Error> {
                 let __default: #ident #ty_generics = ::std::default::Default::default();
 
                 __build
-                   #(.param(#param_info))*;
+                    #(.param(#param_info))*;
             }
 
             fn set_param(&mut self, __index: ::std::primitive::usize, __value: ::std::primitive::f64) {
