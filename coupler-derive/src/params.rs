@@ -2,14 +2,14 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Error, Expr, Field, Fields, LitInt, LitStr};
 
-struct ParamAttr {
+struct ParamAttrs {
     id: LitInt,
     name: LitStr,
     range: TokenStream,
     format: TokenStream,
 }
 
-fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
+fn parse_param(field: &Field) -> Result<Option<ParamAttrs>, Error> {
     let mut is_param = false;
 
     let mut id = None;
@@ -104,7 +104,7 @@ fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
         quote! { ::coupler::params::DefaultFormat }
     };
 
-    Ok(Some(ParamAttr {
+    Ok(Some(ParamAttrs {
         id,
         name,
         range,
@@ -114,7 +114,7 @@ fn parse_param(field: &Field) -> Result<Option<ParamAttr>, Error> {
 
 struct ParamField<'a> {
     field: &'a Field,
-    param: ParamAttr,
+    param: ParamAttrs,
 }
 
 fn parse_fields(input: &DeriveInput) -> Result<Vec<ParamField<'_>>, Error> {
