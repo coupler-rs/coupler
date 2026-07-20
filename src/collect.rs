@@ -8,43 +8,71 @@ pub struct OwnedBusInfo {
     pub dir: BusDir,
 }
 
-pub fn collect_buses<P: Plugin>(plugin: &P) -> Vec<OwnedBusInfo> {
-    struct CollectBuses<'a>(&'a mut Vec<OwnedBusInfo>);
+pub fn collect_buses<P: Plugin>(plugin: &P) -> (Vec<u32>, Vec<OwnedBusInfo>) {
+    struct CollectBuses<'a> {
+        keys: &'a mut KeyList,
+        buses: &'a mut Vec<OwnedBusInfo>,
+    }
 
     impl<'a> BuildBuses for CollectBuses<'a> {
-        fn bus(self, bus: BusInfo) -> Self {
-            self.0.push(OwnedBusInfo {
+        fn bus<'k>(self, key: impl Into<Key<'k>>, bus: BusInfo) -> Self {
+            self.keys.key(key);
+            self.buses.push(OwnedBusInfo {
                 name: bus.name.to_string(),
                 dir: bus.dir,
             });
             self
         }
+
+        fn reserve<'k>(self, key: impl Into<Key<'k>>) -> Self {
+            self.keys.reserve(key);
+            self
+        }
     }
 
+    let mut keys = KeyList::new();
     let mut buses = Vec::new();
-    plugin.buses(CollectBuses(&mut buses));
-    buses
+    plugin.buses(CollectBuses {
+        keys: &mut keys,
+        buses: &mut buses,
+    });
+
+    (keys.into_ids(), buses)
 }
 
 pub struct OwnedBusConfig {
     pub layouts: Vec<Layout>,
 }
 
-pub fn collect_bus_configs<P: Plugin>(plugin: &P) -> Vec<OwnedBusConfig> {
-    struct CollectBusConfigs<'a>(&'a mut Vec<OwnedBusConfig>);
+pub fn collect_bus_configs<P: Plugin>(plugin: &P) -> (Vec<u32>, Vec<OwnedBusConfig>) {
+    struct CollectBusConfigs<'a> {
+        keys: &'a mut KeyList,
+        configs: &'a mut Vec<OwnedBusConfig>,
+    }
 
     impl<'a> BuildBusConfigs for CollectBusConfigs<'a> {
-        fn config(self, config: BusConfig) -> Self {
-            self.0.push(OwnedBusConfig {
+        fn config<'k>(self, key: impl Into<Key<'k>>, config: BusConfig) -> Self {
+            self.keys.key(key);
+            self.configs.push(OwnedBusConfig {
                 layouts: config.layouts.to_vec(),
             });
             self
         }
+
+        fn reserve<'k>(self, key: impl Into<Key<'k>>) -> Self {
+            self.keys.reserve(key);
+            self
+        }
     }
 
+    let mut keys = KeyList::new();
     let mut configs = Vec::new();
-    plugin.bus_configs(CollectBusConfigs(&mut configs));
-    configs
+    plugin.bus_configs(CollectBusConfigs {
+        keys: &mut keys,
+        configs: &mut configs,
+    });
+
+    (keys.into_ids(), configs)
 }
 
 pub struct OwnedParamInfo {

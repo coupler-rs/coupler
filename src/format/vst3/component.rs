@@ -82,8 +82,8 @@ impl<P: Plugin> Component<P> {
 
         let plugin = P::new(Host::from_inner(host.clone()));
 
-        let buses = collect_buses(&plugin);
-        let bus_configs = collect_bus_configs(&plugin);
+        let (_bus_ids, buses) = collect_buses(&plugin);
+        let (_bus_config_ids, bus_configs) = collect_bus_configs(&plugin);
 
         let mut input_bus_map = Vec::new();
         let mut output_bus_map = Vec::new();

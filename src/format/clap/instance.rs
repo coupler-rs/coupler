@@ -89,6 +89,7 @@ pub struct Instance<P: Plugin> {
     #[allow(unused)]
     pub clap_plugin: clap_plugin,
     pub host: HostPtr,
+    pub bus_ids: Vec<u32>,
     pub buses: Vec<OwnedBusInfo>,
     pub bus_configs: Vec<OwnedBusConfig>,
     pub input_bus_map: Vec<usize>,
@@ -112,8 +113,8 @@ impl<P: Plugin> Instance<P> {
     pub fn new(desc: *const clap_plugin_descriptor, host: *const clap_host) -> Self {
         let plugin = P::new(Host::from_inner(Arc::new(ClapHost {})));
 
-        let buses = collect_buses(&plugin);
-        let bus_configs = collect_bus_configs(&plugin);
+        let (bus_ids, buses) = collect_buses(&plugin);
+        let (_bus_config_ids, bus_configs) = collect_bus_configs(&plugin);
 
         let mut input_bus_map = Vec::new();
         let mut output_bus_map = Vec::new();
@@ -154,6 +155,7 @@ impl<P: Plugin> Instance<P> {
                 on_main_thread: Some(Self::on_main_thread),
             },
             host: HostPtr(host),
+            bus_ids,
             buses,
             bus_configs,
             input_bus_map,
@@ -596,7 +598,7 @@ impl<P: Plugin> Instance<P> {
             if let (Some(bus_info), Some(layout)) = (bus_info, layout) {
                 let port_info = unsafe { &mut *info };
 
-                port_info.id = index;
+                port_info.id = instance.bus_ids[bus_index];
                 copy_cstring(&bus_info.name, &mut port_info.name);
                 port_info.flags = if index == 0 {
                     CLAP_AUDIO_PORT_IS_MAIN

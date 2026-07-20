@@ -50,20 +50,29 @@ impl Plugin for Gain {
     }
 
     fn buses(&self, build: impl BuildBuses) {
-        build.bus(BusInfo {
-            name: "Main",
-            dir: BusDir::InOut,
-        });
+        build.bus(
+            "main",
+            BusInfo {
+                name: "Main",
+                dir: BusDir::InOut,
+            },
+        );
     }
 
     fn bus_configs(&self, build: impl BuildBusConfigs) {
         build
-            .config(BusConfig {
-                layouts: &[Layout::Stereo],
-            })
-            .config(BusConfig {
-                layouts: &[Layout::Mono],
-            });
+            .config(
+                "stereo",
+                BusConfig {
+                    layouts: &[Layout::Stereo],
+                },
+            )
+            .config(
+                "mono",
+                BusConfig {
+                    layouts: &[Layout::Mono],
+                },
+            );
     }
 
     fn params(&self, build: impl BuildParams) {

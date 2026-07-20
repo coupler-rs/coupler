@@ -1,3 +1,5 @@
+use crate::key::Key;
+
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum BusDir {
     In,
@@ -31,9 +33,11 @@ impl Layout {
 }
 
 pub trait BuildBuses {
-    fn bus(self, bus: BusInfo) -> Self;
+    fn bus<'k>(self, key: impl Into<Key<'k>>, bus: BusInfo) -> Self;
+    fn reserve<'k>(self, key: impl Into<Key<'k>>) -> Self;
 }
 
 pub trait BuildBusConfigs {
-    fn config(self, config: BusConfig) -> Self;
+    fn config<'k>(self, key: impl Into<Key<'k>>, config: BusConfig) -> Self;
+    fn reserve<'k>(self, key: impl Into<Key<'k>>) -> Self;
 }
