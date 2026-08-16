@@ -5,7 +5,9 @@ use std::ptr::NonNull;
 use std::sync::Arc;
 use std::{io, mem, ptr, slice};
 
-use clap_sys::ext::{audio_ports::*, audio_ports_config::*, gui::*, params::*, state::*};
+use clap_sys::ext::{
+    audio_ports::*, audio_ports_config::*, gui::*, latency::*, params::*, state::*,
+};
 use clap_sys::{events::*, host::*, id::*, plugin::*, process::*, stream::*};
 
 use super::host::ClapHost;
@@ -65,6 +67,8 @@ unsafe impl Sync for Extensions {}
 pub struct MainThreadState<P: Plugin> {
     pub extensions: Extensions,
     pub bus_config_index: usize,
+    pub sample_rate: f64,
+    pub max_buffer_size: usize,
     pub plugin: P,
     pub editor: Option<ThreadCell<P::Editor>>,
 }
@@ -170,6 +174,8 @@ impl<P: Plugin> Instance<P> {
             main_thread_state: SyncCell::new(MainThreadState {
                 extensions: Extensions { host_params: None },
                 bus_config_index: 0,
+                sample_rate: 0.0,
+                max_buffer_size: 0,
                 plugin,
                 editor: None,
             }),
@@ -346,10 +352,13 @@ impl<P: Plugin> Instance<P> {
 
         process_state.buffers.ptrs.resize(total_channels, NonNull::dangling().as_ptr());
 
+        main_thread_state.sample_rate = sample_rate;
+        main_thread_state.max_buffer_size = max_frames_count as usize;
+
         let config = Config {
             layouts: &bus_config.layouts,
-            sample_rate,
-            max_buffer_size: max_frames_count as usize,
+            sample_rate: main_thread_state.sample_rate,
+            max_buffer_size: main_thread_state.max_buffer_size,
         };
 
         // Discard any pending plugin -> processor parameter changes, since they will already be
@@ -538,6 +547,10 @@ impl<P: Plugin> Instance<P> {
 
         if id == CLAP_EXT_STATE {
             return &Self::STATE as *const _ as *const c_void;
+        }
+
+        if id == CLAP_EXT_LATENCY {
+            return &Self::LATENCY as *const _ as *const c_void;
         }
 
         if id == CLAP_EXT_GUI {
@@ -990,5 +1003,25 @@ impl<P: Plugin> Instance<P> {
         }
 
         false
+    }
+}
+
+impl<P: Plugin> Instance<P> {
+    const LATENCY: clap_plugin_latency = clap_plugin_latency {
+        get: Some(Self::latency_get),
+    };
+
+    unsafe extern "C" fn latency_get(plugin: *const clap_plugin) -> u32 {
+        let instance = unsafe { &*(plugin as *const Self) };
+        let main_thread_state = instance.main_thread_state.borrow();
+
+        let bus_config = &instance.bus_configs[main_thread_state.bus_config_index];
+        let config = Config {
+            layouts: &bus_config.layouts,
+            sample_rate: main_thread_state.sample_rate,
+            max_buffer_size: main_thread_state.max_buffer_size,
+        };
+
+        main_thread_state.plugin.latency(config) as u32
     }
 }
